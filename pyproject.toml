@@ -1,0 +1,9 @@
+[project]
+name = "wow-forever-suite"
+version = "0.1.0"
+description = "Personal All-in-One WoW Forever (1.60.1 / TOC 11701) Addon & Verification Harness"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+cache_dir = "/tmp/pytest_cache_wow_forever_suite"
