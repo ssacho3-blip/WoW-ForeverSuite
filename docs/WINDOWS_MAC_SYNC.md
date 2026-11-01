@@ -22,9 +22,11 @@
 임시 스테이징 디렉터리에서 파일 무결성을 검증한 뒤 원자적 교체(Atomic Swap)로 `/Applications/World of Warcraft/_forever_/Interface/AddOns/ForeverSuite`에 반영합니다. 게임 실행 중이라면 채팅창에 `/reload`만 입력하면 즉시 적용됩니다.
 
 ### B. Windows PC로 전달 / 동기화
-1. **Git 리포지토리 동기화 (권장)**:
-   Windows PC에서 동일 리포지토리를 `git pull` 한 뒤 PowerShell에서 실행합니다:
+1. **GitHub 비공개 리포지토리 동기화 (권장 — `ssacho3-blip/WoW-ForeverSuite`)**:
+   Windows PC PowerShell에서 최초 1회 클론 후 배포 스크립트를 실행합니다(이후 업데이트 시 `git pull` + `deploy_win.ps1`):
    ```powershell
+   git clone https://github.com/ssacho3-blip/WoW-ForeverSuite.git C:\WoW_Forever\ForeverSuite
+   cd C:\WoW_Forever\ForeverSuite
    powershell -ExecutionPolicy Bypass -File .\scripts\deploy_win.ps1
    ```
 2. **단일 포터블 ZIP 패키지 생성**:

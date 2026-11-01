@@ -2,6 +2,7 @@
 
 - **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.70707`, TOC `11701`)
 - **지원 OS**: **macOS & Windows 양방향 100% 호환**
+- **개발 저장소**: macOS `~/WoW_Forever/ForeverSuite` · GitHub Private `https://github.com/ssacho3-blip/WoW-ForeverSuite`
 - **설계 원칙**: `Reuse First` · `Modular Fault Isolation (xpcall)` · `Zero Combat Automation` · `C_Secrets Safe` · `Zero Idle OnUpdate`
 
 ---
