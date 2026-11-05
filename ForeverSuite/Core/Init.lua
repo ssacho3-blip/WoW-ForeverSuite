@@ -4,7 +4,7 @@ ns = ns or {}
 _G.ForeverSuite = ns
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite"
-ns.VERSION = "0.1.0"
+ns.VERSION = "0.2.0"
 ns.TARGET_TOC = 11701
 ns.PREFIX = "|cffd4af37[ForeverSuite]|r "
 
@@ -294,6 +294,48 @@ function ns.IsExternalAddonLoaded(addonName)
         return loaded and true or false
     end
     return false
+end
+
+ns.FeatureYields = {}
+
+function ns.SetFeatureYield(featureKey, yielded, ownerName)
+    if type(featureKey) ~= "string" or featureKey == "" then
+        return false
+    end
+    if yielded then
+        ns.FeatureYields[featureKey] = tostring(ownerName or "ExternalAddon")
+    else
+        ns.FeatureYields[featureKey] = nil
+    end
+    return true
+end
+
+function ns.IsFeatureYielded(featureKey)
+    if type(featureKey) ~= "string" then
+        return false
+    end
+    return ns.FeatureYields[featureKey] ~= nil
+end
+
+function ns.GetFeatureYieldOwner(featureKey)
+    if type(featureKey) ~= "string" then
+        return nil
+    end
+    return ns.FeatureYields[featureKey]
+end
+
+function ns.HasExternalWayCommand()
+    if ns.IsExternalAddonLoaded("TomTom") then
+        return true, "TomTom"
+    end
+    local existingSlash = _G.SLASH_WAY1
+    if type(existingSlash) == "string" and existingSlash ~= "" then
+        return true, "SLASH_WAY1"
+    end
+    if type(_G.SlashCmdList) == "table" and type(_G.SlashCmdList["WAY"]) == "function" then
+        return true, "SlashCmdList.WAY"
+    end
+    return false, nil
 end
 
 -- CombatQueue: defers protected operations while InCombatLockdown() is active (AC-3)

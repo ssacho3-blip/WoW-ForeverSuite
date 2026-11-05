@@ -1,0 +1,100 @@
+{
+  "upstream_name": "GodJohnson Integrated Addon",
+  "curseforge_project_id": 1707376,
+  "version": "5.0.132",
+  "release_revision": 484,
+  "release_date": "2026-11-04",
+  "target_client_build": "1.60.1.70790",
+  "file_id": 9432165,
+  "file_name": "GodJohnson-5.0.132.zip",
+  "download_url": "https://mediafilez.forgecdn.net/files/9432/165/GodJohnson-5.0.132.zip",
+  "zip_sha256": "2cf3a5044f379aa2071dd734c35c6094c8765f923965db6afd39cae7736d1efd",
+  "zip_size_bytes": 273731607,
+  "folder_count": 21,
+  "folders": {
+    "GodJohnsonAtlasData": {
+      "toc_sha256": "597693349e9bdf7f46389ce80a8db4b5c193067b828574271cca854a82e3b199",
+      "file_count": 2
+    },
+    "GodJohnsonBiSData": {
+      "toc_sha256": "c8b19a560b46c7138afc0a0300744e6fa3ef02fd528a1247964c881b61cb8a9f",
+      "file_count": 5
+    },
+    "GodJohnsonEngineStartup": {
+      "toc_sha256": "f70a37282a0bdfcdf1dc37047f0f08e24e6990f23b4438057a1c286c1117d48e",
+      "file_count": 3
+    },
+    "GodJohnsonFontChoice_damage_1": {
+      "toc_sha256": "46ac009d91752b019368f7183d8ea391cf7001b18ada9dabe6bfa311cfad04f0",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_2": {
+      "toc_sha256": "d2bebfe79f7d81bf0901404221c51ad7449b5990e35a63f0cdb925698da75703",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_3": {
+      "toc_sha256": "1ff5d44aa95dc5104e96f3b44c4b3b2c4058f1a9d8965bf72745641fd8c0dc68",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_4": {
+      "toc_sha256": "9efd7476fc39ff9c51d4705d1d2ab221fe10fbd4afeecd5d6484a7e0f678f67b",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_5": {
+      "toc_sha256": "e5985ef48a33d1c4668ca3d6ed5fea930141b6c19ca1fc9de99260bf0895c23f",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_6": {
+      "toc_sha256": "e1574b40faca6cbfe121d3f125dfcfe2273b7cb5a381f9f4126699e1b7bbca2d",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_damage_7": {
+      "toc_sha256": "c40a26f422196b365c301d1ad6ccef9b3d4a3f6357325b2c7a1e1c5301a222a7",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_1": {
+      "toc_sha256": "5abad816645f4e683e3b280fa07f3fa92ca296a1ba7a07c96f107f0757160b23",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_2": {
+      "toc_sha256": "6fba37ce11884d8226bf66d8f4eb040e59456fd532043386c8774db38de49720",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_3": {
+      "toc_sha256": "5af370defedea146bd5f7f16d0e4e079fee0a48286cc120eb5b59c51cd60df62",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_4": {
+      "toc_sha256": "4428ae4682525203a0ea492293a996ba197246660e2c0ba0d3aaa4096015b5ba",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_5": {
+      "toc_sha256": "e0ba2809460ef1bc77e62dfbfc6a15ee95fb9778557ec2963609e4a544753848",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_6": {
+      "toc_sha256": "36d1ae24d203bca188a8fa19fa7fb5cd248122760692759331c95b90e8269ec1",
+      "file_count": 2
+    },
+    "GodJohnsonFontChoice_world_7": {
+      "toc_sha256": "d4087c259e7642b71ccf7e37d8d9005b61ab0b12e756709d5a1832e53feb5c70",
+      "file_count": 2
+    },
+    "GodJohnsonGoldBorder": {
+      "toc_sha256": "eb49436fe05e8bc215066f2f321444d807d831faf554df15622f3ac5ff0d4e22",
+      "file_count": 1051
+    },
+    "GodJohnsonHunterPetData": {
+      "toc_sha256": "7eeed03e4458ed5113464ef1e524683ac3a7fb706acf4dbf7d5ce9ff57df26b3",
+      "file_count": 4
+    },
+    "GodJohnsonProfessionData": {
+      "toc_sha256": "77ea9830e99c311ee6a396e27043b67586f0a7b225b0de4a14b871bbd1691063",
+      "file_count": 6
+    },
+    "GodJohnsonRewardData": {
+      "toc_sha256": "fef5aca52b72b4a48c81c4eea5b8a9d94d4a0daa0fa055721df3f06bbd72ff90",
+      "file_count": 8
+    }
+  }
+}

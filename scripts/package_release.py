@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Build a cross-platform (Windows + macOS) ForeverSuite ZIP release atomically."""
+"""Build cross-platform ForeverSuite + ForeverSuite_GJBridge ZIP release and Windows 1-Click .exe installer."""
 
 from __future__ import annotations
 
 import os
 import pathlib
+import sys
 import zipfile
 
+SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
-def build_release_zip(repo_root: pathlib.Path, version: str = "0.1.0") -> pathlib.Path:
-    src_dir = repo_root / "ForeverSuite"
-    toc_path = src_dir / "ForeverSuite.toc"
-    if not toc_path.is_file():
-        raise FileNotFoundError(f"Missing TOC file: {toc_path}")
+from build_win_exe import _write_addon_folder_to_zip, build_windows_installer_exe  # noqa: E402
 
+
+def build_release_zip(repo_root: pathlib.Path, version: str = "0.2.0") -> pathlib.Path:
+    addon_folders = ("ForeverSuite", "ForeverSuite_GJBridge")
     dist_dir = repo_root / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
 
@@ -21,22 +24,15 @@ def build_release_zip(repo_root: pathlib.Path, version: str = "0.1.0") -> pathli
     staging_zip = dist_dir / f".ForeverSuite-v{version}.staging.zip"
 
     with zipfile.ZipFile(staging_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for file_path in sorted(src_dir.rglob("*")):
-            if file_path.is_dir() or file_path.name.startswith("."):
-                continue
-            rel_posix = file_path.relative_to(repo_root).as_posix()
-            raw = file_path.read_bytes()
-            # Enforce LF line endings and UTF-8 without BOM for Win/Mac Lua parity
-            if raw.startswith(b"\xef\xbb\xbf"):
-                raise ValueError(f"UTF-8 BOM detected in {rel_posix}")
-            normalized = raw.replace(b"\r\n", b"\n")
-            zf.writestr(rel_posix, normalized)
+        for folder in addon_folders:
+            _write_addon_folder_to_zip(zf, repo_root, folder)
 
     os.replace(staging_zip, final_zip)
+    build_windows_installer_exe(repo_root)
     return final_zip
 
 
 if __name__ == "__main__":
     root = pathlib.Path(__file__).resolve().parent.parent
     out = build_release_zip(root)
-    print(f"[OK] Built cross-platform package: {out}")
+    print(f"[OK] Built cross-platform package & Windows .exe installer in: {out.parent}")

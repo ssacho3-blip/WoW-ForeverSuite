@@ -131,7 +131,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.1.0"
+    assert ns["VERSION"] == "0.2.0"
 
     allowed_globals = {
         "ForeverSuite",

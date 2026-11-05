@@ -944,6 +944,24 @@ class Lua51VM:
                     conv_args.append(a)
             return str(fmt) % tuple(conv_args)
 
+        def str_gsub(s: str, pat: str, repl: str, n: int | None = None) -> Any:
+            s_str = lua_to_string(s)
+            p_str = lua_to_string(pat)
+            r_str = lua_to_string(repl)
+            rx = _translate_lua_pattern(p_str)
+            count = 0 if n is None else int(n)
+            new_s, num_subs = re.subn(rx, lambda _m: r_str, s_str, count=count, flags=re.DOTALL)
+            return MultiReturn((new_s, num_subs))
+
+        def str_sub(s: str, i: int, j: int | None = None) -> str:
+            s_str = lua_to_string(s)
+            length = len(s_str)
+            start = int(i)
+            end = length if j is None else int(j)
+            start_idx = max(0, start - 1) if start > 0 else max(0, length + start) if start < 0 else 0
+            end_idx = min(length, end) if end >= 0 else max(0, length + end + 1)
+            return s_str[start_idx:end_idx]
+
         G["string"] = LuaTable(
             {
                 "format": str_format,
@@ -951,6 +969,8 @@ class Lua51VM:
                 "upper": lambda s: lua_to_string(s).upper(),
                 "find": str_find,
                 "match": str_match,
+                "gsub": str_gsub,
+                "sub": str_sub,
                 "len": lambda s: len(lua_to_string(s)),
             }
         )

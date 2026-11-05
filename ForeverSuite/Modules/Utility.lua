@@ -53,6 +53,9 @@ function Utility:RestoreQoLCVars()
 end
 
 function Utility:TryAutoRepair()
+    if ns.IsFeatureYielded("repair") then
+        return
+    end
     if not ns.ProfileManager:Get("utility", "autoRepair") then
         return
     end
@@ -93,6 +96,9 @@ function Utility:TryAutoRepair()
 end
 
 function Utility:TryAutoSellJunk()
+    if ns.IsFeatureYielded("sell") then
+        return 0
+    end
     if not ns.ProfileManager:Get("utility", "autoSellJunk") then
         return 0
     end

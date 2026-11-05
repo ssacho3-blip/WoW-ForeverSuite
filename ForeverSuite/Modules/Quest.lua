@@ -15,6 +15,9 @@ local function IsShiftHeld()
 end
 
 function Quest:OnQuestDetail()
+    if ns.IsFeatureYielded("questAuto") then
+        return
+    end
     if not ns.ProfileManager:Get("quest", "autoAccept") or IsShiftHeld() then
         return
     end
@@ -27,6 +30,9 @@ function Quest:OnQuestDetail()
 end
 
 function Quest:OnQuestProgress()
+    if ns.IsFeatureYielded("questAuto") then
+        return
+    end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
         return
     end
@@ -36,6 +42,9 @@ function Quest:OnQuestProgress()
 end
 
 function Quest:OnQuestComplete()
+    if ns.IsFeatureYielded("questAuto") then
+        return
+    end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
         return
     end

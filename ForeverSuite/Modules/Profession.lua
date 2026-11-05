@@ -109,6 +109,9 @@ function Profession:OnWorldMouseDown(mouseButton)
     if not self.active or mouseButton ~= "RightButton" then
         return
     end
+    if ns.IsFeatureYielded("fishing") then
+        return
+    end
     if not ns.ProfileManager:Get("profession", "doubleClickFishing") then
         return
     end
@@ -140,6 +143,7 @@ function Profession:SyncFishingSoundBoost()
         return
     end
     local wantBoost = self.active
+        and (not ns.IsFeatureYielded("fishing"))
         and ns.ProfileManager:Get("profession", "fishingSoundBoost")
         and self:IsFishingPoleEquipped()
 

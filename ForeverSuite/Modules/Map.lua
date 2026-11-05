@@ -173,19 +173,25 @@ function Map:OnEnable(ctx)
         end
     end
 
-    if ns.ProfileManager:Get("map", "enableWaySlash") and not ns.IsExternalAddonLoaded("TomTom") then
-        _G.SLASH_FOREVERSUITEWAY1 = "/way"
-        if type(_G.SlashCmdList) == "table" then
-            _G.SlashCmdList["FOREVERSUITEWAY"] = function(msg)
-                Map:SetWaypointFromSlash(msg)
-            end
-        end
-        ctx:AddCleanup(function()
+    if ns.ProfileManager:Get("map", "enableWaySlash") then
+        local hasExtWay, extWayOwner = ns.HasExternalWayCommand()
+        if hasExtWay then
+            ns.SetFeatureYield("way", true, extWayOwner)
+        else
+            ns.SetFeatureYield("way", false, nil)
+            _G.SLASH_FOREVERSUITEWAY1 = "/way"
             if type(_G.SlashCmdList) == "table" then
-                _G.SlashCmdList["FOREVERSUITEWAY"] = nil
+                _G.SlashCmdList["FOREVERSUITEWAY"] = function(msg)
+                    Map:SetWaypointFromSlash(msg)
+                end
             end
-            _G.SLASH_FOREVERSUITEWAY1 = nil
-        end)
+            ctx:AddCleanup(function()
+                if type(_G.SlashCmdList) == "table" then
+                    _G.SlashCmdList["FOREVERSUITEWAY"] = nil
+                end
+                _G.SLASH_FOREVERSUITEWAY1 = nil
+            end)
+        end
     end
 end
 

@@ -1,6 +1,6 @@
-# Build & Release Artifacts
-dist/
-*.zip
+# Build & Release Staging Artifacts (track dist/ForeverSuite_Installer.exe for 1-click Windows install)
+dist/.*
+GodJohnson*.zip
 .pytest_cache/
 __pycache__/
 *.pyc
