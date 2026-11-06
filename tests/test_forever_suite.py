@@ -480,7 +480,7 @@ def test_ac7_coexistence_yield_zero_idle_tickers_and_waypoint_guard() -> None:
 
 
 def test_cross_platform_zip_packaging_lf_and_posix_paths(tmp_path: pathlib.Path) -> None:
-    zip_out = build_release_zip(REPO_ROOT, version="0.1.0")
+    zip_out = build_release_zip(REPO_ROOT, version="0.1.0", out_dir=tmp_path)
     assert zip_out.is_file()
     with zipfile.ZipFile(zip_out, "r") as zf:
         names = zf.namelist()

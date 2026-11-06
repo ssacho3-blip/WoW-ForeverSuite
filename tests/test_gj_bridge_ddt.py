@@ -120,8 +120,9 @@ def test_bridge_unavailable_when_gj_companion_absent() -> None:
 
     assert bridge.get("status") == "UNAVAILABLE"
     targets = bridge.get("targets")
-    for key in ("sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "cursorTrail"):
+    for key in ("sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound"):
         assert targets.get(key) == "UNAVAILABLE"
+    assert targets.get("cursorTrail") is None
 
     rt.chat_messages.clear()
     rt.run_slash("FOREVERSUITEGJ", "status")
@@ -315,7 +316,7 @@ def test_quest_sound_oishii_removed_and_replaced_with_clean_alarm() -> None:
     assert played.get(2) == "dingdong"
 
 
-def test_cursor_trail_lightning_disabled_and_sanitized() -> None:
+def test_cursor_trail_untouched_and_accidental_sanitization_restored() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.boot_session()
 
@@ -323,7 +324,6 @@ def test_cursor_trail_lightning_disabled_and_sanitized() -> None:
         """
         local trailFrame = CreateFrame("Frame", "GodJohnsonCursorTrail", UIParent)
         trailFrame:Show()
-        trailFrame:SetScript("OnUpdate", function() end)
 
         GJCompanion = {
             version = "5.0.132",
@@ -339,11 +339,6 @@ def test_cursor_trail_lightning_disabled_and_sanitized() -> None:
             },
             _refreshCount = 0,
         }
-        GJCompanion.CursorFX = {
-            Config = function()
-                return GJCompanion._cursorCfg
-            end,
-        }
         function GJCompanion.ExtraSettings(key)
             if key == "cursorTrail" then
                 return GJCompanion._cursorCfg
@@ -357,74 +352,118 @@ def test_cursor_trail_lightning_disabled_and_sanitized() -> None:
     )
 
     bridge = load_bridge(rt)
-    assert bridge.get("targets").get("cursorTrail") == "APPLIED"
+    assert bridge.get("targets").get("cursorTrail") is None
 
     ct_schema = rt.vm.G["GJCompanion"].get("ExtraSchemas").get("cursorTrail")
-    assert ct_schema.get(1).get("default") is False
-    assert ct_schema.get(2).get("default") == "dot"
+    assert ct_schema.get(1).get("default") is True
+    assert ct_schema.get(2).get("default") == "orbTrial"
 
     ct_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("cursorTrail")')[0]
-    assert ct_cfg.get("enabled") is False
-    assert ct_cfg.get("style") == "dot"
-
-    fx_cfg = rt.vm.run_chunk("return GJCompanion.CursorFX.Config()")[0]
-    assert fx_cfg.get("enabled") is False
-    assert fx_cfg.get("style") == "dot"
+    assert ct_cfg.get("enabled") is True
+    assert ct_cfg.get("style") == "chainTrial"
 
     trail_frame = rt.vm.G["GodJohnsonCursorTrail"]
-    assert trail_frame.get("_shown") is False
-    assert "OnUpdate" not in trail_frame.get("_scripts")
+    assert trail_frame.get("_shown") is True
 
-
-def test_extra_action_bars_auto_enabled_and_combat_safe() -> None:
-    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    # Verify marked-settings recovery branch when _fsgjCursorLightningSanitized was previously set
     rt.vm.run_chunk(
         """
+        GJCompanion._cursorCfg.enabled = false
+        GJCompanion._cursorCfg.style = "dot"
+        GJCompanion._cursorCfg._fsgjCursorLightningSanitized = true
+        ForeverSuite_GJBridge.SanitizeLiveGJSettings()
+        """
+    )
+    assert ct_cfg.get("enabled") is True
+    assert ct_cfg.get("style") == "chainTrial"
+    assert ct_cfg.get("_fsgjCursorLightningSanitized") is None
+    assert rt.vm.G["GJCompanion"].get("_refreshCount") == 1
+
+
+def test_extra_action_bars_reverted_and_combat_safe() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.cvars["alwaysShowActionBars"] = "1"
+    rt.cvars["enableMultiActionBars"] = "127"
+    rt.vm.run_chunk(
+        """
+        ForeverSuiteDB = {
+            schemaVersion = 2,
+            account = {
+                utility = {
+                    extraActionBars = true,
+                    extraActionBarMode = "STANDARD",
+                },
+            },
+        }
         _togglesCalled = nil
-        function GetActionBarToggles()
-            return false, false, false, false
-        end
-        function SetActionBarToggles(b1, b2, b3, b4, alwaysShow, b5)
-            _togglesCalled = { b1, b2, b3, b4, alwaysShow, b5 }
+        function SetActionBarToggles(b1, b2, b3, b4, alwaysShow, b5, b6, b7)
+            _togglesCalled = { b1, b2, b3, b4, alwaysShow, b5, b6, b7 }
         end
         MultiBarBottomLeft = CreateFrame("Frame", "MultiBarBottomLeft", UIParent)
-        MultiBarBottomLeft:Hide()
+        MultiBarBottomLeft:Show()
         MultiBarBottomRight = CreateFrame("Frame", "MultiBarBottomRight", UIParent)
-        MultiBarBottomRight:Hide()
+        MultiBarBottomRight:Show()
         MultiBarRight = CreateFrame("Frame", "MultiBarRight", UIParent)
-        MultiBarRight:Hide()
+        MultiBarRight:Show()
         MultiBarLeft = CreateFrame("Frame", "MultiBarLeft", UIParent)
-        MultiBarLeft:Hide()
+        MultiBarLeft:Show()
         MultiBar5 = CreateFrame("Frame", "MultiBar5", UIParent)
-        MultiBar5:Hide()
+        MultiBar5:Show()
         """
     )
 
     ns = rt.boot_session()
-    util_mod = ns["ModuleManager"]["modules"]["Utility"]["definition"]
-    assert util_mod["extraBarsApplied"] is True
-    assert util_mod["activeExtraBarCount"] == 3
-    assert rt.cvars["alwaysShowActionBars"] == "1"
-    assert rt.cvars["enableMultiActionBars"] == "7"
-    assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is True
-    assert rt.vm.G["MultiBarBottomRight"]["_shown"] is True
-    assert rt.vm.G["MultiBarRight"]["_shown"] is True
+    assert rt.cvars["alwaysShowActionBars"] == "0"
+    assert rt.cvars["enableMultiActionBars"] == "0"
+    assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is False
+    assert rt.vm.G["MultiBarBottomRight"]["_shown"] is False
+    assert rt.vm.G["MultiBarRight"]["_shown"] is False
+    assert rt.vm.G["MultiBarLeft"]["_shown"] is False
+    assert rt.vm.G["MultiBar5"]["_shown"] is False
 
-    # Slash command /fs bar expands to 5 extra bars (including MultiBarLeft & MultiBar5)
-    rt.run_slash("FOREVERSUITE", "bar")
-    assert util_mod["activeExtraBarCount"] == 5
-    assert rt.cvars["enableMultiActionBars"] == "31"
-    assert rt.vm.G["MultiBarLeft"]["_shown"] is True
-    assert rt.vm.G["MultiBar5"]["_shown"] is True
+    rt.fire_event("PLAYER_ENTERING_WORLD")
+    util_acct = ns["ProfileManager"]["runtimeAccount"]["utility"]
+    assert util_acct.get("extraActionBars") is None
+    assert util_acct.get("extraActionBarMode") is None
+    assert util_acct.get("_extraBarsRollback20261106") is True
 
-    # Calling /fs bar during Combat Lockdown defers via CombatQueue with 0 blocked actions
+    # P1: Verify server CVar sync restoring legacy masks "7" or "31" after rollback is also cleaned
+    for legacy_mask in ("7", "31"):
+        rt.cvars["enableMultiActionBars"] = legacy_mask
+        rt.cvars["alwaysShowActionBars"] = "1"
+        rt.fire_event("PLAYER_ENTERING_WORLD")
+        assert rt.cvars["enableMultiActionBars"] == "0"
+        assert rt.cvars["alwaysShowActionBars"] == "0"
+
+    # P2: Verify failed SetCVar write does not prematurely mark rollback complete
+    util_acct.set("extraActionBars", True)
+    util_acct.set("_extraBarsRollback20261106", None)
+    ns["ProfileManager"]["runtimeChar"].set("_extraBarsRollback20261106", None)
+    rt.cvars["enableMultiActionBars"] = "31"
+    rt.vm.run_chunk(
+        """
+        _origSetCVar = C_CVar.SetCVar
+        C_CVar.SetCVar = function() error("cvar_write_blocked") end
+        """
+    )
+    rt.fire_event("PLAYER_ENTERING_WORLD")
+    assert util_acct.get("extraActionBars") is True
+    assert util_acct.get("_extraBarsRollback20261106") is None
+    rt.vm.run_chunk("C_CVar.SetCVar = _origSetCVar")
+    rt.fire_event("PLAYER_ENTERING_WORLD")
+    assert rt.cvars["enableMultiActionBars"] == "0"
+    assert util_acct.get("extraActionBars") is None
+    assert util_acct.get("_extraBarsRollback20261106") is True
+
+    # Verify combat deferral if server CVar sync forces 127 during combat
+    rt.cvars["enableMultiActionBars"] = "127"
     rt.combat_lockdown = True
-    rt.run_slash("FOREVERSUITE", "bar")
+    rt.fire_event("PLAYER_ENTERING_WORLD")
     assert rt.addon_action_blocked_count == 0
     assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] >= 1
     rt.combat_lockdown = False
     rt.fire_event("PLAYER_REGEN_ENABLED")
-    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] == 0
+    assert rt.cvars["enableMultiActionBars"] == "0"
 
 
 # ---------------------------------------------------------------------------
@@ -524,8 +563,8 @@ def test_single_owner_arbitration_matrix_ddt(
 # ---------------------------------------------------------------------------
 
 
-def test_windows_one_click_exe_pe32plus_and_payload_integrity() -> None:
-    zip_out = build_release_zip(REPO_ROOT, version="0.2.0")
+def test_windows_one_click_exe_pe32plus_and_payload_integrity(tmp_path: pathlib.Path) -> None:
+    zip_out = build_release_zip(REPO_ROOT, version="0.2.0", out_dir=tmp_path)
     assert zip_out.is_file()
     with zipfile.ZipFile(zip_out, "r") as zf:
         names = set(zf.namelist())
@@ -533,7 +572,7 @@ def test_windows_one_click_exe_pe32plus_and_payload_integrity() -> None:
         assert "ForeverSuite_GJBridge/ForeverSuite_GJBridge.toc" in names
         assert "ForeverSuite_GJBridge/Bridge.lua" in names
 
-    exe_path = build_windows_installer_exe(REPO_ROOT)
+    exe_path = build_windows_installer_exe(REPO_ROOT, out_dir=tmp_path)
     assert exe_path.is_file()
     raw = exe_path.read_bytes()
 

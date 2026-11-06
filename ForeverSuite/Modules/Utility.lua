@@ -14,12 +14,10 @@ local BUYBACK_HARD_CAP = 12
 local Utility = {
     title = "편의 및 상점 자동화 (Utility)",
     priority = "P1",
-    description = "자동 수리(길드→개인), 회색템 판매(12개 한도), 고속 루팅, 추가 스킬창(ActionBar) 자동 확장",
+    description = "자동 수리(길드→개인), 회색템 판매(12개 한도), 고속 루팅, QoL CVar 자동 제어",
     yieldTo = { "Leatrix_Plus" },
     merchantOpen = false,
     qolApplied = false,
-    extraBarsApplied = false,
-    activeExtraBarCount = 0,
     reusableSellQueue = {},
 }
 
@@ -33,79 +31,60 @@ end
 function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
-    self.extraBarsApplied = false
-    self.activeExtraBarCount = 0
     ns.WipeTable(self.reusableSellQueue)
 end
 
-function Utility:ApplyExtraActionBars(forceExpand)
-    if not forceExpand and not ns.ProfileManager:Get("utility", "extraActionBars") then
+function Utility:RevertExtraActionBarsIfNeeded(markFinal)
+    local acct = ns.ProfileManager and ns.ProfileManager.runtimeAccount
+    local charTbl = ns.ProfileManager and ns.ProfileManager.runtimeChar
+    local utilTbl = (type(acct) == "table" and type(acct.utility) == "table") and acct.utility or nil
+    local hadLegacyFlag = (utilTbl ~= nil and (utilTbl.extraActionBars ~= nil or utilTbl.extraActionBarMode ~= nil))
+    local charRolledBack = (type(charTbl) == "table" and charTbl._extraBarsRollback20261106 == true)
+    local acctRolledBack = (utilTbl ~= nil and utilTbl._extraBarsRollback20261106 == true)
+    local alreadyRolledBack = charRolledBack or (charTbl == nil and acctRolledBack)
+    local curMulti = ns.SafeGetCVar("enableMultiActionBars")
+    local curAlways = ns.SafeGetCVar("alwaysShowActionBars")
+    local hasLingeringActionBars = (curMulti ~= nil and curMulti ~= "0") or (curAlways == "1")
+
+    if alreadyRolledBack and not hadLegacyFlag and not hasLingeringActionBars then
         return false
     end
+
     if ns.InCombat() then
         if ns.CombatQueue and ns.CombatQueue.RunOrDefer then
-            ns.CombatQueue:RunOrDefer("Utility_ApplyExtraActionBars", function()
-                self:ApplyExtraActionBars(forceExpand)
+            ns.CombatQueue:RunOrDefer("Utility_RevertExtraActionBars", function()
+                self:RevertExtraActionBarsIfNeeded(markFinal)
             end)
         end
         return false
     end
 
-    local b1, b2, b3, b4, b5, b6, b7 = false, false, false, false, false, false, false
-    if type(_G.GetActionBarToggles) == "function" then
-        local ok, r1, r2, r3, r4, r5, r6, r7 = pcall(_G.GetActionBarToggles)
-        if ok then
-            b1 = (r1 == true or r1 == 1)
-            b2 = (r2 == true or r2 == 1)
-            b3 = (r3 == true or r3 == 1)
-            b4 = (r4 == true or r4 == 1)
-            b5 = (r5 == true or r5 == 1)
-            b6 = (r6 == true or r6 == 1)
-            b7 = (r7 == true or r7 == 1)
-        end
-    end
-
-    local mode = ns.ProfileManager:Get("utility", "extraActionBarMode") or "STANDARD"
-    local expandAll = forceExpand or (mode == "EXPANDED") or (b1 and b2)
-    local wantBar2 = true
-    local wantBar3 = true
-    local wantBar4 = true
-    local wantBar5 = expandAll or b4
-    local wantBar6 = expandAll or b5
-
-    ns.SafeSetCVar("alwaysShowActionBars", "1")
-    local mask = 7 -- Bar2(1) + Bar3(2) + Bar4(4)
-    if wantBar5 then
-        mask = mask + 8
-    end
-    if wantBar6 then
-        mask = mask + 16
-    end
-    ns.SafeSetCVar("enableMultiActionBars", tostring(mask))
+    local okAlways = ns.SafeSetCVar("alwaysShowActionBars", "0")
+    local okMulti = ns.SafeSetCVar("enableMultiActionBars", "0")
 
     if type(_G.SetActionBarToggles) == "function" then
-        pcall(_G.SetActionBarToggles, wantBar2, wantBar3, wantBar4, wantBar5, true, wantBar6, b6, b7)
+        pcall(_G.SetActionBarToggles, false, false, false, false, false, false, false, false)
     end
 
     if type(_G.Settings) == "table" and type(_G.Settings.SetValue) == "function" then
-        local proxyMap = {
-            { "PROXY_SHOW_ACTIONBAR_2", wantBar2 },
-            { "PROXY_SHOW_ACTIONBAR_3", wantBar3 },
-            { "PROXY_SHOW_ACTIONBAR_4", wantBar4 },
-            { "PROXY_SHOW_ACTIONBAR_5", wantBar5 },
-            { "PROXY_SHOW_ACTIONBAR_6", wantBar6 },
+        local proxyKeys = {
+            "PROXY_SHOW_ACTIONBAR_2",
+            "PROXY_SHOW_ACTIONBAR_3",
+            "PROXY_SHOW_ACTIONBAR_4",
+            "PROXY_SHOW_ACTIONBAR_5",
+            "PROXY_SHOW_ACTIONBAR_6",
+            "PROXY_SHOW_ACTIONBAR_7",
+            "PROXY_SHOW_ACTIONBAR_8",
         }
-        for i = 1, #proxyMap do
-            local entry = proxyMap[i]
-            if entry[2] then
-                local hasSetting = true
-                if type(_G.Settings.GetSetting) == "function" then
-                    local okSet, settingObj = pcall(_G.Settings.GetSetting, entry[1])
-                    hasSetting = okSet and (settingObj ~= nil)
-                end
-                if hasSetting then
-                    pcall(_G.Settings.SetValue, entry[1], true)
-                end
+        for i = 1, #proxyKeys do
+            local key = proxyKeys[i]
+            local hasSetting = true
+            if type(_G.Settings.GetSetting) == "function" then
+                local okSet, settingObj = pcall(_G.Settings.GetSetting, key)
+                hasSetting = okSet and (settingObj ~= nil)
+            end
+            if hasSetting then
+                pcall(_G.Settings.SetValue, key, false)
             end
         end
     end
@@ -117,49 +96,49 @@ function Utility:ApplyExtraActionBars(forceExpand)
         pcall(_G.ActionBarController_UpdateAll)
     end
 
-    local frameNames = { "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight" }
-    if wantBar5 then
-        frameNames[#frameNames + 1] = "MultiBarLeft"
-    end
-    if wantBar6 then
-        frameNames[#frameNames + 1] = "MultiBar5"
-    end
+    local frameNames = {
+        "MultiBarBottomLeft",
+        "MultiBarBottomRight",
+        "MultiBarRight",
+        "MultiBarLeft",
+        "MultiBar5",
+        "MultiBar6",
+        "MultiBar7",
+    }
     for i = 1, #frameNames do
         local f = _G[frameNames[i]]
         if type(f) == "table" then
-            if type(f.SetShown) == "function" then
-                pcall(f.SetShown, f, true)
-            elseif type(f.Show) == "function" then
-                pcall(f.Show, f)
-            end
             if type(f.SetShowGrid) == "function" then
-                pcall(f.SetShowGrid, f, true, 2)
+                pcall(f.SetShowGrid, f, false, 2)
             end
-            if type(f.UpdateGridLayout) == "function" then
-                pcall(f.UpdateGridLayout, f)
+            if type(f.SetShown) == "function" then
+                pcall(f.SetShown, f, false)
+            elseif type(f.Hide) == "function" then
+                pcall(f.Hide, f)
             end
         end
     end
 
-    self.extraBarsApplied = true
-    self.activeExtraBarCount = 3 + (wantBar5 and 1 or 0) + (wantBar6 and 1 or 0)
-    return true
-end
+    local verifiedZero = (okAlways == true and okMulti == true)
+        and (ns.SafeGetCVar("alwaysShowActionBars") == "0")
+        and (ns.SafeGetCVar("enableMultiActionBars") == "0")
+    if not verifiedZero then
+        return false
+    end
 
-function Utility:ToggleExtraActionBars()
-    local curMode = ns.ProfileManager:Get("utility", "extraActionBarMode") or "STANDARD"
-    local nextMode = (curMode == "EXPANDED") and "STANDARD" or "EXPANDED"
-    if ns.ProfileManager:CanWrite() then
-        ns.ProfileManager:Set("utility", "extraActionBars", true, "account")
-        ns.ProfileManager:Set("utility", "extraActionBarMode", nextMode, "account")
+    if ns.ProfileManager and ns.ProfileManager:CanWrite() then
+        if utilTbl then
+            utilTbl.extraActionBars = nil
+            utilTbl.extraActionBarMode = nil
+            if markFinal then
+                utilTbl._extraBarsRollback20261106 = true
+            end
+        end
+        if markFinal and type(charTbl) == "table" then
+            charTbl._extraBarsRollback20261106 = true
+        end
     end
-    local ok = self:ApplyExtraActionBars(true)
-    if ok then
-        ns.Print("추가 스킬창(행동 단축바) 확장 적용 완료 (활성 추가 스킬창: " .. tostring(self.activeExtraBarCount) .. "개 · 빈 슬롯 표시 켜짐)")
-    else
-        ns.Print("전투 종료 후 추가 스킬창 확장이 자동 적용됩니다.")
-    end
-    return ok
+    return true
 end
 
 function Utility:ApplyQoLCVars()
@@ -346,12 +325,12 @@ function Utility:OnLootReady()
 end
 
 function Utility:OnPlayerEnteringWorld()
-    self:ApplyExtraActionBars(false)
+    self:RevertExtraActionBarsIfNeeded(true)
 end
 
 function Utility:OnEnable(ctx)
     self:ApplyQoLCVars()
-    self:ApplyExtraActionBars(false)
+    self:RevertExtraActionBarsIfNeeded(false)
     ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Utility.OnPlayerEnteringWorld)
     ctx:RegisterEvent("MERCHANT_SHOW", Utility.OnMerchantShow)
     ctx:RegisterEvent("MERCHANT_CLOSED", Utility.OnMerchantClosed)

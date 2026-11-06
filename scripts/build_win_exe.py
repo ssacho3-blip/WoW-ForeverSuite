@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import struct
+import tempfile
 import zipfile
 
 
@@ -418,9 +419,13 @@ def _resolve_writable_dist_dir(repo_root: pathlib.Path, out_dir: pathlib.Path | 
         probe = cand / ".write_probe"
         probe.write_bytes(b"ok")
         probe.unlink(missing_ok=True)
+        for existing_name in ("ForeverSuite-v0.2.0.zip", "ForeverSuite-v0.1.0.zip", "ForeverSuite_Installer.exe"):
+            existing_file = cand / existing_name
+            if existing_file.exists() and not os.access(existing_file, os.W_OK):
+                raise PermissionError(f"Cannot overwrite {existing_file}")
         return cand
-    except PermissionError:
-        fallback = pathlib.Path("/tmp/ForeverSuite_dist")
+    except OSError:
+        fallback = pathlib.Path(tempfile.gettempdir()) / "ForeverSuite_dist"
         fallback.mkdir(parents=True, exist_ok=True)
         return fallback
 
