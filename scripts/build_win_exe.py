@@ -411,7 +411,21 @@ def _build_embedded_zip_b64(repo_root: pathlib.Path) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def build_windows_installer_exe(repo_root: pathlib.Path) -> pathlib.Path:
+def _resolve_writable_dist_dir(repo_root: pathlib.Path, out_dir: pathlib.Path | None = None) -> pathlib.Path:
+    cand = out_dir if out_dir is not None else (repo_root / "dist")
+    try:
+        cand.mkdir(parents=True, exist_ok=True)
+        probe = cand / ".write_probe"
+        probe.write_bytes(b"ok")
+        probe.unlink(missing_ok=True)
+        return cand
+    except PermissionError:
+        fallback = pathlib.Path("/tmp/ForeverSuite_dist")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def build_windows_installer_exe(repo_root: pathlib.Path, out_dir: pathlib.Path | None = None) -> pathlib.Path:
     """Build dist/ForeverSuite_Installer.exe with embedded ForeverSuite + ForeverSuite_GJBridge payload."""
     manifest_path = repo_root / "pinned_upstream.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -427,8 +441,7 @@ def build_windows_installer_exe(repo_root: pathlib.Path) -> pathlib.Path:
         + b"__FS_PS1_END__\n"
     )
 
-    dist_dir = repo_root / "dist"
-    dist_dir.mkdir(parents=True, exist_ok=True)
+    dist_dir = _resolve_writable_dist_dir(repo_root, out_dir)
     final_exe = dist_dir / "ForeverSuite_Installer.exe"
     staging_exe = dist_dir / ".ForeverSuite_Installer.staging.exe"
     staging_exe.write_bytes(payload)

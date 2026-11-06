@@ -23,7 +23,20 @@ from wow_forever_mock import WoWForeverMockRuntime
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 ADDON_ROOT = REPO_ROOT / "ForeverSuite"
 BRIDGE_ROOT = REPO_ROOT / "ForeverSuite_GJBridge"
-GJ_EXTRACTED_ROOT = REPO_ROOT.parent / "GodJohnson_5.0.132"
+
+
+def _resolve_gj_extracted_root() -> pathlib.Path:
+    for cand in (
+        REPO_ROOT.parent / "GodJohnson_5.0.132",
+        pathlib.Path("/Users/choyoungseo/workspace/GodJohnson_5.0.132"),
+        pathlib.Path("/Applications/World of Warcraft/_forever_/Interface/AddOns"),
+    ):
+        if (cand / "GodJohnsonGoldBorder" / "GodJohnsonGoldBorder.toc").is_file():
+            return cand
+    return REPO_ROOT.parent / "GodJohnson_5.0.132"
+
+
+GJ_EXTRACTED_ROOT = _resolve_gj_extracted_root()
 
 
 def load_bridge(rt: WoWForeverMockRuntime) -> LuaTable:
@@ -107,7 +120,7 @@ def test_bridge_unavailable_when_gj_companion_absent() -> None:
 
     assert bridge.get("status") == "UNAVAILABLE"
     targets = bridge.get("targets")
-    for key in ("sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper"):
+    for key in ("sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "cursorTrail"):
         assert targets.get(key) == "UNAVAILABLE"
 
     rt.chat_messages.clear()
@@ -225,6 +238,193 @@ def test_bridge_branding_overrides_and_deferred_launcher_skin() -> None:
     assert targets.get("launcherIcon") == "APPLIED"
     launcher_logo_tex = rt.vm.G["GodJohnsonGoldBorderLauncher"].get("logo").get("_texId")
     assert launcher_logo_tex == 134063
+
+
+def test_quest_sound_oishii_removed_and_replaced_with_clean_alarm() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+
+    rt.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.0.132",
+            NotificationSoundNames = {
+                oishii_high = "하이톤 오이쉬",
+                oishii_deep = "걸쭉 오이쉬",
+                dingdong = "띵동",
+                quest_complete = "NPC퀘스트 완료",
+            },
+            ExtraSchemas = {
+                questAnnounce = {
+                    { key = "questSound", default = "oishii_high" },
+                    { key = "objectiveSound", default = "oishii_deep" },
+                    { key = "questTemplate", default = "[갓존슨] {퀘스트} 퀘스트 완료!" },
+                    { key = "objectiveTemplate", default = "[갓존슨] {퀘스트}: {목표} 완료!" },
+                },
+            },
+            _questCfg = {
+                questSound = "oishii_high",
+                objectiveSound = "oishii_deep",
+                questTemplate = "[갓존슨] {퀘스트} 퀘스트 완료!",
+                objectiveTemplate = "[갓존슨] {퀘스트}: {목표} 완료!",
+            },
+            _bookCfg = {
+                acquisitionSound = "oishii_high",
+            },
+            _playedSounds = {},
+        }
+        function GJCompanion.ExtraSettings(key)
+            if key == "questAnnounce" then
+                return GJCompanion._questCfg
+            elseif key == "libraryBooksAccess471" then
+                return GJCompanion._bookCfg
+            end
+            return {}
+        end
+        function GJCompanion.PlayNotificationSound(key, volume, source, importance, channel)
+            GJCompanion._playedSounds[#GJCompanion._playedSounds + 1] = key
+            return true
+        end
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert bridge.get("targets").get("questSound") == "APPLIED"
+
+    # 1. Schema defaults must no longer be oishii_high / oishii_deep
+    qa_schema = rt.vm.G["GJCompanion"].get("ExtraSchemas").get("questAnnounce")
+    assert qa_schema.get(1).get("default") == "dingdong"
+    assert qa_schema.get(2).get("default") == "dingdong"
+    assert qa_schema.get(3).get("default").startswith("[포에버]")
+
+    # 2. Existing saved profile settings must be sanitized from oishii -> dingdong
+    q_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("questAnnounce")')[0]
+    assert q_cfg.get("questSound") == "dingdong"
+    assert q_cfg.get("objectiveSound") == "dingdong"
+    assert q_cfg.get("questTemplate").startswith("[포에버]")
+    assert q_cfg.get("objectiveTemplate").startswith("[포에버]")
+
+    b_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("libraryBooksAccess471")')[0]
+    assert b_cfg.get("acquisitionSound") == "dingdong"
+
+    # 3. Direct PlayNotificationSound("oishii_high" / "oishii_deep") must remap to "dingdong"
+    rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_high", 100, "quest", 2, "SFX")')
+    rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_deep", 100, "quest", 2, "SFX")')
+    played = rt.vm.G["GJCompanion"].get("_playedSounds")
+    assert played.get(1) == "dingdong"
+    assert played.get(2) == "dingdong"
+
+
+def test_cursor_trail_lightning_disabled_and_sanitized() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+
+    rt.vm.run_chunk(
+        """
+        local trailFrame = CreateFrame("Frame", "GodJohnsonCursorTrail", UIParent)
+        trailFrame:Show()
+        trailFrame:SetScript("OnUpdate", function() end)
+
+        GJCompanion = {
+            version = "5.0.132",
+            ExtraSchemas = {
+                cursorTrail = {
+                    { key = "enabled", default = true },
+                    { key = "style", default = "orbTrial" },
+                },
+            },
+            _cursorCfg = {
+                enabled = true,
+                style = "chainTrial",
+            },
+            _refreshCount = 0,
+        }
+        GJCompanion.CursorFX = {
+            Config = function()
+                return GJCompanion._cursorCfg
+            end,
+        }
+        function GJCompanion.ExtraSettings(key)
+            if key == "cursorTrail" then
+                return GJCompanion._cursorCfg
+            end
+            return {}
+        end
+        function GJCompanion.RefreshCursorTrail()
+            GJCompanion._refreshCount = GJCompanion._refreshCount + 1
+        end
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert bridge.get("targets").get("cursorTrail") == "APPLIED"
+
+    ct_schema = rt.vm.G["GJCompanion"].get("ExtraSchemas").get("cursorTrail")
+    assert ct_schema.get(1).get("default") is False
+    assert ct_schema.get(2).get("default") == "dot"
+
+    ct_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("cursorTrail")')[0]
+    assert ct_cfg.get("enabled") is False
+    assert ct_cfg.get("style") == "dot"
+
+    fx_cfg = rt.vm.run_chunk("return GJCompanion.CursorFX.Config()")[0]
+    assert fx_cfg.get("enabled") is False
+    assert fx_cfg.get("style") == "dot"
+
+    trail_frame = rt.vm.G["GodJohnsonCursorTrail"]
+    assert trail_frame.get("_shown") is False
+    assert "OnUpdate" not in trail_frame.get("_scripts")
+
+
+def test_extra_action_bars_auto_enabled_and_combat_safe() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.vm.run_chunk(
+        """
+        _togglesCalled = nil
+        function GetActionBarToggles()
+            return false, false, false, false
+        end
+        function SetActionBarToggles(b1, b2, b3, b4, alwaysShow, b5)
+            _togglesCalled = { b1, b2, b3, b4, alwaysShow, b5 }
+        end
+        MultiBarBottomLeft = CreateFrame("Frame", "MultiBarBottomLeft", UIParent)
+        MultiBarBottomLeft:Hide()
+        MultiBarBottomRight = CreateFrame("Frame", "MultiBarBottomRight", UIParent)
+        MultiBarBottomRight:Hide()
+        MultiBarRight = CreateFrame("Frame", "MultiBarRight", UIParent)
+        MultiBarRight:Hide()
+        MultiBarLeft = CreateFrame("Frame", "MultiBarLeft", UIParent)
+        MultiBarLeft:Hide()
+        MultiBar5 = CreateFrame("Frame", "MultiBar5", UIParent)
+        MultiBar5:Hide()
+        """
+    )
+
+    ns = rt.boot_session()
+    util_mod = ns["ModuleManager"]["modules"]["Utility"]["definition"]
+    assert util_mod["extraBarsApplied"] is True
+    assert util_mod["activeExtraBarCount"] == 3
+    assert rt.cvars["alwaysShowActionBars"] == "1"
+    assert rt.cvars["enableMultiActionBars"] == "7"
+    assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is True
+    assert rt.vm.G["MultiBarBottomRight"]["_shown"] is True
+    assert rt.vm.G["MultiBarRight"]["_shown"] is True
+
+    # Slash command /fs bar expands to 5 extra bars (including MultiBarLeft & MultiBar5)
+    rt.run_slash("FOREVERSUITE", "bar")
+    assert util_mod["activeExtraBarCount"] == 5
+    assert rt.cvars["enableMultiActionBars"] == "31"
+    assert rt.vm.G["MultiBarLeft"]["_shown"] is True
+    assert rt.vm.G["MultiBar5"]["_shown"] is True
+
+    # Calling /fs bar during Combat Lockdown defers via CombatQueue with 0 blocked actions
+    rt.combat_lockdown = True
+    rt.run_slash("FOREVERSUITE", "bar")
+    assert rt.addon_action_blocked_count == 0
+    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] >= 1
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,8 @@ ns.VERSION = "0.2.0"
 ns.UPSTREAM_PIN = "5.0.132"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
+ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
+ns.CALM_CURSOR_STYLE = "dot"
 
 ns.status = "UNINITIALIZED"
 ns.targets = {
@@ -25,6 +27,8 @@ ns.targets = {
     homeScreen = "MISSING",
     launcherIcon = "MISSING",
     tradeWhisper = "MISSING",
+    questSound = "MISSING",
+    cursorTrail = "MISSING",
 }
 ns.ownership = {
     repair = "OWNED_BY_FS",
@@ -289,7 +293,119 @@ local function ApplyBrandingOverrides(C)
     end
     ns.targets.tradeWhisper = tradeApplied and "APPLIED" or "MISSING"
 
-    -- 5. launcherIcon deferred frame skinning (Condition #1)
+    -- 5. questSound override: eliminate "oishii" voice and replace with clean alarm ("dingdong")
+    local questSoundApplied = false
+    if type(C.ExtraSchemas) == "table" and type(C.ExtraSchemas.questAnnounce) == "table" then
+        for _, row in ipairs(C.ExtraSchemas.questAnnounce) do
+            if type(row) == "table" then
+                if (row.key == "questSound" or row.key == "objectiveSound")
+                    and (row.default == "oishii_high" or row.default == "oishii_deep")
+                then
+                    row.default = ns.CLEAN_QUEST_ALARM_SOUND
+                elseif (row.key == "objectiveTemplate" or row.key == "questTemplate") and type(row.default) == "string" then
+                    row.default = string_gsub(row.default, "^%[갓존슨%]", "[포에버]")
+                end
+            end
+        end
+        questSoundApplied = true
+    end
+    if type(C.NotificationSoundNames) == "table" then
+        C.NotificationSoundNames.oishii_high = "띵동 (오이쉬 대체 알람)"
+        C.NotificationSoundNames.oishii_deep = "띵동 (오이쉬 대체 알람)"
+        questSoundApplied = true
+    end
+    if type(C.PlayNotificationSound) == "function" and not C._fsgjPlaySoundWrapped then
+        C._fsgjPlaySoundWrapped = true
+        local origPlayNotificationSound = C.PlayNotificationSound
+        C.PlayNotificationSound = function(key, volume, source, importance, channel)
+            if key == "oishii_high" or key == "oishii_deep" then
+                key = ns.CLEAN_QUEST_ALARM_SOUND
+            end
+            return origPlayNotificationSound(key, volume, source, importance, channel)
+        end
+        questSoundApplied = true
+    elseif C._fsgjPlaySoundWrapped then
+        questSoundApplied = true
+    end
+
+    -- 6. cursorTrail override: disable distracting lightning cursor trail ("chainTrial" / "orbTrial")
+    local cursorTrailApplied = false
+    if type(C.ExtraSchemas) == "table" and type(C.ExtraSchemas.cursorTrail) == "table" then
+        for _, row in ipairs(C.ExtraSchemas.cursorTrail) do
+            if type(row) == "table" then
+                if row.key == "enabled" then
+                    row.default = false
+                elseif row.key == "style" then
+                    row.default = ns.CALM_CURSOR_STYLE
+                end
+            end
+        end
+        cursorTrailApplied = true
+    end
+    if type(C.CursorFX) == "table" and type(C.CursorFX.Config) == "function" and not C.CursorFX._fsgjConfigWrapped then
+        C.CursorFX._fsgjConfigWrapped = true
+        local origCursorConfig = C.CursorFX.Config
+        C.CursorFX.Config = function(...)
+            local ok, d = pcall(origCursorConfig, ...)
+            if ok and type(d) == "table" then
+                if d.style == "chainTrial" or d.style == "orbTrial" or d.style == "thunderfury" or d.style == "electric" or d.style == "lightning461" or d.style == "smooth" then
+                    d.enabled = false
+                    d.style = ns.CALM_CURSOR_STYLE
+                end
+                return d
+            end
+            return d
+        end
+        cursorTrailApplied = true
+    elseif type(C.CursorFX) == "table" and C.CursorFX._fsgjConfigWrapped then
+        cursorTrailApplied = true
+    end
+
+    if type(C.ExtraSettings) == "function" and not C._fsgjExtraSettingsWrapped then
+        C._fsgjExtraSettingsWrapped = true
+        local origExtraSettings = C.ExtraSettings
+        C.ExtraSettings = function(key, ...)
+            local d = origExtraSettings(key, ...)
+            if type(d) == "table" then
+                if key == "questAnnounce" then
+                    if d.questSound == "oishii_high" or d.questSound == "oishii_deep" then
+                        d.questSound = ns.CLEAN_QUEST_ALARM_SOUND
+                    end
+                    if d.objectiveSound == "oishii_high" or d.objectiveSound == "oishii_deep" then
+                        d.objectiveSound = ns.CLEAN_QUEST_ALARM_SOUND
+                    end
+                    if type(d.questTemplate) == "string" then
+                        d.questTemplate = string_gsub(d.questTemplate, "^%[갓존슨%]", "[포에버]")
+                    end
+                    if type(d.objectiveTemplate) == "string" then
+                        d.objectiveTemplate = string_gsub(d.objectiveTemplate, "^%[갓존슨%]", "[포에버]")
+                    end
+                elseif key == "libraryBooksAccess471" then
+                    if d.acquisitionSound == "oishii_high" or d.acquisitionSound == "oishii_deep" then
+                        d.acquisitionSound = ns.CLEAN_QUEST_ALARM_SOUND
+                    end
+                elseif key == "cursorTrail" then
+                    if d.style == "chainTrial" or d.style == "orbTrial" or d.style == "thunderfury" or d.style == "electric" or d.style == "lightning461" or d.style == "smooth" then
+                        d.enabled = false
+                        d.style = ns.CALM_CURSOR_STYLE
+                        d._fsgjCursorLightningSanitized = true
+                    end
+                end
+            end
+            return d
+        end
+        questSoundApplied = true
+        cursorTrailApplied = true
+    elseif C._fsgjExtraSettingsWrapped then
+        questSoundApplied = true
+        cursorTrailApplied = true
+    end
+
+    ns.targets.questSound = questSoundApplied and "APPLIED" or "MISSING"
+    ns.targets.cursorTrail = cursorTrailApplied and "APPLIED" or "MISSING"
+    ns.SanitizeLiveGJSettings()
+
+    -- 7. launcherIcon deferred frame skinning (Condition #1)
     ns.targets.launcherIcon = "PENDING"
     ns.TrySkinLauncher()
     if _G.hooksecurefunc then
@@ -305,11 +421,13 @@ local function ApplyBrandingOverrides(C)
         end
         if type(C.CommitSettings) == "function" then
             pcall(_G.hooksecurefunc, C, "CommitSettings", function()
+                ns.SanitizeLiveGJSettings()
                 ns.SyncOwnership()
             end)
         end
         if type(C.RefreshUtilities) == "function" then
             pcall(_G.hooksecurefunc, C, "RefreshUtilities", function()
+                ns.SanitizeLiveGJSettings()
                 ns.SyncOwnership()
             end)
         end
@@ -321,9 +439,36 @@ local function ApplyBrandingOverrides(C)
     end
 end
 
+function ns.SanitizeLiveGJSettings()
+    local C = _G.GJCompanion
+    if type(C) ~= "table" then
+        return false
+    end
+    if type(C.ExtraSettings) == "function" then
+        pcall(C.ExtraSettings, "questAnnounce")
+        pcall(C.ExtraSettings, "libraryBooksAccess471")
+        local ok, ct = pcall(C.ExtraSettings, "cursorTrail")
+        if ok and type(ct) == "table" and ct.enabled == false then
+            if type(C.RefreshCursorTrail) == "function" then
+                pcall(C.RefreshCursorTrail)
+            end
+            local trailFrame = _G.GodJohnsonCursorTrail
+            if type(trailFrame) == "table" then
+                if type(trailFrame.SetScript) == "function" then
+                    pcall(trailFrame.SetScript, trailFrame, "OnUpdate", nil)
+                end
+                if type(trailFrame.Hide) == "function" then
+                    pcall(trailFrame.Hide, trailFrame)
+                end
+            end
+        end
+    end
+    return true
+end
+
 function ns.PrintStatus()
     PrintBridge("상태: " .. tostring(ns.status) .. " (Upstream Pin: v" .. tostring(ns.UPSTREAM_PIN) .. ")")
-    for _, key in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper" }) do
+    for _, key in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "cursorTrail" }) do
         PrintBridge("  오버라이드 [" .. key .. "] = " .. tostring(ns.targets[key]))
     end
     for _, key in ipairs({ "repair", "sell", "questAuto", "fishing", "way" }) do
@@ -370,6 +515,7 @@ if _G.CreateFrame then
         evFrame:RegisterEvent("PLAYER_LOGIN")
         evFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
         evFrame:SetScript("OnEvent", function(_, event)
+            ns.SanitizeLiveGJSettings()
             ns.TrySkinLauncher()
             ns.SyncOwnership()
             if event == "PLAYER_ENTERING_WORLD" and ns.targets.launcherIcon == "PENDING" then

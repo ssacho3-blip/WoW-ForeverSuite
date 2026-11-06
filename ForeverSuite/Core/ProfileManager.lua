@@ -24,6 +24,8 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         maxSellBatch = 12,
         fastAutoLoot = true,
         applyQoLCVars = true,
+        extraActionBars = true,
+        extraActionBarMode = "STANDARD",
         protectedItems = {},
     },
     inventory = {

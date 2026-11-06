@@ -161,6 +161,16 @@ function SettingsPanel:EnsureFrame()
         sortBtn:SetPoint("LEFT", probeBtn, "RIGHT", 10, 0)
     end
 
+    local barBtn = ns.UI.CreateButton(f, "스킬창 확장 (/fs bar)", 136, 24, function()
+        local util = ns.ModuleManager:GetModule("Utility")
+        if util and util.definition and util.definition.ToggleExtraActionBars then
+            util.definition:ToggleExtraActionBars()
+        end
+    end)
+    if barBtn and sortBtn then
+        barBtn:SetPoint("LEFT", sortBtn, "RIGHT", 10, 0)
+    end
+
     local refreshBtn = ns.UI.CreateButton(f, "지표 새로고침", 104, 24, function()
         SettingsPanel:Refresh()
     end)
@@ -287,8 +297,15 @@ function ns.HandleSlashCommand(rawMsg)
         else
             ns.Warn("Profession 모듈이 비활성화 상태입니다.")
         end
+    elseif cmd == "bar" or cmd == "bars" or cmd == "actionbar" then
+        local util = ns.ModuleManager:GetModule("Utility")
+        if util and util.definition and util.definition.ToggleExtraActionBars then
+            util.definition:ToggleExtraActionBars()
+        else
+            ns.Warn("Utility 모듈이 비활성화 상태입니다.")
+        end
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | gold | gather | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | bar | gold | gather | enable <모듈> | disable <모듈>]")
     end
 end
 
