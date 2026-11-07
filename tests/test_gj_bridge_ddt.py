@@ -465,6 +465,25 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
     rt.fire_event("PLAYER_REGEN_ENABLED")
     assert rt.cvars["enableMultiActionBars"] == "0"
 
+    # Verify lingering GetActionBarToggles() true state is detected even when CVars are already "0"
+    rt.vm.run_chunk(
+        """
+        _togglesCalled = nil
+        function GetActionBarToggles()
+            return true, true, true, false, false, false, false
+        end
+        """
+    )
+    rt.fire_event("PLAYER_ENTERING_WORLD")
+    toggles_called = rt.vm.G.get("_togglesCalled")
+    assert toggles_called is not None
+    assert toggles_called.get(1) is False
+
+    # Verify /fs bars (/fs cleanbars) manual command cleans bars and prints confirmation
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "bars")
+    assert any("스킬창" in m and "정리 완료" in m for m in rt.chat_messages)
+
 
 # ---------------------------------------------------------------------------
 # 3. Single-Owner Arbitration DDT (Phase 2 — Opus Conditions #3 & #4)

@@ -28,13 +28,66 @@ local function IsShiftBypassActive()
     return false
 end
 
+local EXTRA_BAR_FRAMES = {
+    "MultiBarBottomLeft",
+    "MultiBarBottomRight",
+    "MultiBarRight",
+    "MultiBarLeft",
+    "MultiBar5",
+    "MultiBar6",
+    "MultiBar7",
+}
+
+local ACTIONBAR_PROXY_KEYS = {
+    "PROXY_SHOW_ACTIONBAR_2",
+    "PROXY_SHOW_ACTIONBAR_3",
+    "PROXY_SHOW_ACTIONBAR_4",
+    "PROXY_SHOW_ACTIONBAR_5",
+    "PROXY_SHOW_ACTIONBAR_6",
+    "PROXY_SHOW_ACTIONBAR_7",
+    "PROXY_SHOW_ACTIONBAR_8",
+}
+
 function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
     ns.WipeTable(self.reusableSellQueue)
 end
 
-function Utility:RevertExtraActionBarsIfNeeded(markFinal)
+function Utility:HasLingeringExtraActionBars()
+    local curMulti = ns.SafeGetCVar("enableMultiActionBars")
+    local curAlways = ns.SafeGetCVar("alwaysShowActionBars")
+    if (curMulti ~= nil and curMulti ~= "0") or (curAlways == "1") then
+        return true
+    end
+    if type(_G.GetActionBarToggles) == "function" then
+        local ok, b1, b2, b3, b4, b5, b6, b7 = pcall(_G.GetActionBarToggles)
+        if ok and (b1 == true or b1 == 1 or b2 == true or b2 == 1 or b3 == true or b3 == 1 or b4 == true or b4 == 1 or b5 == true or b5 == 1 or b6 == true or b6 == 1 or b7 == true or b7 == 1) then
+            return true
+        end
+    end
+    if type(_G.Settings) == "table" and type(_G.Settings.GetValue) == "function" then
+        for i = 1, #ACTIONBAR_PROXY_KEYS do
+            local okVal, v = pcall(_G.Settings.GetValue, ACTIONBAR_PROXY_KEYS[i])
+            if okVal and (v == true or v == 1) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function ClearButtonGrids(prefix)
+    for idx = 1, 12 do
+        local btn = _G[prefix .. tostring(idx)]
+        if type(btn) == "table" and type(btn.SetShowGrid) == "function" then
+            pcall(btn.SetShowGrid, btn, false, 2)
+            pcall(btn.SetShowGrid, btn, false, 1)
+        end
+    end
+end
+
+function Utility:RevertExtraActionBarsIfNeeded(markFinal, forceClean)
     local acct = ns.ProfileManager and ns.ProfileManager.runtimeAccount
     local charTbl = ns.ProfileManager and ns.ProfileManager.runtimeChar
     local utilTbl = (type(acct) == "table" and type(acct.utility) == "table") and acct.utility or nil
@@ -42,18 +95,16 @@ function Utility:RevertExtraActionBarsIfNeeded(markFinal)
     local charRolledBack = (type(charTbl) == "table" and charTbl._extraBarsRollback20261106 == true)
     local acctRolledBack = (utilTbl ~= nil and utilTbl._extraBarsRollback20261106 == true)
     local alreadyRolledBack = charRolledBack or (charTbl == nil and acctRolledBack)
-    local curMulti = ns.SafeGetCVar("enableMultiActionBars")
-    local curAlways = ns.SafeGetCVar("alwaysShowActionBars")
-    local hasLingeringActionBars = (curMulti ~= nil and curMulti ~= "0") or (curAlways == "1")
+    local hasLingeringActionBars = self:HasLingeringExtraActionBars()
 
-    if alreadyRolledBack and not hadLegacyFlag and not hasLingeringActionBars then
+    if (not forceClean) and alreadyRolledBack and not hadLegacyFlag and not hasLingeringActionBars then
         return false
     end
 
     if ns.InCombat() then
         if ns.CombatQueue and ns.CombatQueue.RunOrDefer then
             ns.CombatQueue:RunOrDefer("Utility_RevertExtraActionBars", function()
-                self:RevertExtraActionBarsIfNeeded(markFinal)
+                self:RevertExtraActionBarsIfNeeded(markFinal, forceClean)
             end)
         end
         return false
@@ -67,17 +118,8 @@ function Utility:RevertExtraActionBarsIfNeeded(markFinal)
     end
 
     if type(_G.Settings) == "table" and type(_G.Settings.SetValue) == "function" then
-        local proxyKeys = {
-            "PROXY_SHOW_ACTIONBAR_2",
-            "PROXY_SHOW_ACTIONBAR_3",
-            "PROXY_SHOW_ACTIONBAR_4",
-            "PROXY_SHOW_ACTIONBAR_5",
-            "PROXY_SHOW_ACTIONBAR_6",
-            "PROXY_SHOW_ACTIONBAR_7",
-            "PROXY_SHOW_ACTIONBAR_8",
-        }
-        for i = 1, #proxyKeys do
-            local key = proxyKeys[i]
+        for i = 1, #ACTIONBAR_PROXY_KEYS do
+            local key = ACTIONBAR_PROXY_KEYS[i]
             local hasSetting = true
             if type(_G.Settings.GetSetting) == "function" then
                 local okSet, settingObj = pcall(_G.Settings.GetSetting, key)
@@ -89,6 +131,9 @@ function Utility:RevertExtraActionBarsIfNeeded(markFinal)
         end
     end
 
+    if type(_G.MultiActionBar_HideAllGrids) == "function" then
+        pcall(_G.MultiActionBar_HideAllGrids)
+    end
     if type(_G.MultiActionBar_Update) == "function" then
         pcall(_G.MultiActionBar_Update)
     end
@@ -96,20 +141,15 @@ function Utility:RevertExtraActionBarsIfNeeded(markFinal)
         pcall(_G.ActionBarController_UpdateAll)
     end
 
-    local frameNames = {
-        "MultiBarBottomLeft",
-        "MultiBarBottomRight",
-        "MultiBarRight",
-        "MultiBarLeft",
-        "MultiBar5",
-        "MultiBar6",
-        "MultiBar7",
-    }
-    for i = 1, #frameNames do
-        local f = _G[frameNames[i]]
+    ClearButtonGrids("ActionButton")
+    for i = 1, #EXTRA_BAR_FRAMES do
+        local fName = EXTRA_BAR_FRAMES[i]
+        local f = _G[fName]
+        ClearButtonGrids(fName .. "Button")
         if type(f) == "table" then
             if type(f.SetShowGrid) == "function" then
                 pcall(f.SetShowGrid, f, false, 2)
+                pcall(f.SetShowGrid, f, false, 1)
             end
             if type(f.SetShown) == "function" then
                 pcall(f.SetShown, f, false)
@@ -139,6 +179,16 @@ function Utility:RevertExtraActionBarsIfNeeded(markFinal)
         end
     end
     return true
+end
+
+function Utility:CleanActionBarsNow()
+    local ok = self:RevertExtraActionBarsIfNeeded(true, true)
+    if ok then
+        ns.Print("추가 스킬창(ActionBar) 및 빈 슬롯 격자 정리 완료 (기본 스킬창만 깔끔하게 유지됩니다)")
+    else
+        ns.Print("전투 종료 후 스킬창 정리가 자동 적용됩니다.")
+    end
+    return ok
 end
 
 function Utility:ApplyQoLCVars()
@@ -326,9 +376,18 @@ end
 
 function Utility:OnPlayerEnteringWorld()
     self:RevertExtraActionBarsIfNeeded(true)
+    if self.ctx and self.ctx.After then
+        self.ctx:After(0.5, function(mod)
+            mod:RevertExtraActionBarsIfNeeded(true)
+        end)
+        self.ctx:After(1.5, function(mod)
+            mod:RevertExtraActionBarsIfNeeded(true)
+        end)
+    end
 end
 
 function Utility:OnEnable(ctx)
+    self.ctx = ctx
     self:ApplyQoLCVars()
     self:RevertExtraActionBarsIfNeeded(false)
     ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Utility.OnPlayerEnteringWorld)
@@ -341,6 +400,7 @@ function Utility:OnEnable(ctx)
 end
 
 function Utility:OnDisable()
+    self.ctx = nil
     self.merchantOpen = false
     self:RestoreQoLCVars()
     ns.WipeTable(self.reusableSellQueue)

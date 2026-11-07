@@ -152,16 +152,26 @@ function SettingsPanel:EnsureFrame()
         probeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 14)
     end
 
-    local sortBtn = ns.UI.CreateButton(f, "가방 정렬", 110, 24, function()
+    local sortBtn = ns.UI.CreateButton(f, "가방 정렬", 96, 24, function()
         if C_Container and C_Container.SortBags and not ns.InCombat() then
             C_Container.SortBags()
         end
     end)
     if sortBtn then
-        sortBtn:SetPoint("LEFT", probeBtn, "RIGHT", 10, 0)
+        sortBtn:SetPoint("LEFT", probeBtn, "RIGHT", 8, 0)
     end
 
-    local refreshBtn = ns.UI.CreateButton(f, "지표 새로고침", 110, 24, function()
+    local cleanBarsBtn = ns.UI.CreateButton(f, "스킬창 정리 (/fs bars)", 140, 24, function()
+        local util = ns.ModuleManager:GetModule("Utility")
+        if util and util.definition and util.definition.CleanActionBarsNow then
+            util.definition:CleanActionBarsNow()
+        end
+    end)
+    if cleanBarsBtn then
+        cleanBarsBtn:SetPoint("LEFT", sortBtn, "RIGHT", 8, 0)
+    end
+
+    local refreshBtn = ns.UI.CreateButton(f, "지표 새로고침", 104, 24, function()
         SettingsPanel:Refresh()
     end)
     if refreshBtn then
@@ -287,8 +297,15 @@ function ns.HandleSlashCommand(rawMsg)
         else
             ns.Warn("Profession 모듈이 비활성화 상태입니다.")
         end
+    elseif cmd == "bars" or cmd == "cleanbars" or cmd == "actionbars" then
+        local util = ns.ModuleManager:GetModule("Utility")
+        if util and util.definition and util.definition.CleanActionBarsNow then
+            util.definition:CleanActionBarsNow()
+        else
+            ns.Warn("Utility 모듈이 비활성화 상태입니다.")
+        end
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | gold | gather | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | gold | gather | bars | enable <모듈> | disable <모듈>]")
     end
 end
 
