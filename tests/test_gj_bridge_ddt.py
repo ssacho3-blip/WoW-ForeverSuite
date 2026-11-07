@@ -380,10 +380,26 @@ def test_cursor_trail_untouched_and_accidental_sanitization_restored() -> None:
     assert rt.vm.G["GJCompanion"].get("_refreshCount") == 1
 
 
-def test_extra_action_bars_reverted_and_combat_safe() -> None:
+def test_zero_actionbar_taint_and_combat_safe_bars_command() -> None:
+    # 1. Static Zero-Taint Verification: Utility.lua must NEVER reference protected ActionBar frames or Settings proxies
+    utility_src = (ADDON_ROOT / "Modules" / "Utility.lua").read_text(encoding="utf-8")
+    utility_code = _strip_lua_comments(utility_src)
+    forbidden_actionbar_symbols = (
+        "ActionButton",
+        "MainMenuBar",
+        "MainActionBar",
+        "MultiBar",
+        "SetShowGrid",
+        "PROXY_SHOW_ACTIONBAR",
+        "MultiActionBar_Update",
+        "ActionBarController_UpdateAll",
+    )
+    for sym in forbidden_actionbar_symbols:
+        assert sym not in utility_code, f"Zero-Taint Violation: Utility.lua must not reference {sym}"
+
+    # 2. Startup Zero-Taint Verification: boot_session + PLAYER_ENTERING_WORLD must purge DB keys
+    #    WITHOUT calling SetActionBarToggles, Settings.SetValue, or mutating any ActionBar frame!
     rt = WoWForeverMockRuntime(ADDON_ROOT)
-    rt.cvars["alwaysShowActionBars"] = "1"
-    rt.cvars["enableMultiActionBars"] = "127"
     rt.vm.run_chunk(
         """
         ForeverSuiteDB = {
@@ -399,84 +415,58 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
         function SetActionBarToggles(b1, b2, b3, b4, alwaysShow, b5, b6, b7)
             _togglesCalled = { b1, b2, b3, b4, alwaysShow, b5, b6, b7 }
         end
+        MainMenuBar = CreateFrame("Frame", "MainMenuBar", UIParent)
         MultiBarBottomLeft = CreateFrame("Frame", "MultiBarBottomLeft", UIParent)
         MultiBarBottomLeft:Show()
-        MultiBarBottomRight = CreateFrame("Frame", "MultiBarBottomRight", UIParent)
-        MultiBarBottomRight:Show()
-        MultiBarRight = CreateFrame("Frame", "MultiBarRight", UIParent)
-        MultiBarRight:Show()
-        MultiBarLeft = CreateFrame("Frame", "MultiBarLeft", UIParent)
-        MultiBarLeft:Show()
-        MultiBar5 = CreateFrame("Frame", "MultiBar5", UIParent)
-        MultiBar5:Show()
         """
     )
 
     ns = rt.boot_session()
-    assert rt.cvars["alwaysShowActionBars"] == "1"
-    assert rt.cvars["enableMultiActionBars"] == "0"
-    assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is False
-    assert rt.vm.G["MultiBarBottomRight"]["_shown"] is False
-    assert rt.vm.G["MultiBarRight"]["_shown"] is False
-    assert rt.vm.G["MultiBarLeft"]["_shown"] is False
-    assert rt.vm.G["MultiBar5"]["_shown"] is False
-
     rt.fire_event("PLAYER_ENTERING_WORLD")
+
+    # Startup must NOT call SetActionBarToggles or touch MultiBarBottomLeft
+    assert rt.vm.G.get("_togglesCalled") is None
+    assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is True
+
     util_acct = ns["ProfileManager"]["runtimeAccount"]["utility"]
     assert util_acct.get("extraActionBars") is None
     assert util_acct.get("extraActionBarMode") is None
     assert util_acct.get("_extraBarsRollback20261106") is True
     assert util_acct.get("_extraBarsRollback20261107") is True
 
-    # P1: Verify server CVar sync restoring legacy masks "7" or "31" after rollback is also cleaned
-    for legacy_mask in ("7", "31"):
-        rt.cvars["enableMultiActionBars"] = legacy_mask
-        rt.cvars["alwaysShowActionBars"] = "0"
-        rt.fire_event("PLAYER_ENTERING_WORLD")
-        assert rt.cvars["enableMultiActionBars"] == "0"
-        assert rt.cvars["alwaysShowActionBars"] == "1"
-
-    # P2: Verify failed SetCVar write does not prematurely mark rollback complete
-    util_acct.set("extraActionBars", True)
-    util_acct.set("_extraBarsRollback20261106", None)
-    util_acct.set("_extraBarsRollback20261107", None)
-    ns["ProfileManager"]["runtimeChar"].set("_extraBarsRollback20261106", None)
-    ns["ProfileManager"]["runtimeChar"].set("_extraBarsRollback20261107", None)
-    rt.cvars["enableMultiActionBars"] = "31"
-    rt.vm.run_chunk(
-        """
-        _origSetCVar = C_CVar.SetCVar
-        C_CVar.SetCVar = function() error("cvar_write_blocked") end
-        """
-    )
-    rt.fire_event("PLAYER_ENTERING_WORLD")
-    assert util_acct.get("extraActionBars") is True
-    assert util_acct.get("_extraBarsRollback20261107") is None
-    rt.vm.run_chunk("C_CVar.SetCVar = _origSetCVar")
-    rt.fire_event("PLAYER_ENTERING_WORLD")
-    assert rt.cvars["enableMultiActionBars"] == "0"
-    assert util_acct.get("extraActionBars") is None
-    assert util_acct.get("_extraBarsRollback20261107") is True
-
-    # Verify combat deferral if server CVar sync forces 127 during combat
-    rt.cvars["enableMultiActionBars"] = "127"
+    # 3. Profession Zero-Taint Verification:
+    #    - ForeverSuiteFishingButton is hidden on creation
+    #    - Entering combat (PLAYER_REGEN_DISABLED) when not fishing (overrideActive == False) queues 0 tasks
+    fish_btn = rt.vm.G.get("ForeverSuiteFishingButton")
+    assert fish_btn is not None and fish_btn.get("_shown") is False
     rt.combat_lockdown = True
-    rt.fire_event("PLAYER_ENTERING_WORLD")
+    rt.fire_event("PLAYER_REGEN_DISABLED")
     assert rt.addon_action_blocked_count == 0
-    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] >= 1
-    rt.combat_lockdown = False
-    rt.fire_event("PLAYER_REGEN_ENABLED")
-    assert rt.cvars["enableMultiActionBars"] == "0"
+    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] == 0
 
-    # Verify that after rollback is complete, user-enabled bar toggles are NOT wiped on zone change
-    rt.vm.run_chunk("_togglesCalled = nil")
-    rt.fire_event("PLAYER_ENTERING_WORLD")
-    assert rt.vm.G.get("_togglesCalled") is None
-
-    # Verify /fs bars (/fs cleanbars) manual command cleans extra bars and keeps main bar visible
+    # 4. Manual /fs bars command during combat -> warns & refuses without queuing onto CombatQueue
     rt.chat_messages.clear()
     rt.run_slash("FOREVERSUITE", "bars")
-    assert any("스킬창" in m and "고정 표시 완료" in m for m in rt.chat_messages)
+    assert rt.vm.G.get("_togglesCalled") is None
+    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] == 0
+    assert any("전투 중에는 스킬창 설정을 변경할 수 없습니다" in m for m in rt.chat_messages)
+
+    # 5. Manual /fs bars command out of combat -> sets alwaysShowActionBars=1, calls SetActionBarToggles, advises /reload
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "bars")
+    assert rt.cvars["alwaysShowActionBars"] == "1"
+    toggles = rt.vm.G.get("_togglesCalled")
+    assert toggles is not None and toggles.get(1) is False
+    assert any("/reload" in m for m in rt.chat_messages)
+
+    # 6. Fail-Closed / Zero Fabricated Status: if SetActionBarToggles is missing or throws, /fs bars returns False and warns
+    rt.vm.run_chunk("SetActionBarToggles = nil")
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "bars")
+    assert any("스킬창 설정 API 호출에 실패" in m for m in rt.chat_messages)
+    assert not any("표시 해제 완료" in m for m in rt.chat_messages)
 
 
 # ---------------------------------------------------------------------------

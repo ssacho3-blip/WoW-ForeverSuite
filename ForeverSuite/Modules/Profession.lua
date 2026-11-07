@@ -64,13 +64,16 @@ function Profession:IsFishingPoleEquipped()
 end
 
 function Profession:ClearFishingBindingSafe()
+    if not self.overrideActive then
+        return
+    end
     if not self.secureBtn then
         self.overrideActive = false
         return
     end
     if ns.InCombat() then
         ns.CombatQueue:RunOrDefer("Profession:ClearFishingOverride", function()
-            if Profession.secureBtn and _G.ClearOverrideBindings and not ns.InCombat() then
+            if Profession.overrideActive and Profession.secureBtn and _G.ClearOverrideBindings and not ns.InCombat() then
                 _G.ClearOverrideBindings(Profession.secureBtn)
                 Profession.overrideActive = false
             end
@@ -96,6 +99,9 @@ function Profession:EnsureSecureFishingButton()
             btn = _G.CreateFrame("Button", "ForeverSuiteFishingButton", _G.UIParent, "SecureActionButtonTemplate")
         end
         if btn then
+            if btn.Hide then
+                btn:Hide()
+            end
             if btn.SetAttribute then
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", ResolveFishingSpellName())

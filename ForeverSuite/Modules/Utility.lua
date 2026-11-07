@@ -28,163 +28,53 @@ local function IsShiftBypassActive()
     return false
 end
 
-local EXTRA_BAR_FRAMES = {
-    "MultiBarBottomLeft",
-    "MultiBarBottomRight",
-    "MultiBarRight",
-    "MultiBarLeft",
-    "MultiBar5",
-    "MultiBar6",
-    "MultiBar7",
-}
-
-local ACTIONBAR_PROXY_KEYS = {
-    "PROXY_SHOW_ACTIONBAR_2",
-    "PROXY_SHOW_ACTIONBAR_3",
-    "PROXY_SHOW_ACTIONBAR_4",
-    "PROXY_SHOW_ACTIONBAR_5",
-    "PROXY_SHOW_ACTIONBAR_6",
-    "PROXY_SHOW_ACTIONBAR_7",
-    "PROXY_SHOW_ACTIONBAR_8",
-}
-
 function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
     ns.WipeTable(self.reusableSellQueue)
 end
 
-function Utility:EnsureMainActionBarVisible()
-    if ns.InCombat() then
-        return
+function Utility:RevertExtraActionBarsIfNeeded(markFinal)
+    -- Zero-Taint Policy: Never touch Blizzard ActionBar frames, Settings proxies, or ActionBar CVars
+    -- automatically on login/reload. Only purge legacy ForeverSuiteDB table keys.
+    if not (ns.ProfileManager and ns.ProfileManager:CanWrite()) then
+        return false
     end
-    ns.SafeSetCVar("alwaysShowActionBars", "1")
-    for _, mainName in ipairs({ "MainMenuBar", "MainActionBar" }) do
-        local mf = _G[mainName]
-        if type(mf) == "table" then
-            if type(mf.SetShown) == "function" then
-                pcall(mf.SetShown, mf, true)
-            elseif type(mf.Show) == "function" then
-                pcall(mf.Show, mf)
-            end
-        end
-    end
-    for idx = 1, 12 do
-        local btn = _G["ActionButton" .. tostring(idx)]
-        if type(btn) == "table" then
-            if type(btn.SetShowGrid) == "function" then
-                pcall(btn.SetShowGrid, btn, true, 1)
-            end
-            if type(btn.Show) == "function" then
-                pcall(btn.Show, btn)
-            end
-        end
-    end
-end
-
-function Utility:RevertExtraActionBarsIfNeeded(markFinal, forceClean)
-    local acct = ns.ProfileManager and ns.ProfileManager.runtimeAccount
-    local charTbl = ns.ProfileManager and ns.ProfileManager.runtimeChar
+    local acct = ns.ProfileManager.runtimeAccount
+    local charTbl = ns.ProfileManager.runtimeChar
     local utilTbl = (type(acct) == "table" and type(acct.utility) == "table") and acct.utility or nil
-    local hadLegacyFlag = (utilTbl ~= nil and (utilTbl.extraActionBars ~= nil or utilTbl.extraActionBarMode ~= nil))
-    local charRolledBack = (type(charTbl) == "table" and charTbl._extraBarsRollback20261107 == true)
-    local acctRolledBack = (utilTbl ~= nil and utilTbl._extraBarsRollback20261107 == true)
-    local alreadyRolledBack = charRolledBack or (charTbl == nil and acctRolledBack)
-    local curMulti = ns.SafeGetCVar("enableMultiActionBars")
-    local hasLegacyMultiMask = (curMulti == "7" or curMulti == "31" or curMulti == "127")
-
-    -- Always keep Main ActionBar 1 (slots 1..12) visible so stance changes or empty slots never hide the main bar
-    self:EnsureMainActionBarVisible()
-
-    if (not forceClean) and alreadyRolledBack and not hadLegacyFlag and not hasLegacyMultiMask then
-        return false
-    end
-
-    if ns.InCombat() then
-        if ns.CombatQueue and ns.CombatQueue.RunOrDefer then
-            ns.CombatQueue:RunOrDefer("Utility_RevertExtraActionBars", function()
-                self:RevertExtraActionBarsIfNeeded(markFinal, forceClean)
-            end)
-        end
-        return false
-    end
-
-    local okAlways = ns.SafeSetCVar("alwaysShowActionBars", "1")
-    local okMulti = ns.SafeSetCVar("enableMultiActionBars", "0")
-
-    if type(_G.SetActionBarToggles) == "function" then
-        pcall(_G.SetActionBarToggles, false, false, false, false, true, false, false, false)
-    end
-
-    if type(_G.Settings) == "table" and type(_G.Settings.SetValue) == "function" then
-        for i = 1, #ACTIONBAR_PROXY_KEYS do
-            local key = ACTIONBAR_PROXY_KEYS[i]
-            local hasSetting = true
-            if type(_G.Settings.GetSetting) == "function" then
-                local okSet, settingObj = pcall(_G.Settings.GetSetting, key)
-                hasSetting = okSet and (settingObj ~= nil)
-            end
-            if hasSetting then
-                pcall(_G.Settings.SetValue, key, false)
-            end
+    if utilTbl then
+        utilTbl.extraActionBars = nil
+        utilTbl.extraActionBarMode = nil
+        if markFinal ~= false then
+            utilTbl._extraBarsRollback20261106 = true
+            utilTbl._extraBarsRollback20261107 = true
         end
     end
-
-    if type(_G.MultiActionBar_Update) == "function" then
-        pcall(_G.MultiActionBar_Update)
-    end
-    if type(_G.ActionBarController_UpdateAll) == "function" then
-        pcall(_G.ActionBarController_UpdateAll)
-    end
-
-    for i = 1, #EXTRA_BAR_FRAMES do
-        local fName = EXTRA_BAR_FRAMES[i]
-        local f = _G[fName]
-        if type(f) == "table" then
-            if type(f.SetShowGrid) == "function" then
-                pcall(f.SetShowGrid, f, false, 2)
-            end
-            if type(f.SetShown) == "function" then
-                pcall(f.SetShown, f, false)
-            elseif type(f.Hide) == "function" then
-                pcall(f.Hide, f)
-            end
-        end
-    end
-
-    self:EnsureMainActionBarVisible()
-
-    local verifiedClean = (okAlways == true and okMulti == true)
-        and (ns.SafeGetCVar("enableMultiActionBars") == "0")
-    if not verifiedClean then
-        return false
-    end
-
-    if ns.ProfileManager and ns.ProfileManager:CanWrite() then
-        if utilTbl then
-            utilTbl.extraActionBars = nil
-            utilTbl.extraActionBarMode = nil
-            if markFinal then
-                utilTbl._extraBarsRollback20261106 = true
-                utilTbl._extraBarsRollback20261107 = true
-            end
-        end
-        if markFinal and type(charTbl) == "table" then
-            charTbl._extraBarsRollback20261106 = true
-            charTbl._extraBarsRollback20261107 = true
-        end
+    if markFinal ~= false and type(charTbl) == "table" then
+        charTbl._extraBarsRollback20261106 = true
+        charTbl._extraBarsRollback20261107 = true
     end
     return true
 end
 
 function Utility:CleanActionBarsNow()
-    local ok = self:RevertExtraActionBarsIfNeeded(true, true)
-    if ok then
-        ns.Print("추가 스킬창 정리 및 1번 메인 스킬창(1~12번 슬롯) 고정 표시 완료")
-    else
-        ns.Print("전투 종료 후 스킬창 정리가 자동 적용됩니다.")
+    if ns.InCombat() then
+        ns.Warn("전투 중에는 스킬창 설정을 변경할 수 없습니다. 전투 종료 후 실행해 주세요.")
+        return false
     end
-    return ok
+    self:RevertExtraActionBarsIfNeeded(true)
+    local okAlways = ns.SafeSetCVar("alwaysShowActionBars", "1")
+    local okToggles = false
+    if type(_G.SetActionBarToggles) == "function" then
+        okToggles = pcall(_G.SetActionBarToggles, false, false, false, false, false, false, false, false) and true or false
+    end
+    if not (okAlways and okToggles) then
+        ns.Warn("스킬창 설정 API 호출에 실패하여 표시 해제를 확정할 수 없습니다.")
+        return false
+    end
+    ns.Print("추가 스킬창 표시 해제 완료. 전투 중 오염 방지를 위해 /reload 를 한 번 실행해 주세요.")
+    return true
 end
 
 function Utility:ApplyQoLCVars()
@@ -377,7 +267,7 @@ end
 function Utility:OnEnable(ctx)
     self.ctx = ctx
     self:ApplyQoLCVars()
-    self:RevertExtraActionBarsIfNeeded(false)
+    self:RevertExtraActionBarsIfNeeded(true)
     ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Utility.OnPlayerEnteringWorld)
     ctx:RegisterEvent("MERCHANT_SHOW", Utility.OnMerchantShow)
     ctx:RegisterEvent("MERCHANT_CLOSED", Utility.OnMerchantClosed)
