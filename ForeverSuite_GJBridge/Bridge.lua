@@ -105,7 +105,13 @@ function ns.SyncOwnership()
             return nil
         end
         local d = C.ExtraSettings("automation")
-        if type(d) ~= "table" or type(d.accept) ~= "boolean" or type(d.complete) ~= "boolean" then
+        if type(d) ~= "table" then
+            return nil
+        end
+        if (d.accept ~= nil and type(d.accept) ~= "boolean") or (d.complete ~= nil and type(d.complete) ~= "boolean") then
+            return nil
+        end
+        if d.accept == nil and d.complete == nil then
             return nil
         end
         return (d.accept == true) or (d.complete == true)
@@ -118,7 +124,13 @@ function ns.SyncOwnership()
             return nil
         end
         local s = C.FishingSettings()
-        if type(s) ~= "table" or type(s.enabled) ~= "boolean" or type(s.doubleClick) ~= "boolean" then
+        if type(s) ~= "table" then
+            return nil
+        end
+        if (s.enabled ~= nil and type(s.enabled) ~= "boolean") or (s.doubleClick ~= nil and type(s.doubleClick) ~= "boolean") then
+            return nil
+        end
+        if s.enabled == nil and s.doubleClick == nil then
             return nil
         end
         return (s.enabled == true) and (s.doubleClick == true)
@@ -364,7 +376,8 @@ local function ApplyBrandingOverrides(C)
     -- 6. launcherIcon deferred frame skinning (Condition #1)
     ns.targets.launcherIcon = "PENDING"
     ns.TrySkinLauncher()
-    if _G.hooksecurefunc then
+    if _G.hooksecurefunc and not C._fsgjLifecycleHooksRegistered then
+        C._fsgjLifecycleHooksRegistered = true
         if type(C.RestoreLauncher) == "function" then
             pcall(_G.hooksecurefunc, C, "RestoreLauncher", function()
                 ns.TrySkinLauncher()

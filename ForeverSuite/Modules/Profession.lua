@@ -102,9 +102,17 @@ function Profession:EnsureSecureFishingButton()
             if btn.Hide then
                 btn:Hide()
             end
+            if btn.RegisterForClicks then
+                btn:RegisterForClicks("AnyUp", "AnyDown")
+            end
             if btn.SetAttribute then
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", ResolveFishingSpellName())
+            end
+            if btn.SetScript then
+                btn:SetScript("PostClick", function()
+                    Profession:ClearFishingBindingSafe()
+                end)
             end
             Profession.secureBtn = btn
         end
@@ -220,7 +228,13 @@ function Profession:CheckGatheringTracking()
         else
             name, _, active, category = info, nil, nil, nil
         end
-        if type(name) == "string" and (category == "spell" or string_find(name, "찾기", 1, true) or string_find(string_lower(name), "find ", 1, true)) then
+        if
+            not ns.IsSecret(name)
+            and not ns.IsSecret(active)
+            and not ns.IsSecret(category)
+            and type(name) == "string"
+            and (category == "spell" or string_find(name, "찾기", 1, true) or string_find(string_lower(name), "find ", 1, true))
+        then
             hasGatherSkill = true
             if active then
                 anyGatherActive = true

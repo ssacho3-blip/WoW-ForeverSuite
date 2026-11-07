@@ -619,3 +619,51 @@ def test_windows_one_click_exe_pe32plus_and_payload_integrity(tmp_path: pathlib.
         enames = set(ezf.namelist())
         assert "ForeverSuite/ForeverSuite.toc" in enames
         assert "ForeverSuite_GJBridge/ForeverSuite_GJBridge.toc" in enames
+
+
+def test_partial_ownership_tables_idempotent_lifecycle_hooks_and_fishing_secure_btn() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+
+    # 1. Verify ForeverSuiteFishingButton registers AnyUp/AnyDown and PostClick handler
+    btn = rt.vm.G.get("ForeverSuiteFishingButton")
+    assert btn is not None
+    assert btn.get("_scripts").get("PostClick") is not None
+
+    # 2. Partial automation table ({ accept = true }, complete = nil) & idempotent ApplyLifecycleHooks
+    rt.vm.run_chunk(
+        """
+        _hookCount = 0
+        local origHook = hooksecurefunc
+        hooksecurefunc = function(tbl, key, fn)
+            _hookCount = _hookCount + 1
+            if origHook then return origHook(tbl, key, fn) end
+        end
+        GJCompanion = {
+            version = "5.0.132",
+            ExtraSettings = function(key)
+                if key == "merchantAutomation" then
+                    return { repair = false, sell = false }
+                elseif key == "automation" then
+                    return { accept = true }
+                end
+                return {}
+            end,
+            FishingSettings = function()
+                return { enabled = true }
+            end,
+            RestoreLauncher = function() end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAuto")')[0] is True
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is False
+    hooks_first = rt.vm.G.get("_hookCount")
+    assert hooks_first > 0
+
+    # Calling ApplyLifecycleHooks a second time must NOT register duplicate hooksecurefunc callbacks
+    rt.vm._invoke_callable(bridge["ApplyLifecycleHooks"], ())
+    assert rt.vm.G.get("_hookCount") == hooks_first
+
