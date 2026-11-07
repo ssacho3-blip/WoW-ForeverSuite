@@ -413,7 +413,7 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
     )
 
     ns = rt.boot_session()
-    assert rt.cvars["alwaysShowActionBars"] == "0"
+    assert rt.cvars["alwaysShowActionBars"] == "1"
     assert rt.cvars["enableMultiActionBars"] == "0"
     assert rt.vm.G["MultiBarBottomLeft"]["_shown"] is False
     assert rt.vm.G["MultiBarBottomRight"]["_shown"] is False
@@ -426,19 +426,22 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
     assert util_acct.get("extraActionBars") is None
     assert util_acct.get("extraActionBarMode") is None
     assert util_acct.get("_extraBarsRollback20261106") is True
+    assert util_acct.get("_extraBarsRollback20261107") is True
 
     # P1: Verify server CVar sync restoring legacy masks "7" or "31" after rollback is also cleaned
     for legacy_mask in ("7", "31"):
         rt.cvars["enableMultiActionBars"] = legacy_mask
-        rt.cvars["alwaysShowActionBars"] = "1"
+        rt.cvars["alwaysShowActionBars"] = "0"
         rt.fire_event("PLAYER_ENTERING_WORLD")
         assert rt.cvars["enableMultiActionBars"] == "0"
-        assert rt.cvars["alwaysShowActionBars"] == "0"
+        assert rt.cvars["alwaysShowActionBars"] == "1"
 
     # P2: Verify failed SetCVar write does not prematurely mark rollback complete
     util_acct.set("extraActionBars", True)
     util_acct.set("_extraBarsRollback20261106", None)
+    util_acct.set("_extraBarsRollback20261107", None)
     ns["ProfileManager"]["runtimeChar"].set("_extraBarsRollback20261106", None)
+    ns["ProfileManager"]["runtimeChar"].set("_extraBarsRollback20261107", None)
     rt.cvars["enableMultiActionBars"] = "31"
     rt.vm.run_chunk(
         """
@@ -448,12 +451,12 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
     )
     rt.fire_event("PLAYER_ENTERING_WORLD")
     assert util_acct.get("extraActionBars") is True
-    assert util_acct.get("_extraBarsRollback20261106") is None
+    assert util_acct.get("_extraBarsRollback20261107") is None
     rt.vm.run_chunk("C_CVar.SetCVar = _origSetCVar")
     rt.fire_event("PLAYER_ENTERING_WORLD")
     assert rt.cvars["enableMultiActionBars"] == "0"
     assert util_acct.get("extraActionBars") is None
-    assert util_acct.get("_extraBarsRollback20261106") is True
+    assert util_acct.get("_extraBarsRollback20261107") is True
 
     # Verify combat deferral if server CVar sync forces 127 during combat
     rt.cvars["enableMultiActionBars"] = "127"
@@ -465,24 +468,15 @@ def test_extra_action_bars_reverted_and_combat_safe() -> None:
     rt.fire_event("PLAYER_REGEN_ENABLED")
     assert rt.cvars["enableMultiActionBars"] == "0"
 
-    # Verify lingering GetActionBarToggles() true state is detected even when CVars are already "0"
-    rt.vm.run_chunk(
-        """
-        _togglesCalled = nil
-        function GetActionBarToggles()
-            return true, true, true, false, false, false, false
-        end
-        """
-    )
+    # Verify that after rollback is complete, user-enabled bar toggles are NOT wiped on zone change
+    rt.vm.run_chunk("_togglesCalled = nil")
     rt.fire_event("PLAYER_ENTERING_WORLD")
-    toggles_called = rt.vm.G.get("_togglesCalled")
-    assert toggles_called is not None
-    assert toggles_called.get(1) is False
+    assert rt.vm.G.get("_togglesCalled") is None
 
-    # Verify /fs bars (/fs cleanbars) manual command cleans bars and prints confirmation
+    # Verify /fs bars (/fs cleanbars) manual command cleans extra bars and keeps main bar visible
     rt.chat_messages.clear()
     rt.run_slash("FOREVERSUITE", "bars")
-    assert any("스킬창" in m and "정리 완료" in m for m in rt.chat_messages)
+    assert any("스킬창" in m and "고정 표시 완료" in m for m in rt.chat_messages)
 
 
 # ---------------------------------------------------------------------------
