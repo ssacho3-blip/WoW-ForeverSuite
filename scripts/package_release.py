@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import pathlib
 import sys
@@ -17,6 +19,18 @@ from build_win_exe import (  # noqa: E402
     _write_addon_folder_to_zip,
     build_windows_installer_exe,
 )
+
+DEFAULT_PATCH_URL = "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v{version}.zip"
+
+
+def _sync_manifest_patch_metadata(repo_root: pathlib.Path, version: str, patch_sha256: str) -> None:
+    manifest_path = repo_root / "pinned_upstream.json"
+    if not manifest_path.is_file() or not os.access(manifest_path, os.W_OK):
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["patch_zip_url"] = DEFAULT_PATCH_URL.format(version=version)
+    manifest["patch_zip_sha256"] = patch_sha256
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def build_release_zip(
@@ -33,6 +47,9 @@ def build_release_zip(
             _write_addon_folder_to_zip(zf, repo_root, folder)
 
     os.replace(staging_zip, final_zip)
+    if out_dir is None:
+        patch_sha = hashlib.sha256(final_zip.read_bytes()).hexdigest().lower()
+        _sync_manifest_patch_metadata(repo_root, version, patch_sha)
     build_windows_installer_exe(repo_root, out_dir=dist_dir)
     return final_zip
 

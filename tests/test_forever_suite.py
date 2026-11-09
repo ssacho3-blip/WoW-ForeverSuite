@@ -75,6 +75,41 @@ def test_mock_fail_closed_blocks_unknown_c_api() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _first_non_comment_line(src: str) -> str:
+    for line in src.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("--"):
+            return stripped
+    return ""
+
+
+def _strip_comments(src: str) -> str:
+    return "\n".join(line.split("--", 1)[0] for line in src.splitlines())
+
+
+def _verify_single_lua_file_compliance(lua_file: pathlib.Path) -> set[str]:
+    assert lua_file.is_file(), f"Missing file in TOC: {lua_file}"
+    raw = lua_file.read_bytes()
+    assert not raw.startswith(b"\xef\xbb\xbf"), f"UTF-8 BOM forbidden: {lua_file.name}"
+    assert b"\r\n" not in raw, f"CRLF forbidden in Lua source: {lua_file.name}"
+
+    src = raw.decode("utf-8")
+    first_code_line = _first_non_comment_line(src)
+    assert re.match(r"^local\s+[A-Za-z0-9_]+\s*,\s*ns\s*=\s*\.\.\.$", first_code_line), (
+        f"{lua_file.name} must start with 'local ..., ns = ...'"
+    )
+    parse_lua51(src, filename=lua_file.name)
+
+    code_no_comments = _strip_comments(src)
+    code_without_c_namespaces = re.sub(r"\bC_[A-Za-z0-9_]+\.[A-Za-z0-9_]+\b", "", code_no_comments)
+    tokens = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code_without_c_namespaces))
+
+    assert not (tokens & FORBIDDEN_LEGACY_APIS), f"{lua_file.name} uses removed legacy APIs"
+    assert not (tokens & FORBIDDEN_COMBAT_AUTOMATION_APIS), f"{lua_file.name} uses forbidden combat APIs"
+    assert "BAG_UPDATE" not in re.findall(r'"(BAG_UPDATE)"', code_no_comments)
+    return extract_c_api_calls_from_lua(src)
+
+
 def test_toc_and_all_lua_files_static_compliance() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     meta, files = rt.parse_toc_files()
@@ -87,37 +122,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 
     all_c_calls: set[str] = set()
     for lua_file in files:
-        assert lua_file.is_file(), f"Missing file in TOC: {lua_file}"
-        raw = lua_file.read_bytes()
-        assert not raw.startswith(b"\xef\xbb\xbf"), f"UTF-8 BOM forbidden: {lua_file.name}"
-        assert b"\r\n" not in raw, f"CRLF forbidden in Lua source: {lua_file.name}"
-
-        src = raw.decode("utf-8")
-        first_code_line = next(
-            line.strip() for line in src.splitlines() if line.strip() and not line.strip().startswith("--")
-        )
-        assert re.match(r"^local\s+[A-Za-z0-9_]+\s*,\s*ns\s*=\s*\.\.\.$", first_code_line), (
-            f"{lua_file.name} must start with 'local ..., ns = ...'"
-        )
-
-        # Parse full Lua 5.1 AST cleanly
-        parse_lua51(src, filename=lua_file.name)
-
-        code_no_comments = "\n".join(line.split("--", 1)[0] for line in src.splitlines())
-        code_without_c_namespaces = re.sub(r"\bC_[A-Za-z0-9_]+\.[A-Za-z0-9_]+\b", "", code_no_comments)
-        tokens = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code_without_c_namespaces))
-
-        forbidden_legacy = tokens & FORBIDDEN_LEGACY_APIS
-        assert not forbidden_legacy, f"{lua_file.name} uses removed legacy APIs: {forbidden_legacy}"
-
-        forbidden_combat = tokens & FORBIDDEN_COMBAT_AUTOMATION_APIS
-        assert not forbidden_combat, f"{lua_file.name} contains forbidden combat automation APIs: {forbidden_combat}"
-
-        assert "BAG_UPDATE" not in re.findall(r'"(BAG_UPDATE)"', code_no_comments), (
-            f"{lua_file.name} must use BAG_UPDATE_DELAYED instead of raw BAG_UPDATE"
-        )
-
-        all_c_calls |= extract_c_api_calls_from_lua(src)
+        all_c_calls |= _verify_single_lua_file_compliance(lua_file)
 
     ok, missing = verify_symbols_in_local_binary(all_c_calls)
     assert ok, f"Unverified C_* symbols missing from WoW Forever 1.60.1 binary: {missing}"
@@ -164,6 +169,13 @@ def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _find_settings_row_for_module(panel: LuaTable, module_name: str) -> LuaTable | None:
+    for _, row in panel["rows"].items():
+        if row["moduleName"] == module_name:
+            return row
+    return None
+
+
 def test_ac2_fault_isolation_circuit_breaker_and_settings_display() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
@@ -199,14 +211,10 @@ def test_ac2_fault_isolation_circuit_breaker_and_settings_display() -> None:
 
     # Verify SettingsPanel displays FAULTED error summary
     rt.run_slash("FOREVERSUITE", "ui")
-    panel = ns["SettingsPanel"]
-    found_fault_row = False
-    for _, row in panel["rows"].items():
-        if row["moduleName"] == "Quest":
-            found_fault_row = True
-            assert "오류 격리:" in row["descLabel"]["_text"]
-            assert "FAULTED" in row["badgeLabel"]["_text"]
-    assert found_fault_row
+    quest_row = _find_settings_row_for_module(ns["SettingsPanel"], "Quest")
+    assert quest_row is not None
+    assert "오류 격리:" in quest_row["descLabel"]["_text"]
+    assert "FAULTED" in quest_row["badgeLabel"]["_text"]
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +293,22 @@ def test_ac4_secret_value_guard_in_combat_health_and_auras() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _assert_future_schema_readonly(pm_future: LuaTable, rt_future: WoWForeverMockRuntime) -> None:
+    assert pm_future["readOnly"] is True
+    assert rt_future.vm._invoke_callable(pm_future["CanWrite"], (pm_future,))[0] is False
+    for scope in ("account", "class", "char"):
+        ok_set, err_code = rt_future.vm._invoke_callable(pm_future["Set"], (pm_future, "utility", "maxSellBatch", 3, scope))
+        assert ok_set is False
+        assert err_code == "READ_ONLY"
+    assert rt_future.vm._invoke_callable(pm_future["Get"], (pm_future, "utility", "maxSellBatch"))[0] == 12
+    ok_mod, mod_code = rt_future.vm._invoke_callable(pm_future["SetModuleEnabled"], (pm_future, "Quest", False, "account"))
+    assert ok_mod is False
+    assert mod_code == "READ_ONLY"
+    ok_prot, prot_code = rt_future.vm._invoke_callable(pm_future["SetProtectedItem"], (pm_future, 9001, True))
+    assert ok_prot is False
+    assert prot_code == "READ_ONLY"
+
+
 def test_ac5_profile_hierarchy_migration_readonly_and_crash_cvar() -> None:
     # A. v1 -> v2 migration + _backup preservation + idempotency + crash CVar recovery
     rt = WoWForeverMockRuntime(ADDON_ROOT)
@@ -324,17 +348,7 @@ def test_ac5_profile_hierarchy_migration_readonly_and_crash_cvar() -> None:
     future_db = LuaTable({"schemaVersion": 99, "futureField": "preserve_me"})
     rt_future.vm.G["ForeverSuiteDB"] = future_db
     ns_future = rt_future.boot_session()
-    pm_future = ns_future["ProfileManager"]
-    assert pm_future["readOnly"] is True
-    assert rt_future.vm._invoke_callable(pm_future["CanWrite"], (pm_future,))[0] is False
-    for scope in ("account", "class", "char"):
-        ok_set, err_code = rt_future.vm._invoke_callable(pm_future["Set"], (pm_future, "utility", "maxSellBatch", 3, scope))
-        assert ok_set is False and err_code == "READ_ONLY"
-    assert rt_future.vm._invoke_callable(pm_future["Get"], (pm_future, "utility", "maxSellBatch"))[0] == 12
-    ok_mod, mod_code = rt_future.vm._invoke_callable(pm_future["SetModuleEnabled"], (pm_future, "Quest", False, "account"))
-    assert ok_mod is False and mod_code == "READ_ONLY"
-    ok_prot, prot_code = rt_future.vm._invoke_callable(pm_future["SetProtectedItem"], (pm_future, 9001, True))
-    assert ok_prot is False and prot_code == "READ_ONLY"
+    _assert_future_schema_readonly(ns_future["ProfileManager"], rt_future)
     assert rt_future.vm.G["ForeverSuiteDB"]["schemaVersion"] == 99
     assert rt_future.vm.G["ForeverSuiteDB"]["futureField"] == "preserve_me"
 
@@ -351,6 +365,31 @@ def test_ac5_profile_hierarchy_migration_readonly_and_crash_cvar() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _make_bag_test_item(idx: int) -> dict[str, object]:
+    if idx < 20:
+        return {"itemID": 9001, "quality": 0, "stackCount": 1, "isLocked": False}
+    if idx == 20:
+        return {"itemID": 9099, "quality": 0, "stackCount": 1, "isLocked": False}
+    if idx == 21:
+        return {"itemID": 9002, "quality": 0, "stackCount": 1, "isLocked": True}
+    return {"itemID": 2001, "quality": 2, "stackCount": 1, "isLocked": False}
+
+
+def _populate_test_bags(rt: WoWForeverMockRuntime) -> None:
+    for idx in range(23):
+        bag_cursor = idx // 16
+        slot_cursor = (idx % 16) + 1
+        rt.bags[bag_cursor]["items"][slot_cursor] = _make_bag_test_item(idx)
+
+
+def _collect_remaining_item_ids(rt: WoWForeverMockRuntime) -> set[int]:
+    remaining: set[int] = set()
+    for bag in rt.bags.values():
+        for item in bag["items"].values():
+            remaining.add(int(item["itemID"]))
+    return remaining
+
+
 def test_ac6_economic_safety_buyback_cap_repair_fallback_and_ledger() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
@@ -359,23 +398,7 @@ def test_ac6_economic_safety_buyback_cap_repair_fallback_and_ledger() -> None:
 
     # Protect item 9099
     rt.vm._invoke_callable(pm["SetProtectedItem"], (pm, 9099, True))
-
-    # Populate 20 junk items (9001), 1 protected junk (9099), 1 locked junk, 1 uncommon staff (2001)
-    slot_cursor = 1
-    bag_cursor = 0
-    for idx in range(23):
-        if slot_cursor > 16:
-            bag_cursor += 1
-            slot_cursor = 1
-        if idx < 20:
-            rt.bags[bag_cursor]["items"][slot_cursor] = {"itemID": 9001, "quality": 0, "stackCount": 1, "isLocked": False}
-        elif idx == 20:
-            rt.bags[bag_cursor]["items"][slot_cursor] = {"itemID": 9099, "quality": 0, "stackCount": 1, "isLocked": False}
-        elif idx == 21:
-            rt.bags[bag_cursor]["items"][slot_cursor] = {"itemID": 9002, "quality": 0, "stackCount": 1, "isLocked": True}
-        else:
-            rt.bags[bag_cursor]["items"][slot_cursor] = {"itemID": 2001, "quality": 2, "stackCount": 1, "isLocked": False}
-        slot_cursor += 1
+    _populate_test_bags(rt)
 
     initial_money = rt.player_money
 
@@ -398,11 +421,7 @@ def test_ac6_economic_safety_buyback_cap_repair_fallback_and_ledger() -> None:
     assert len(rt.sold_bag_slots) == 12  # Hard buyback cap <= 12!
 
     # Protected item 9099, locked item 9002, and uncommon item 2001 remain untouched in bag 1
-    remaining_ids = {
-        item["itemID"]
-        for bag in rt.bags.values()
-        for item in bag["items"].values()
-    }
+    remaining_ids = _collect_remaining_item_ids(rt)
     assert {9099, 9002, 2001}.issubset(remaining_ids)
 
     # Simulate an unclassified mail/trade gold change -> recorded as 'other'
@@ -618,23 +637,34 @@ def test_profession_fishing_override_entered_combat_within_50ms_defers_clear() -
     assert len(rt.override_bindings) == 0
 
 
+def _count_matching_named_frames(rt: WoWForeverMockRuntime, names: set[str]) -> int:
+    total = 0
+    for f in rt.frames:
+        if f["_name"] in names:
+            total += 1
+    return total
+
+
+def _toggle_core_ui_modules_once(rt: WoWForeverMockRuntime, mm: LuaTable) -> None:
+    for mod_name in ("Inventory", "Map", "Combat"):
+        rt.vm._invoke_callable(mm["DisableModule"], (mm, mod_name))
+        assert rt.vm._invoke_callable(mm["EnableModule"], (mm, mod_name, True))[0] is True
+
+
 def test_module_disable_enable_reuses_named_frames_and_batch_money_reasons() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
     mm = ns["ModuleManager"]
     econ = mm["modules"]["Economy"]["definition"]
+    target_names = {"ForeverSuiteBagHUD", "ForeverSuiteMapCoordHolder", "ForeverSuiteHealthAlertFrame"}
 
-    before_named = [f for f in rt.frames if f["_name"] in ("ForeverSuiteBagHUD", "ForeverSuiteMapCoordHolder", "ForeverSuiteHealthAlertFrame")]
-    assert len(before_named) == 3
+    assert _count_matching_named_frames(rt, target_names) == 3
 
     # Toggle Disable -> Enable 4 times; named frames must be reused 100% with 0 duplicates
     for _ in range(4):
-        for mod_name in ("Inventory", "Map", "Combat"):
-            rt.vm._invoke_callable(mm["DisableModule"], (mm, mod_name))
-            assert rt.vm._invoke_callable(mm["EnableModule"], (mm, mod_name, True))[0] is True
+        _toggle_core_ui_modules_once(rt, mm)
 
-    after_named = [f for f in rt.frames if f["_name"] in ("ForeverSuiteBagHUD", "ForeverSuiteMapCoordHolder", "ForeverSuiteHealthAlertFrame")]
-    assert len(after_named) == 3, "Disable/Enable cycles must reuse named WoW frames without duplicates"
+    assert _count_matching_named_frames(rt, target_names) == 3
 
     # Simultaneous personal repair (-800c) + 5 junk items sold (+125c * 5 = +625c) in single MERCHANT_SHOW
     for slot_idx in range(1, 6):
@@ -731,3 +761,4 @@ def test_economy_first_event_after_enable_is_attributed_and_readonly_preserves_p
     assert ns_ro["ProfileManager"]["readOnly"] is True
     assert rt_ro.cvars["Sound_SFXVolume"] == "0.9"
     assert rt_ro.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["Sound_SFXVolume"] == "0.3"
+

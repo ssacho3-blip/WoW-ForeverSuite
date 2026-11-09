@@ -14,7 +14,7 @@ local string_match = string.match
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
 ns.VERSION = "0.2.0"
-ns.UPSTREAM_PIN = "5.0.132"
+ns.UPSTREAM_PIN = "5.0.213"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
@@ -351,10 +351,10 @@ local function ApplyBrandingOverrides(C)
                     if d.objectiveSound == "oishii_high" or d.objectiveSound == "oishii_deep" then
                         d.objectiveSound = ns.CLEAN_QUEST_ALARM_SOUND
                     end
-                    if type(d.questTemplate) == "string" then
+                    if type(d.questTemplate) == "string" and string_match(d.questTemplate, "^%[갓존슨%]") then
                         d.questTemplate = string_gsub(d.questTemplate, "^%[갓존슨%]", "[포에버]")
                     end
-                    if type(d.objectiveTemplate) == "string" then
+                    if type(d.objectiveTemplate) == "string" and string_match(d.objectiveTemplate, "^%[갓존슨%]") then
                         d.objectiveTemplate = string_gsub(d.objectiveTemplate, "^%[갓존슨%]", "[포에버]")
                     end
                 elseif key == "libraryBooksAccess471" then
@@ -376,6 +376,14 @@ local function ApplyBrandingOverrides(C)
     -- 6. launcherIcon deferred frame skinning (Condition #1)
     ns.targets.launcherIcon = "PENDING"
     ns.TrySkinLauncher()
+    ns.ApplyLifecycleHooks(C)
+end
+
+function ns.ApplyLifecycleHooks(C)
+    C = C or _G.GJCompanion
+    if type(C) ~= "table" then
+        return false
+    end
     if _G.hooksecurefunc and not C._fsgjLifecycleHooksRegistered then
         C._fsgjLifecycleHooksRegistered = true
         if type(C.RestoreLauncher) == "function" then
@@ -406,6 +414,7 @@ local function ApplyBrandingOverrides(C)
             end)
         end
     end
+    return true
 end
 
 function ns.SanitizeLiveGJSettings()
@@ -477,10 +486,15 @@ if _G.CreateFrame then
     if evFrame and evFrame.RegisterEvent and evFrame.SetScript then
         evFrame:RegisterEvent("PLAYER_LOGIN")
         evFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-        evFrame:SetScript("OnEvent", function(_, event)
-            ns.SanitizeLiveGJSettings()
+        evFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
+            if event == "PLAYER_LOGIN" and evFrame.UnregisterEvent then
+                evFrame:UnregisterEvent("PLAYER_LOGIN")
+            end
+            if event ~= "PLAYER_ENTERING_WORLD" or isInitialLogin ~= false or isReloadingUi ~= false then
+                ns.SanitizeLiveGJSettings()
+                ns.SyncOwnership()
+            end
             ns.TrySkinLauncher()
-            ns.SyncOwnership()
             if event == "PLAYER_ENTERING_WORLD" and ns.targets.launcherIcon == "PENDING" then
                 if type(_G.GodJohnsonGoldBorderLauncher) ~= "table" then
                     ns.targets.launcherIcon = "MISSING"

@@ -64,8 +64,11 @@ function Inventory:UpdateHUD()
     self.hudText:SetText(string_format("가방 여유: %s%d|r / %d", color, freeSlots, totalSlots))
 end
 
-function Inventory:EnrichItemTooltip(tooltip, itemID)
+function Inventory:EnrichItemTooltip(tooltip, itemID, itemLink)
     if not self.active or not tooltip or not tooltip.AddDoubleLine then
+        return
+    end
+    if tooltip.IsForbidden and tooltip:IsForbidden() then
         return
     end
     if not itemID or ns.IsSecret(itemID) then
@@ -79,7 +82,8 @@ function Inventory:EnrichItemTooltip(tooltip, itemID)
     end
 
     if showIlvl and C_Item and C_Item.GetDetailedItemLevelInfo then
-        local ilvl = C_Item.GetDetailedItemLevelInfo(itemID)
+        local queryTarget = (type(itemLink) == "string" and not ns.IsSecret(itemLink) and itemLink ~= "") and itemLink or itemID
+        local ilvl = C_Item.GetDetailedItemLevelInfo(queryTarget)
         if type(ilvl) == "number" and not ns.IsSecret(ilvl) and ilvl > 0 then
             tooltip:AddDoubleLine("|cff94a3b8아이템 레벨|r", string_format("|cffe2e8f0%d|r", ilvl))
         else
@@ -107,7 +111,8 @@ function Inventory:EnsureTooltipHook()
                 return
             end
             if type(data) == "table" and not ns.IsSecret(data.id) and data.id then
-                Inventory:EnrichItemTooltip(tooltip, tonumber(data.id))
+                local link = (not ns.IsSecret(data.hyperlink) and type(data.hyperlink) == "string") and data.hyperlink or nil
+                Inventory:EnrichItemTooltip(tooltip, tonumber(data.id), link)
             end
         end)
         self.tooltipHookInstalled = true

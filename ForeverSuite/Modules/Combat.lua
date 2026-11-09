@@ -111,7 +111,7 @@ function Combat:CheckOutOfCombatBuffs()
         local buffName = "직업 강화 효과"
         if C_Spell and C_Spell.GetSpellInfo then
             local info = C_Spell.GetSpellInfo(spellID)
-            if type(info) == "table" and type(info.name) == "string" then
+            if type(info) == "table" and not ns.IsSecret(info.name) and type(info.name) == "string" then
                 buffName = info.name
             end
         end

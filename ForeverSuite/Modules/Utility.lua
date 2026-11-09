@@ -19,6 +19,7 @@ local Utility = {
     merchantOpen = false,
     qolApplied = false,
     reusableSellQueue = {},
+    reusableSellEntryPool = {},
 }
 
 local function IsShiftBypassActive()
@@ -32,6 +33,7 @@ function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
     ns.WipeTable(self.reusableSellQueue)
+    ns.WipeTable(self.reusableSellEntryPool)
 end
 
 function Utility:RevertExtraActionBarsIfNeeded(markFinal)
@@ -165,7 +167,13 @@ function Utility:TryAutoSellJunk()
                     break
                 end
                 local info = C_Container.GetContainerItemInfo(bag, slot)
-                if type(info) == "table" and not ns.IsSecret(info.quality) and info.quality == POOR_QUALITY and not info.isLocked and not info.hasNoValue then
+                if type(info) == "table"
+                    and not ns.IsSecret(info.quality)
+                    and info.quality == POOR_QUALITY
+                    and not info.isLocked
+                    and not info.hasNoValue
+                    and not info.isRefundable
+                then
                     local itemID = info.itemID
                     if itemID and not ns.IsSecret(itemID) and not ns.ProfileManager:IsProtectedItem(itemID) then
                         local rawSell = nil
@@ -176,12 +184,17 @@ function Utility:TryAutoSellJunk()
                         if sellPrice > 0 then
                             local rawStack = info.stackCount
                             local stackCount = (type(rawStack) == "number" and not ns.IsSecret(rawStack)) and rawStack or 1
-                            queue[#queue + 1] = {
-                                bag = bag,
-                                slot = slot,
-                                itemID = itemID,
-                                expected = sellPrice * stackCount,
-                            }
+                            local nextIdx = #queue + 1
+                            local entry = self.reusableSellEntryPool[nextIdx]
+                            if not entry then
+                                entry = {}
+                                self.reusableSellEntryPool[nextIdx] = entry
+                            end
+                            entry.bag = bag
+                            entry.slot = slot
+                            entry.itemID = itemID
+                            entry.expected = sellPrice * stackCount
+                            queue[nextIdx] = entry
                         end
                     end
                 end
@@ -202,6 +215,8 @@ function Utility:TryAutoSellJunk()
         local liveInfo = C_Container.GetContainerItemInfo(entry.bag, entry.slot)
         if type(liveInfo) == "table"
             and not liveInfo.isLocked
+            and not liveInfo.hasNoValue
+            and not liveInfo.isRefundable
             and not ns.IsSecret(liveInfo.itemID)
             and liveInfo.itemID == entry.itemID
             and not ns.IsSecret(liveInfo.quality)
@@ -282,6 +297,7 @@ function Utility:OnDisable()
     self.merchantOpen = false
     self:RestoreQoLCVars()
     ns.WipeTable(self.reusableSellQueue)
+    ns.WipeTable(self.reusableSellEntryPool)
 end
 
 ns.ModuleManager:Register("Utility", Utility)
