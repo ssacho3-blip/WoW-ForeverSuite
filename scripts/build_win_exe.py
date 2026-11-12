@@ -4,12 +4,28 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
 import pathlib
+import re
 import struct
+import tempfile
+import urllib.parse
 import zipfile
+
+ALLOWED_DOWNLOAD_HOSTS = frozenset(
+    {
+        "mediafilez.forgecdn.net",
+        "edge.forgecdn.net",
+        "www.curseforge.com",
+        "api.cfwidget.com",
+        "raw.githubusercontent.com",
+        "github.com",
+        "objects.githubusercontent.com",
+    }
+)
 
 
 class AssemblerX64:
@@ -34,15 +50,140 @@ class AssemblerX64:
         self.buf.extend(imm_after)
 
 
+def _assert_valid_url_and_sha(url: str, sha: str) -> None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in ALLOWED_DOWNLOAD_HOSTS or not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise ValueError("Manifest download_url must use https:// on an allowed host and zip_sha256 must be 64-char hex")
+
+
+def _assert_valid_ver_and_fname(ver: str, fname: str) -> None:
+    if not re.fullmatch(r"[\w.\-]+", ver) or not re.fullmatch(r"[\w.\-]+\.zip", fname):
+        raise ValueError("Manifest version or file_name contains unsafe characters")
+
+
+def _validate_manifest_security(manifest: dict) -> tuple[str, str, str, str]:
+    url = str(manifest["download_url"])
+    sha = str(manifest["zip_sha256"]).lower()
+    ver = str(manifest["version"])
+    fname = str(manifest["file_name"])
+    _assert_valid_url_and_sha(url, sha)
+    _assert_valid_ver_and_fname(ver, fname)
+    return url, sha, ver, fname
+
+
 def build_embedded_ps1_script(manifest: dict, embedded_zip_b64: str) -> str:
     """Generate the PowerShell one-click installer script embedded inside ForeverSuite_Installer.exe."""
-    upstream_url = manifest["download_url"]
-    upstream_sha256 = manifest["zip_sha256"].lower()
-    upstream_version = manifest["version"]
-    upstream_filename = manifest["file_name"]
+    upstream_url, upstream_sha256, upstream_version, upstream_filename = _validate_manifest_security(manifest)
+    embedded_patch_sha256 = hashlib.sha256(base64.b64decode(embedded_zip_b64)).hexdigest().lower()
 
     return f"""$ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+function Assert-SafeHttpsUri([string]$Uri) {{
+    $Parsed = $null
+    if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$Parsed)) {{ throw ("Invalid URI blocked: " + $Uri) }}
+    $AllowedHosts = @("mediafilez.forgecdn.net","edge.forgecdn.net","www.curseforge.com","api.cfwidget.com","raw.githubusercontent.com","github.com","objects.githubusercontent.com")
+    if (($Parsed.Scheme -ne "https") -or ($AllowedHosts -notcontains $Parsed.Host.ToLowerInvariant())) {{
+        throw ("Untrusted URI scheme or host blocked: " + $Uri)
+    }}
+}}
+
+function Open-SafeHttpsResponse([string]$Uri, [int]$TimeoutSec = 120, [int]$MaxHops = 5) {{
+    $Curr = $Uri
+    for ($Hop = 0; $Hop -le $MaxHops; $Hop++) {{
+        Assert-SafeHttpsUri $Curr
+        $Req = [System.Net.HttpWebRequest]::Create($Curr)
+        $Req.Method = "GET"
+        $Req.AllowAutoRedirect = $false
+        $Req.UserAgent = "ForeverSuiteInstaller/1.0"
+        $Req.Timeout = ($TimeoutSec * 1000)
+        $Resp = [System.Net.HttpWebResponse]$Req.GetResponse()
+        $Code = [int]$Resp.StatusCode
+        if ($Code -in @(301, 302, 303, 307, 308)) {{
+            $Loc = $Resp.Headers["Location"]
+            $Resp.Close()
+            if ([string]::IsNullOrWhiteSpace($Loc)) {{ throw "Redirect missing Location header" }}
+            $Curr = ([Uri]::new([Uri]$Curr, $Loc)).AbsoluteUri
+            continue
+        }}
+        Assert-SafeHttpsUri $Resp.ResponseUri.AbsoluteUri
+        return $Resp
+    }}
+    throw "Redirect hop limit exceeded"
+}}
+
+function Invoke-SafeWebDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec = 120) {{
+    $Resp = Open-SafeHttpsResponse -Uri $Uri -TimeoutSec $TimeoutSec
+    try {{
+        $InStream = $Resp.GetResponseStream()
+        $OutStream = [System.IO.File]::Create($OutFile)
+        try {{
+            $InStream.CopyTo($OutStream)
+        }} finally {{
+            $OutStream.Dispose()
+            $InStream.Dispose()
+        }}
+    }} finally {{
+        $Resp.Close()
+    }}
+}}
+
+function Assert-NoReparsePoint([string]$PathToCheck) {{
+    $Curr = $PathToCheck
+    while (-not [string]::IsNullOrWhiteSpace($Curr)) {{
+        if (Test-Path -LiteralPath $Curr) {{
+            $Item = Get-Item -LiteralPath $Curr -Force
+            if (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {{
+                throw ("Reparse point or symlink blocked: " + $Curr)
+            }}
+        }}
+        $Parent = Split-Path -Parent $Curr
+        if ([string]::IsNullOrWhiteSpace($Parent) -or ($Parent -eq $Curr)) {{ break }}
+        $Curr = $Parent
+    }}
+}}
+
+function Expand-SafeZipArchive([string]$ZipPath, [string]$DestDir) {{
+    Assert-NoReparsePoint $DestDir
+    $FullDest = [System.IO.Path]::GetFullPath($DestDir).TrimEnd("\\", "/") + [System.IO.Path]::DirectorySeparatorChar
+    $MaxBytes = 1073741824L
+    $TotalBytes = 0L
+    $Zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {{
+        foreach ($Entry in $Zip.Entries) {{
+            $Norm = $Entry.FullName.Replace("\\", "/")
+            $Parts = $Norm.Split("/")
+            $Mode = (($Entry.ExternalAttributes -shr 16) -band 0xF000)
+            if ($Norm.StartsWith("/") -or $Norm.Contains(":") -or ($Parts -contains "..") -or ($Mode -eq 0xA000)) {{
+                throw ("Unsafe zip entry blocked: " + $Entry.FullName)
+            }}
+            $TotalBytes += [int64]$Entry.Length
+            if (($Entry.Length -gt $MaxBytes) -or ($TotalBytes -gt $MaxBytes)) {{
+                throw "Zip archive exceeds maximum uncompressed size limit (1GB)"
+            }}
+        }}
+        foreach ($Entry in $Zip.Entries) {{
+            $TargetPath = [System.IO.Path]::GetFullPath((Join-Path $DestDir $Entry.FullName))
+            if (-not $TargetPath.StartsWith($FullDest, [System.StringComparison]::OrdinalIgnoreCase)) {{
+                throw ("Zip-Slip path traversal blocked: " + $Entry.FullName)
+            }}
+            Assert-NoReparsePoint $TargetPath
+            if ([string]::IsNullOrEmpty($Entry.Name)) {{
+                New-Item -ItemType Directory -Force -Path $TargetPath | Out-Null
+            }} else {{
+                $ParentDir = Split-Path -Parent $TargetPath
+                if (-not (Test-Path $ParentDir)) {{ New-Item -ItemType Directory -Force -Path $ParentDir | Out-Null }}
+                Assert-NoReparsePoint $ParentDir
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($Entry, $TargetPath, $true)
+            }}
+        }}
+    }} finally {{
+        $Zip.Dispose()
+    }}
+}}
+
 Write-Host "=================================================================" -ForegroundColor Cyan
 Write-Host "  WoW Forever 통합 애드온 원클릭 설치기 (v0.2.0)" -ForegroundColor Yellow
 Write-Host "  구성: 갓존슨 통합 애드온 (v{upstream_version}, 21개 폴더) + ForeverSuite + GJBridge" -ForegroundColor Gray
@@ -119,7 +260,7 @@ foreach ($CandidateZip in $LocalSearch) {{
 if ($null -eq $ValidZip) {{
     Write-Host "[2/4] 갓존슨 통합 애드온 (v{upstream_version}) 다운로드 중..." -ForegroundColor Yellow
     $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -Uri "{upstream_url}" -OutFile $UpstreamZip -UseBasicParsing
+    Invoke-SafeWebDownload -Uri "{upstream_url}" -OutFile $UpstreamZip -TimeoutSec 120
     $DownloadedHash = (Get-FileHash -Path $UpstreamZip -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($DownloadedHash -ne "{upstream_sha256}") {{
         Remove-Item -Force $UpstreamZip -ErrorAction SilentlyContinue
@@ -131,17 +272,18 @@ if ($null -eq $ValidZip) {{
 }}
 
 Write-Host "[3/4] 스테이징 압축 해제 및 무결성 검증 중..." -ForegroundColor Yellow
-$StageRoot = Join-Path $AddOnsPath (".ForeverSuite_stage_" + $PID)
+Assert-NoReparsePoint $AddOnsPath
+$StageRoot = Join-Path $AddOnsPath (".ForeverSuite_stage_" + $PID + "_" + [guid]::NewGuid().ToString("N"))
 $BackupRoot = Join-Path $AddOnsPath ".ForeverSuite_prev_backup"
-if (Test-Path $StageRoot) {{ Remove-Item -Recurse -Force $StageRoot }}
-New-Item -ItemType Directory -Force -Path $StageRoot | Out-Null
+if (Test-Path -LiteralPath $StageRoot) {{ throw "Stage directory collision blocked" }}
+New-Item -ItemType Directory -Path $StageRoot | Out-Null
 
-Expand-Archive -Path $ValidZip -DestinationPath $StageRoot -Force
+Expand-SafeZipArchive -ZipPath $ValidZip -DestDir $StageRoot
 
 $EmbeddedZipBytes = [Convert]::FromBase64String("{embedded_zip_b64}")
 $EmbeddedZipPath = Join-Path $CacheDir "ForeverSuite_Embedded.zip"
 [IO.File]::WriteAllBytes($EmbeddedZipPath, $EmbeddedZipBytes)
-Expand-Archive -Path $EmbeddedZipPath -DestinationPath $StageRoot -Force
+Expand-SafeZipArchive -ZipPath $EmbeddedZipPath -DestDir $StageRoot
 
 $ExpectedFolders = @("ForeverSuite", "ForeverSuite_GJBridge", "GodJohnsonGoldBorder", "GodJohnsonEngineStartup")
 foreach ($Req in $ExpectedFolders) {{
@@ -157,6 +299,10 @@ New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
 
 Get-ChildItem -Path $StageRoot -Directory | ForEach-Object {{
     $FolderName = $_.Name
+    if (($FolderName -notmatch '^(GodJohnson[A-Za-z0-9_]*|ForeverSuite(_GJBridge)?)$') -or (-not (Test-Path (Join-Path $_.FullName ($FolderName + ".toc"))))) {{
+        Remove-Item -Recurse -Force $StageRoot -ErrorAction SilentlyContinue
+        throw "신뢰할 수 없는 최상위 애드온 폴더 차단: $FolderName"
+    }}
     $DestPath = Join-Path $AddOnsPath $FolderName
     $BkPath = Join-Path $BackupRoot $FolderName
     if (Test-Path $DestPath) {{
@@ -166,6 +312,248 @@ Get-ChildItem -Path $StageRoot -Directory | ForEach-Object {{
 }}
 
 Remove-Item -Recurse -Force $StageRoot -ErrorAction SilentlyContinue
+
+$AutoUpdaterScript = Join-Path $CacheDir "ForeverSuite_AutoUpdate.ps1"
+$ManifestUrl = if ($env:FS_UPDATE_MANIFEST_URL) {{ $env:FS_UPDATE_MANIFEST_URL }} else {{ "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/pinned_upstream.json" }}
+$StatePath = Join-Path $CacheDir "installed_state.json"
+@{{
+    addons_dir = $AddOnsPath
+    cache_root = $CacheDir
+    manifest_uri = $ManifestUrl
+    version = "{upstream_version}"
+    zip_sha256 = "{upstream_sha256}"
+    patch_zip_sha256 = "{embedded_patch_sha256}"
+    updated_at = (Get-Date).ToString("o")
+}} | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
+
+$AutoUpdaterBody = @'
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+function Assert-SafeHttpsUri([string]$Uri) {{
+    $Parsed = $null
+    if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$Parsed)) {{ throw ('Invalid URI blocked: ' + $Uri) }}
+    $AllowedHosts = @('mediafilez.forgecdn.net','edge.forgecdn.net','www.curseforge.com','api.cfwidget.com','raw.githubusercontent.com','github.com','objects.githubusercontent.com')
+    if (($Parsed.Scheme -ne 'https') -or ($AllowedHosts -notcontains $Parsed.Host.ToLowerInvariant())) {{
+        throw ('Untrusted URI scheme or host blocked: ' + $Uri)
+    }}
+}}
+
+function Open-SafeHttpsResponse([string]$Uri, [int]$TimeoutSec = 60, [int]$MaxHops = 5) {{
+    $Curr = $Uri
+    for ($Hop = 0; $Hop -le $MaxHops; $Hop++) {{
+        Assert-SafeHttpsUri $Curr
+        $Req = [System.Net.HttpWebRequest]::Create($Curr)
+        $Req.Method = 'GET'
+        $Req.AllowAutoRedirect = $false
+        $Req.UserAgent = 'ForeverSuiteUpdater/1.0'
+        $Req.Timeout = ($TimeoutSec * 1000)
+        $Resp = [System.Net.HttpWebResponse]$Req.GetResponse()
+        $Code = [int]$Resp.StatusCode
+        if ($Code -in @(301, 302, 303, 307, 308)) {{
+            $Loc = $Resp.Headers['Location']
+            $Resp.Close()
+            if ([string]::IsNullOrWhiteSpace($Loc)) {{ throw 'Redirect missing Location header' }}
+            $Curr = ([Uri]::new([Uri]$Curr, $Loc)).AbsoluteUri
+            continue
+        }}
+        Assert-SafeHttpsUri $Resp.ResponseUri.AbsoluteUri
+        return $Resp
+    }}
+    throw 'Redirect hop limit exceeded'
+}}
+
+function Invoke-SafeRestJson([string]$Uri, [int]$TimeoutSec = 15) {{
+    $Resp = Open-SafeHttpsResponse -Uri $Uri -TimeoutSec $TimeoutSec
+    try {{
+        $Reader = New-Object System.IO.StreamReader($Resp.GetResponseStream(), [System.Text.Encoding]::UTF8)
+        try {{
+            return ($Reader.ReadToEnd() | ConvertFrom-Json)
+        }} finally {{
+            $Reader.Dispose()
+        }}
+    }} finally {{
+        $Resp.Close()
+    }}
+}}
+
+function Invoke-SafeWebDownload([string]$Uri, [string]$OutFile, [int]$TimeoutSec = 120) {{
+    $Resp = Open-SafeHttpsResponse -Uri $Uri -TimeoutSec $TimeoutSec
+    try {{
+        $InStream = $Resp.GetResponseStream()
+        $OutStream = [System.IO.File]::Create($OutFile)
+        try {{
+            $InStream.CopyTo($OutStream)
+        }} finally {{
+            $OutStream.Dispose()
+            $InStream.Dispose()
+        }}
+    }} finally {{
+        $Resp.Close()
+    }}
+}}
+
+function Assert-NoReparsePoint([string]$PathToCheck) {{
+    $Curr = $PathToCheck
+    while (-not [string]::IsNullOrWhiteSpace($Curr)) {{
+        if (Test-Path -LiteralPath $Curr) {{
+            $Item = Get-Item -LiteralPath $Curr -Force
+            if (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {{
+                throw ('Reparse point or symlink blocked: ' + $Curr)
+            }}
+        }}
+        $Parent = Split-Path -Parent $Curr
+        if ([string]::IsNullOrWhiteSpace($Parent) -or ($Parent -eq $Curr)) {{ break }}
+        $Curr = $Parent
+    }}
+}}
+
+function Expand-SafeZipArchive([string]$ZipPath, [string]$DestDir) {{
+    Assert-NoReparsePoint $DestDir
+    $FullDest = [System.IO.Path]::GetFullPath($DestDir).TrimEnd('\\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $MaxBytes = 1073741824L
+    $TotalBytes = 0L
+    $Zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {{
+        foreach ($Entry in $Zip.Entries) {{
+            $Norm = $Entry.FullName.Replace('\\', '/')
+            $Parts = $Norm.Split('/')
+            $Mode = (($Entry.ExternalAttributes -shr 16) -band 0xF000)
+            if ($Norm.StartsWith('/') -or $Norm.Contains(':') -or ($Parts -contains '..') -or ($Mode -eq 0xA000)) {{
+                throw ('Unsafe zip entry blocked: ' + $Entry.FullName)
+            }}
+            $TotalBytes += [int64]$Entry.Length
+            if (($Entry.Length -gt $MaxBytes) -or ($TotalBytes -gt $MaxBytes)) {{
+                throw 'Zip archive exceeds maximum uncompressed size limit (1GB)'
+            }}
+        }}
+        foreach ($Entry in $Zip.Entries) {{
+            $TargetPath = [System.IO.Path]::GetFullPath((Join-Path $DestDir $Entry.FullName))
+            if (-not $TargetPath.StartsWith($FullDest, [System.StringComparison]::OrdinalIgnoreCase)) {{
+                throw ('Zip-Slip path traversal blocked: ' + $Entry.FullName)
+            }}
+            Assert-NoReparsePoint $TargetPath
+            if ([string]::IsNullOrEmpty($Entry.Name)) {{
+                New-Item -ItemType Directory -Force -Path $TargetPath | Out-Null
+            }} else {{
+                $ParentDir = Split-Path -Parent $TargetPath
+                if (-not (Test-Path $ParentDir)) {{ New-Item -ItemType Directory -Force -Path $ParentDir | Out-Null }}
+                Assert-NoReparsePoint $ParentDir
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($Entry, $TargetPath, $true)
+            }}
+        }}
+    }} finally {{
+        $Zip.Dispose()
+    }}
+}}
+
+$StateFile = Join-Path $PSScriptRoot 'installed_state.json'
+if (-not (Test-Path $StateFile)) {{ exit 0 }}
+$State = Get-Content $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+$AddOnsDir = [string]$State.addons_dir
+$CacheRoot = [string]$State.cache_root
+$ManifestUri = [string]$State.manifest_uri
+if (-not (Test-Path $AddOnsDir)) {{ exit 0 }}
+$ErrLog = Join-Path $CacheRoot 'autoupdate_error.log'
+$Stage = Join-Path $AddOnsDir ('.ForeverSuite_autoupdate_' + $PID + '_' + [guid]::NewGuid().ToString('N'))
+$BackupRoot = Join-Path $AddOnsDir '.ForeverSuite_prev_backup'
+$Swapped = @()
+try {{
+    Assert-NoReparsePoint $AddOnsDir
+    Assert-SafeHttpsUri $ManifestUri
+    $ProgressPreference = 'SilentlyContinue'
+    $Remote = Invoke-SafeRestJson -Uri $ManifestUri -TimeoutSec 15
+    if (-not $Remote -or -not $Remote.zip_sha256 -or -not $Remote.download_url) {{ exit 0 }}
+    $RemoteUpSha = [string]$Remote.zip_sha256.ToLowerInvariant()
+    if ($RemoteUpSha -notmatch '^[0-9a-f]{{64}}$') {{ throw 'Invalid upstream SHA-256 format blocked' }}
+    $RemotePatchUrl = if ($Remote.patch_zip_url) {{ [string]$Remote.patch_zip_url }} else {{ '' }}
+    $RemotePatchSha = if ($Remote.patch_zip_sha256) {{ [string]$Remote.patch_zip_sha256.ToLowerInvariant() }} else {{ '' }}
+    $CurrentUpSha = if ($State.zip_sha256) {{ [string]$State.zip_sha256.ToLowerInvariant() }} else {{ '' }}
+    $CurrentPatchSha = if ($State.patch_zip_sha256) {{ [string]$State.patch_zip_sha256.ToLowerInvariant() }} else {{ '' }}
+    $HasPatchSpec = ((-not [string]::IsNullOrWhiteSpace($RemotePatchUrl)) -and (-not [string]::IsNullOrWhiteSpace($RemotePatchSha)))
+    $UpChanged = ($CurrentUpSha -ne $RemoteUpSha)
+    $PatchChanged = ($HasPatchSpec -and ($CurrentPatchSha -ne $RemotePatchSha))
+    if (-not $UpChanged -and -not $PatchChanged) {{ exit 0 }}
+
+    if (Test-Path -LiteralPath $Stage) {{ throw 'Stage directory collision blocked' }}
+    New-Item -ItemType Directory -Path $Stage | Out-Null
+
+    if ($UpChanged) {{
+        $RemoteDlUrl = [string]$Remote.download_url
+        Assert-SafeHttpsUri $RemoteDlUrl
+        $RawFileName = [string]$Remote.file_name
+        $SafeFileName = [IO.Path]::GetFileName($RawFileName)
+        if (($SafeFileName -ne $RawFileName) -or ($SafeFileName -notmatch '^[\\w.\\-]+\\.zip$')) {{
+            throw 'Unsafe upstream archive filename blocked'
+        }}
+        $TargetZip = Join-Path $CacheRoot $SafeFileName
+        Invoke-SafeWebDownload -Uri $RemoteDlUrl -OutFile $TargetZip -TimeoutSec 120
+        $ActualHash = (Get-FileHash -Path $TargetZip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($ActualHash -ne $RemoteUpSha) {{
+            Remove-Item -Force $TargetZip -ErrorAction SilentlyContinue
+            throw 'Security hash mismatch blocked'
+        }}
+        Expand-SafeZipArchive -ZipPath $TargetZip -DestDir $Stage
+    }}
+    if ($HasPatchSpec -and ($PatchChanged -or $UpChanged)) {{
+        Assert-SafeHttpsUri $RemotePatchUrl
+        if ($RemotePatchSha -notmatch '^[0-9a-f]{{64}}$') {{
+            throw 'Invalid patch SHA-256 format blocked'
+        }}
+        $PatchZip = Join-Path $CacheRoot 'ForeverSuite_Patch.zip'
+        Invoke-SafeWebDownload -Uri $RemotePatchUrl -OutFile $PatchZip -TimeoutSec 60
+        $PatchHash = (Get-FileHash -Path $PatchZip -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($PatchHash -ne $RemotePatchSha) {{
+            Remove-Item -Force $PatchZip -ErrorAction SilentlyContinue
+            throw 'Patch SHA-256 mismatch blocked'
+        }}
+        Expand-SafeZipArchive -ZipPath $PatchZip -DestDir $Stage
+    }}
+
+    New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
+    foreach ($DirItem in (Get-ChildItem -Path $Stage -Directory)) {{
+        $Name = $DirItem.Name
+        if (($Name -notmatch '^(GodJohnson[A-Za-z0-9_]*|ForeverSuite(_GJBridge)?)$') -or (-not (Test-Path (Join-Path $DirItem.FullName ($Name + '.toc'))))) {{
+            throw ('Untrusted addon folder blocked: ' + $Name)
+        }}
+        $Dest = Join-Path $AddOnsDir $Name
+        $Bk = Join-Path $BackupRoot $Name
+        if (Test-Path $Bk) {{ Remove-Item -Recurse -Force $Bk }}
+        $HadDest = (Test-Path $Dest)
+        if ($HadDest) {{ Move-Item -Path $Dest -Destination $Bk -Force }}
+        $Swapped += [PSCustomObject]@{{ Name = $Name; Dest = $Dest; Bk = $Bk; HadDest = $HadDest }}
+        Move-Item -Path $DirItem.FullName -Destination $Dest -Force
+    }}
+    Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
+    $State.version = [string]$Remote.version
+    $State.zip_sha256 = $RemoteUpSha
+    if (-not [string]::IsNullOrWhiteSpace($RemotePatchSha)) {{ $State.patch_zip_sha256 = $RemotePatchSha }}
+    $State.updated_at = (Get-Date).ToString('o')
+    $State | ConvertTo-Json | Set-Content -Path $StateFile -Encoding UTF8
+}} catch {{
+    foreach ($Entry in $Swapped) {{
+        try {{
+            if (Test-Path $Entry.Dest) {{ Remove-Item -Recurse -Force $Entry.Dest -ErrorAction SilentlyContinue }}
+            if ($Entry.HadDest -and (Test-Path $Entry.Bk)) {{ Move-Item -Path $Entry.Bk -Destination $Entry.Dest -Force }}
+        }} catch {{}}
+    }}
+    if (Test-Path $Stage) {{ Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue }}
+    Add-Content -Path $ErrLog -Value ("[" + (Get-Date).ToString('o') + "] " + $_.Exception.Message) -Encoding UTF8
+    exit 1
+}}
+'@
+Set-Content -Path $AutoUpdaterScript -Value $AutoUpdaterBody -Encoding UTF8
+try {{
+    $SysPowerShell = Join-Path $env:SystemRoot "System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    if (-not (Test-Path $SysPowerShell)) {{ $SysPowerShell = "powershell.exe" }}
+    $Action = New-ScheduledTaskAction -Execute $SysPowerShell -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$AutoUpdaterScript`""
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    Register-ScheduledTask -TaskName "ForeverSuite_AutoUpdate" -Action $Action -Trigger $Trigger -Settings $Settings -Force | Out-Null
+    Write-Host "[자동 업데이트] Windows 로그온 시 보안·버전 자동 업데이트 작업(ForeverSuite_AutoUpdate)이 등록되었습니다." -ForegroundColor Cyan
+}} catch {{}}
+
 Write-Host "[OK] 갓존슨 통합 애드온(21개) + ForeverSuite + GJBridge 원클릭 설치 완료!" -ForegroundColor Green
 try {{
     Add-Type -AssemblyName System.Windows.Forms
@@ -394,7 +782,9 @@ def _write_single_file_to_zip(zf: zipfile.ZipFile, repo_root: pathlib.Path, file
         return
     rel_posix = file_path.relative_to(repo_root).as_posix()
     raw = file_path.read_bytes().removeprefix(b"\xef\xbb\xbf").replace(b"\r\n", b"\n")
-    zf.writestr(rel_posix, raw)
+    info = zipfile.ZipInfo(filename=rel_posix, date_time=(2026, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    zf.writestr(info, raw)
 
 
 def _write_addon_folder_to_zip(zf: zipfile.ZipFile, repo_root: pathlib.Path, addon_folder: str) -> None:
@@ -411,7 +801,29 @@ def _build_embedded_zip_b64(repo_root: pathlib.Path) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def build_windows_installer_exe(repo_root: pathlib.Path) -> pathlib.Path:
+def _verify_dist_targets_writable(cand: pathlib.Path) -> None:
+    for existing_name in ("ForeverSuite-v0.2.0.zip", "ForeverSuite-v0.1.0.zip", "ForeverSuite_Installer.exe"):
+        existing_file = cand / existing_name
+        if existing_file.exists() and not os.access(existing_file, os.W_OK):
+            raise PermissionError(f"Cannot overwrite {existing_file}")
+
+
+def _resolve_writable_dist_dir(repo_root: pathlib.Path, out_dir: pathlib.Path | None = None) -> pathlib.Path:
+    cand = out_dir if out_dir is not None else (repo_root / "dist")
+    try:
+        cand.mkdir(parents=True, exist_ok=True)
+        probe = cand / ".write_probe"
+        probe.write_bytes(b"ok")
+        probe.unlink(missing_ok=True)
+        _verify_dist_targets_writable(cand)
+        return cand
+    except OSError:
+        fallback = pathlib.Path(tempfile.gettempdir()) / "ForeverSuite_dist"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def build_windows_installer_exe(repo_root: pathlib.Path, out_dir: pathlib.Path | None = None) -> pathlib.Path:
     """Build dist/ForeverSuite_Installer.exe with embedded ForeverSuite + ForeverSuite_GJBridge payload."""
     manifest_path = repo_root / "pinned_upstream.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -427,8 +839,7 @@ def build_windows_installer_exe(repo_root: pathlib.Path) -> pathlib.Path:
         + b"__FS_PS1_END__\n"
     )
 
-    dist_dir = repo_root / "dist"
-    dist_dir.mkdir(parents=True, exist_ok=True)
+    dist_dir = _resolve_writable_dist_dir(repo_root, out_dir)
     final_exe = dist_dir / "ForeverSuite_Installer.exe"
     staging_exe = dist_dir / ".ForeverSuite_Installer.staging.exe"
     staging_exe.write_bytes(payload)

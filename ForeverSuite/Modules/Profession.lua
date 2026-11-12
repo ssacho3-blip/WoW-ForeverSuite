@@ -64,13 +64,16 @@ function Profession:IsFishingPoleEquipped()
 end
 
 function Profession:ClearFishingBindingSafe()
+    if not self.overrideActive then
+        return
+    end
     if not self.secureBtn then
         self.overrideActive = false
         return
     end
     if ns.InCombat() then
         ns.CombatQueue:RunOrDefer("Profession:ClearFishingOverride", function()
-            if Profession.secureBtn and _G.ClearOverrideBindings and not ns.InCombat() then
+            if Profession.overrideActive and Profession.secureBtn and _G.ClearOverrideBindings and not ns.InCombat() then
                 _G.ClearOverrideBindings(Profession.secureBtn)
                 Profession.overrideActive = false
             end
@@ -96,9 +99,20 @@ function Profession:EnsureSecureFishingButton()
             btn = _G.CreateFrame("Button", "ForeverSuiteFishingButton", _G.UIParent, "SecureActionButtonTemplate")
         end
         if btn then
+            if btn.Hide then
+                btn:Hide()
+            end
+            if btn.RegisterForClicks then
+                btn:RegisterForClicks("AnyUp", "AnyDown")
+            end
             if btn.SetAttribute then
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", ResolveFishingSpellName())
+            end
+            if btn.SetScript then
+                btn:SetScript("PostClick", function()
+                    Profession:ClearFishingBindingSafe()
+                end)
             end
             Profession.secureBtn = btn
         end
@@ -214,7 +228,13 @@ function Profession:CheckGatheringTracking()
         else
             name, _, active, category = info, nil, nil, nil
         end
-        if type(name) == "string" and (category == "spell" or string_find(name, "찾기", 1, true) or string_find(string_lower(name), "find ", 1, true)) then
+        if
+            not ns.IsSecret(name)
+            and not ns.IsSecret(active)
+            and not ns.IsSecret(category)
+            and type(name) == "string"
+            and (category == "spell" or string_find(name, "찾기", 1, true) or string_find(string_lower(name), "find ", 1, true))
+        then
             hasGatherSkill = true
             if active then
                 anyGatherActive = true

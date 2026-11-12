@@ -14,11 +14,12 @@ local BUYBACK_HARD_CAP = 12
 local Utility = {
     title = "편의 및 상점 자동화 (Utility)",
     priority = "P1",
-    description = "자동 수리(길드→개인 폴백), 안전 회색템 판매(12개 한도·보호목록), 고속 루팅",
+    description = "자동 수리(길드→개인), 회색템 판매(12개 한도), 고속 루팅, QoL CVar 자동 제어",
     yieldTo = { "Leatrix_Plus" },
     merchantOpen = false,
     qolApplied = false,
     reusableSellQueue = {},
+    reusableSellEntryPool = {},
 }
 
 local function IsShiftBypassActive()
@@ -32,6 +33,50 @@ function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
     ns.WipeTable(self.reusableSellQueue)
+    ns.WipeTable(self.reusableSellEntryPool)
+end
+
+function Utility:RevertExtraActionBarsIfNeeded(markFinal)
+    -- Zero-Taint Policy: Never touch Blizzard ActionBar frames, Settings proxies, or ActionBar CVars
+    -- automatically on login/reload. Only purge legacy ForeverSuiteDB table keys.
+    if not (ns.ProfileManager and ns.ProfileManager:CanWrite()) then
+        return false
+    end
+    local acct = ns.ProfileManager.runtimeAccount
+    local charTbl = ns.ProfileManager.runtimeChar
+    local utilTbl = (type(acct) == "table" and type(acct.utility) == "table") and acct.utility or nil
+    if utilTbl then
+        utilTbl.extraActionBars = nil
+        utilTbl.extraActionBarMode = nil
+        if markFinal ~= false then
+            utilTbl._extraBarsRollback20261106 = true
+            utilTbl._extraBarsRollback20261107 = true
+        end
+    end
+    if markFinal ~= false and type(charTbl) == "table" then
+        charTbl._extraBarsRollback20261106 = true
+        charTbl._extraBarsRollback20261107 = true
+    end
+    return true
+end
+
+function Utility:CleanActionBarsNow()
+    if ns.InCombat() then
+        ns.Warn("전투 중에는 스킬창 설정을 변경할 수 없습니다. 전투 종료 후 실행해 주세요.")
+        return false
+    end
+    self:RevertExtraActionBarsIfNeeded(true)
+    local okAlways = ns.SafeSetCVar("alwaysShowActionBars", "1")
+    local okToggles = false
+    if type(_G.SetActionBarToggles) == "function" then
+        okToggles = pcall(_G.SetActionBarToggles, false, false, false, false, false, false, false, false) and true or false
+    end
+    if not (okAlways and okToggles) then
+        ns.Warn("스킬창 설정 API 호출에 실패하여 표시 해제를 확정할 수 없습니다.")
+        return false
+    end
+    ns.Print("추가 스킬창 표시 해제 완료. 전투 중 오염 방지를 위해 /reload 를 한 번 실행해 주세요.")
+    return true
 end
 
 function Utility:ApplyQoLCVars()
@@ -122,7 +167,13 @@ function Utility:TryAutoSellJunk()
                     break
                 end
                 local info = C_Container.GetContainerItemInfo(bag, slot)
-                if type(info) == "table" and not ns.IsSecret(info.quality) and info.quality == POOR_QUALITY and not info.isLocked and not info.hasNoValue then
+                if type(info) == "table"
+                    and not ns.IsSecret(info.quality)
+                    and info.quality == POOR_QUALITY
+                    and not info.isLocked
+                    and not info.hasNoValue
+                    and not info.isRefundable
+                then
                     local itemID = info.itemID
                     if itemID and not ns.IsSecret(itemID) and not ns.ProfileManager:IsProtectedItem(itemID) then
                         local rawSell = nil
@@ -133,12 +184,17 @@ function Utility:TryAutoSellJunk()
                         if sellPrice > 0 then
                             local rawStack = info.stackCount
                             local stackCount = (type(rawStack) == "number" and not ns.IsSecret(rawStack)) and rawStack or 1
-                            queue[#queue + 1] = {
-                                bag = bag,
-                                slot = slot,
-                                itemID = itemID,
-                                expected = sellPrice * stackCount,
-                            }
+                            local nextIdx = #queue + 1
+                            local entry = self.reusableSellEntryPool[nextIdx]
+                            if not entry then
+                                entry = {}
+                                self.reusableSellEntryPool[nextIdx] = entry
+                            end
+                            entry.bag = bag
+                            entry.slot = slot
+                            entry.itemID = itemID
+                            entry.expected = sellPrice * stackCount
+                            queue[nextIdx] = entry
                         end
                     end
                 end
@@ -159,6 +215,8 @@ function Utility:TryAutoSellJunk()
         local liveInfo = C_Container.GetContainerItemInfo(entry.bag, entry.slot)
         if type(liveInfo) == "table"
             and not liveInfo.isLocked
+            and not liveInfo.hasNoValue
+            and not liveInfo.isRefundable
             and not ns.IsSecret(liveInfo.itemID)
             and liveInfo.itemID == entry.itemID
             and not ns.IsSecret(liveInfo.quality)
@@ -217,8 +275,15 @@ function Utility:OnLootReady()
     end
 end
 
+function Utility:OnPlayerEnteringWorld()
+    self:RevertExtraActionBarsIfNeeded(true)
+end
+
 function Utility:OnEnable(ctx)
+    self.ctx = ctx
     self:ApplyQoLCVars()
+    self:RevertExtraActionBarsIfNeeded(true)
+    ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Utility.OnPlayerEnteringWorld)
     ctx:RegisterEvent("MERCHANT_SHOW", Utility.OnMerchantShow)
     ctx:RegisterEvent("MERCHANT_CLOSED", Utility.OnMerchantClosed)
     ctx:RegisterEvent("LOOT_READY", Utility.OnLootReady)
@@ -228,9 +293,11 @@ function Utility:OnEnable(ctx)
 end
 
 function Utility:OnDisable()
+    self.ctx = nil
     self.merchantOpen = false
     self:RestoreQoLCVars()
     ns.WipeTable(self.reusableSellQueue)
+    ns.WipeTable(self.reusableSellEntryPool)
 end
 
 ns.ModuleManager:Register("Utility", Utility)
