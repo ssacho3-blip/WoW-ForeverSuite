@@ -18,7 +18,7 @@
 | **`ForeverSuite_GJBridge`** | **Bridge** | `GJCompanion.Say` 접두어 개인화(`[포에버]:`), 유튜브 버튼 비활성화, 404 홈 배너 개인화, 거래 귓속말 기본 OFF, 런처 아이콘(`134063`) 지연 스킨 | `GJ` 설정 활성 또는 판독 불가 시 `ForeverSuite`가 자동 양보(`Fail-Safe YIELD`) |
 | **Core / Profile / UI** | **P0** | 단일 프레임 `EventBus`, 계층형 프로필(캐릭터>직업>계정), 60초 3회 오류 시 `FAULTED` 서킷 브레이커, `/fs` 통합 설정창 | — |
 | **Utility (`repair`, `sell`)** | **P1** | 자동 수리(길드 금고 우선 → 개인 골드 폴백), 회색 잡템 배치 판매(1회 12개 되사기 한도·보호목록·`Shift` 정지) | `GJCompanion.ExtraSettings("merchantAutomation")` 활성 시 자동 양보 |
-| **Quest (`questAuto`)** | **P1** | 안전한 퀘스트 자동 수락·완료(복수 보상 선택 시 자동 정지, `Shift` 홀드 수동), 수락 퀘스트 자동 `SuperTrack` 포커스 | `GJCompanion.ExtraSettings("automation")` 활성 시 자동 양보 |
+| **Quest (`questAuto` + 추적창)** | **P1** | **지역별(현재 지역 최상단)·레벨별(수월·적정·도전) 온스크린 퀘스트 추적창 HUD**, 안전 자동 수락·완료(`Shift` 우회), `SuperTrack` 화살표 연동 | `Questie` 로드 시 전체 양보, `GJCompanion.ExtraSettings("automation")` 활성 시 자동 수락·완료만 양보 |
 | **Profession (`fishing`)** | **P1** | 비전투 안전 더블 우클릭 낚시(`CombatQueue` + 시전 직후 & 전투 진입 2중 해제), 크래시 안전 효과음 부스트, 채집 시간당 수확량 집계 | `GJCompanion.FishingSettings()` 활성 시 자동 양보 |
 | **Map (`/way`)** | **P1** | 월드맵 열림 시에만 동작하는 `0.15s` 플레이어 좌표, `/way <X> <Y> [메모]` → 내장 `C_Map.SetUserWaypoint` + `C_SuperTrack` 연동 | 실제 외부 `/way` 슬래시 명령(`TomTom` 등) 존재 시에만 양보 (`GJ`에는 양보 안 함) |
 | **Inventory / Economy / Combat** | **P1~P2** | 가방 여유 슬롯 HUD·툴팁 판매가, `PLAYER_MONEY` 세션 골드 원장, 비전투 자가 버프 누락 알림 & `issecretvalue` 안전 저체력 경고 | `Baganator`, `Bagnon`, `Auctionator` |
@@ -30,6 +30,7 @@
 - `/fsgj` 또는 `/fsgj status` : **갓존슨 브리지(`ForeverSuite_GJBridge`) 오버라이드 5종 적용 상태(`APPLIED`/`PENDING`/`MISSING`) 및 5대 기능 단일 소유자(`OWNED_BY_FS`/`YIELDED`) 상태 점검**
 - `/fsgj sync` : 갓존슨 설정 변경 후 브리지 소유권 및 런처 아이콘 즉시 재동기화
 - `/fs` 또는 `/forever` : ForeverSuite 통합 설정 및 모듈 상태/성능 창 열기·닫기
+- `/fs quest [zone | level | here | toggle | default | reset]` : **온스크린 퀘스트 추적창 지역별/레벨별 분류 전환, 현재 지역 필터, 기본 추적기 동시 표시, 위치 초기화** (추적창 상단 `[지역별]` `[레벨별]` `[현지역]` `[–]` 버튼으로도 즉시 클릭 제어 가능)
 - `/fs status` : ForeverSuite 전체 모듈 활성화 / `YIELDED` / `FAULTED` 상태 출력
 - `/fs perf` : 실시간 메모리 및 `C_AddOnProfiler` 평균 CPU, 활성 이벤트/Ticker 수 확인
 - `/fs gold` : 현재 세션 골드 수입·지출 원장 출력

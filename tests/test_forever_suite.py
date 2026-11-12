@@ -118,7 +118,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
     assert meta["SavedVariables"] == "ForeverSuiteDB"
     assert meta["SavedVariablesPerCharacter"] == "ForeverSuiteCharDB"
     assert meta["AddonCompartmentFunc"] == "ForeverSuite_OnAddonCompartmentClick"
-    assert len(files) == 13
+    assert len(files) == 15
 
     all_c_calls: set[str] = set()
     for lua_file in files:
@@ -307,6 +307,14 @@ def _assert_future_schema_readonly(pm_future: LuaTable, rt_future: WoWForeverMoc
     ok_prot, prot_code = rt_future.vm._invoke_callable(pm_future["SetProtectedItem"], (pm_future, 9001, True))
     assert ok_prot is False
     assert prot_code == "READ_ONLY"
+    ok_qgrp, qgrp_code = rt_future.vm._invoke_callable(
+        pm_future["SetQuestGroupCollapsed"], (pm_future, "zone:엘윈 숲", True)
+    )
+    assert ok_qgrp is False
+    assert qgrp_code == "READ_ONLY"
+    ok_qclr, qclr_code = rt_future.vm._invoke_callable(pm_future["ClearCollapsedQuestGroups"], (pm_future,))
+    assert ok_qclr is False
+    assert qclr_code == "READ_ONLY"
 
 
 def test_ac5_profile_hierarchy_migration_readonly_and_crash_cvar() -> None:
@@ -646,7 +654,7 @@ def _count_matching_named_frames(rt: WoWForeverMockRuntime, names: set[str]) -> 
 
 
 def _toggle_core_ui_modules_once(rt: WoWForeverMockRuntime, mm: LuaTable) -> None:
-    for mod_name in ("Inventory", "Map", "Combat"):
+    for mod_name in ("Inventory", "Map", "Quest", "Combat"):
         rt.vm._invoke_callable(mm["DisableModule"], (mm, mod_name))
         assert rt.vm._invoke_callable(mm["EnableModule"], (mm, mod_name, True))[0] is True
 
@@ -656,15 +664,20 @@ def test_module_disable_enable_reuses_named_frames_and_batch_money_reasons() -> 
     ns = rt.boot_session()
     mm = ns["ModuleManager"]
     econ = mm["modules"]["Economy"]["definition"]
-    target_names = {"ForeverSuiteBagHUD", "ForeverSuiteMapCoordHolder", "ForeverSuiteHealthAlertFrame"}
+    target_names = {
+        "ForeverSuiteBagHUD",
+        "ForeverSuiteMapCoordHolder",
+        "ForeverSuiteQuestTracker",
+        "ForeverSuiteHealthAlertFrame",
+    }
 
-    assert _count_matching_named_frames(rt, target_names) == 3
+    assert _count_matching_named_frames(rt, target_names) == 4
 
     # Toggle Disable -> Enable 4 times; named frames must be reused 100% with 0 duplicates
     for _ in range(4):
         _toggle_core_ui_modules_once(rt, mm)
 
-    assert _count_matching_named_frames(rt, target_names) == 3
+    assert _count_matching_named_frames(rt, target_names) == 4
 
     # Simultaneous personal repair (-800c) + 5 junk items sold (+125c * 5 = +625c) in single MERCHANT_SHOW
     for slot_idx in range(1, 6):

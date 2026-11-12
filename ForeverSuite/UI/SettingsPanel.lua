@@ -10,6 +10,7 @@ local string_match = string.match
 local SettingsPanel = {
     frame = nil,
     perfLabel = nil,
+    questModeBtn = nil,
     rows = {},
     lastMemUpdateAt = -999,
     cachedMemKB = nil,
@@ -143,7 +144,7 @@ function SettingsPanel:EnsureFrame()
         end
     end
 
-    local probeBtn = ns.UI.CreateButton(f, "API 프로브 (/fs probe)", 148, 24, function()
+    local probeBtn = ns.UI.CreateButton(f, "API 프로브", 106, 24, function()
         local rep = ns.RunClientProbe()
         ns.Print(string_format("클라이언트 프로브 완료: v%s (%s, TOC %d)", rep.version, rep.build, rep.tocVersion))
         SettingsPanel:Refresh()
@@ -152,23 +153,35 @@ function SettingsPanel:EnsureFrame()
         probeBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 14)
     end
 
-    local sortBtn = ns.UI.CreateButton(f, "가방 정렬", 96, 24, function()
+    local sortBtn = ns.UI.CreateButton(f, "가방 정렬", 88, 24, function()
         if C_Container and C_Container.SortBags and not ns.InCombat() then
             C_Container.SortBags()
         end
     end)
     if sortBtn then
-        sortBtn:SetPoint("LEFT", probeBtn, "RIGHT", 8, 0)
+        sortBtn:SetPoint("LEFT", probeBtn, "RIGHT", 6, 0)
     end
 
-    local cleanBarsBtn = ns.UI.CreateButton(f, "스킬창 정리 (/fs bars)", 140, 24, function()
+    local cleanBarsBtn = ns.UI.CreateButton(f, "스킬창 정리", 104, 24, function()
         local util = ns.ModuleManager:GetModule("Utility")
         if util and util.definition and util.definition.CleanActionBarsNow then
             util.definition:CleanActionBarsNow()
         end
     end)
     if cleanBarsBtn then
-        cleanBarsBtn:SetPoint("LEFT", sortBtn, "RIGHT", 8, 0)
+        cleanBarsBtn:SetPoint("LEFT", sortBtn, "RIGHT", 6, 0)
+    end
+
+    local questModeBtn = ns.UI.CreateButton(f, "퀘스트: 지역별", 132, 24, function()
+        local qMod = ns.ModuleManager:GetModule("Quest")
+        if qMod and qMod.definition and qMod.definition.HandleSlash then
+            qMod.definition:HandleSlash("mode")
+            SettingsPanel:Refresh()
+        end
+    end)
+    if questModeBtn then
+        questModeBtn:SetPoint("LEFT", cleanBarsBtn, "RIGHT", 6, 0)
+        self.questModeBtn = questModeBtn
     end
 
     local refreshBtn = ns.UI.CreateButton(f, "지표 새로고침", 104, 24, function()
@@ -190,6 +203,10 @@ function SettingsPanel:Refresh()
     end
     if self.perfLabel then
         self.perfLabel:SetText(self:QueryPerformanceText())
+    end
+    if self.questModeBtn and self.questModeBtn._fsLabel then
+        local qMode = ns.ProfileManager:Get("quest", "groupMode")
+        self.questModeBtn._fsLabel:SetText("퀘스트: " .. ((qMode == "level") and "레벨별" or "지역별"))
     end
     for _, row in ipairs(self.rows) do
         local rec = ns.ModuleManager:GetModule(row.moduleName)
@@ -304,8 +321,15 @@ function ns.HandleSlashCommand(rawMsg)
         else
             ns.Warn("Utility 모듈이 비활성화 상태입니다.")
         end
+    elseif cmd == "quest" or cmd == "quests" or cmd == "q" then
+        local qMod = ns.ModuleManager:GetModule("Quest")
+        if qMod and qMod.definition and qMod.definition.HandleSlash then
+            qMod.definition:HandleSlash(rest)
+        else
+            ns.Warn("Quest 모듈이 비활성화 상태입니다.")
+        end
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | gold | gather | bars | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | quest | gold | gather | bars | enable <모듈> | disable <모듈>]")
     end
 end
 

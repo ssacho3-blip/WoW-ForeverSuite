@@ -39,6 +39,17 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         autoAccept = true,
         autoTurnIn = true,
         autoSuperTrack = true,
+        trackerEnabled = true,
+        groupMode = "zone",
+        currentZoneOnly = false,
+        watchedOnly = true,
+        trackerMinimized = false,
+        hideDefaultTracker = true,
+        trackerPoint = "TOPRIGHT",
+        trackerRelPoint = "TOPRIGHT",
+        trackerX = -22,
+        trackerY = -215,
+        collapsedGroups = {},
     },
     profession = {
         doubleClickFishing = true,
@@ -380,6 +391,73 @@ function ProfileManager:SetProtectedItem(itemID, isProtected)
     else
         acctUtil.protectedItems[itemID] = nil
     end
+    return true
+end
+
+function ProfileManager:IsQuestGroupCollapsed(groupKey)
+    if ns.IsSecret(groupKey) or type(groupKey) ~= "string" or groupKey == "" then
+        return false
+    end
+    if self.runtimeChar and type(self.runtimeChar.overrides) == "table" then
+        local cq = self.runtimeChar.overrides.quest
+        if type(cq) == "table" and type(cq.collapsedGroups) == "table" then
+            local charVal = cq.collapsedGroups[groupKey]
+            if not ns.IsSecret(charVal) and charVal ~= nil then
+                return charVal and true or false
+            end
+        end
+    end
+    local tbl = self:Get("quest", "collapsedGroups")
+    if type(tbl) == "table" then
+        local acctVal = tbl[groupKey]
+        if not ns.IsSecret(acctVal) then
+            return acctVal and true or false
+        end
+    end
+    return false
+end
+
+function ProfileManager:SetQuestGroupCollapsed(groupKey, isCollapsed)
+    if not self:CanWrite() then
+        return false, "READ_ONLY"
+    end
+    if ns.IsSecret(groupKey) or type(groupKey) ~= "string" or groupKey == "" then
+        return false, "INVALID_KEY"
+    end
+    local flag = (not ns.IsSecret(isCollapsed)) and (isCollapsed and true or false) or false
+    local ov = self.runtimeChar and self.runtimeChar.overrides
+    if type(ov) == "table" then
+        ov.quest = type(ov.quest) == "table" and ov.quest or {}
+        ov.quest.collapsedGroups = type(ov.quest.collapsedGroups) == "table" and ov.quest.collapsedGroups or {}
+        -- Store explicit boolean so per-character false overrides account-level true
+        ov.quest.collapsedGroups[groupKey] = flag
+        self:NotifySettingChanged("quest", "collapsedGroups", flag, "char")
+        return true
+    end
+    local acctQuest = self.runtimeAccount.quest
+    acctQuest.collapsedGroups = type(acctQuest.collapsedGroups) == "table" and acctQuest.collapsedGroups or {}
+    if flag then
+        acctQuest.collapsedGroups[groupKey] = true
+    else
+        acctQuest.collapsedGroups[groupKey] = nil
+    end
+    self:NotifySettingChanged("quest", "collapsedGroups", flag, "account")
+    return true
+end
+
+function ProfileManager:ClearCollapsedQuestGroups()
+    if not self:CanWrite() then
+        return false, "READ_ONLY"
+    end
+    if self.runtimeChar and type(self.runtimeChar.overrides) == "table" and type(self.runtimeChar.overrides.quest) == "table" then
+        if type(self.runtimeChar.overrides.quest.collapsedGroups) == "table" then
+            ns.WipeTable(self.runtimeChar.overrides.quest.collapsedGroups)
+        end
+    end
+    if self.runtimeAccount and type(self.runtimeAccount.quest) == "table" and type(self.runtimeAccount.quest.collapsedGroups) == "table" then
+        ns.WipeTable(self.runtimeAccount.quest.collapsedGroups)
+    end
+    self:NotifySettingChanged("quest", "collapsedGroups", false, "char")
     return true
 end
 

@@ -58,6 +58,14 @@ class SecretValue:
     def __truediv__(self, other: Any) -> Any:
         self._secret_guard("/")
 
+    def __eq__(self, other: object) -> bool:
+        self._secret_guard("==")
+        return False
+
+    def __ne__(self, other: object) -> bool:
+        self._secret_guard("~=")
+        return True
+
 
 class StrictCNamespaceTable(LuaTable):
     """Fail-closed C_* namespace table: accessing an unverified method raises FailClosedUnknownAPIError."""
@@ -93,6 +101,9 @@ class WoWForeverMockRuntime:
         self.player_name: str = "Arthas"
         self.realm_name: str = "ForeverKR"
         self.player_class: str = "MAGE"
+        self.player_level: Any = 24
+        self.real_zone_text: Any = "엘윈 숲"
+        self.zone_text: Any = "엘윈 숲"
         self.player_hp: Any = 1000
         self.player_max_hp: Any = 1000
         self.player_dead: bool = False
@@ -139,6 +150,12 @@ class WoWForeverMockRuntime:
         self.accepted_quests: int = 0
         self.completed_quests: int = 0
         self.rewarded_choices: list[Any] = []
+        self.quest_log_entries: list[dict[str, Any]] = []
+        self.quest_num_shown_entries: int | None = None
+        self.quest_objectives: dict[int, list[dict[str, Any]]] = {}
+        self.quest_tags: dict[int, dict[str, Any]] = {}
+        self.watched_quest_ids: list[int] | None = None
+        self.selected_quest_id: int | None = None
         self.loot_slots: list[int] = []
         self.looted_slots: list[int] = []
 
@@ -167,7 +184,7 @@ class WoWForeverMockRuntime:
         f["_name"] = name
         f["_parent"] = parent
         f["_template"] = template
-        f["_shown"] = frame_type != "Frame" or name in ("UIParent", "WorldFrame")
+        f["_shown"] = frame_type != "Frame" or name in ("UIParent", "WorldFrame", "ObjectiveTrackerFrame")
         if name in ("WorldMapFrame",):
             f["_shown"] = False
         f["_events"] = set()
@@ -175,6 +192,8 @@ class WoWForeverMockRuntime:
         f["_hooks"] = {}
         f["_attrs"] = {}
         f["_text"] = ""
+        f["_size"] = (0, 0)
+        f["_point"] = None
 
         is_secure = bool(template and "Secure" in str(template))
 
@@ -241,7 +260,22 @@ class WoWForeverMockRuntime:
             fs["GetText"] = lambda s: s.get("_text")
             fs["SetPoint"] = lambda *_x: None
             fs["SetTextColor"] = lambda *_x: None
+            fs["SetJustifyH"] = lambda *_x: None
+            fs["SetWordWrap"] = lambda *_x: None
+            fs["SetWidth"] = lambda *_x: None
             return fs
+
+        def set_point(self_f: LuaTable, point: str, rel_to: Any = None, rel_pt: Any = None, x: Any = 0, y: Any = 0) -> None:
+            if isinstance(rel_to, (int, float)) and rel_pt is not None:
+                self_f["_point"] = (point, parent, point, rel_to, rel_pt)
+            else:
+                self_f["_point"] = (point, rel_to, rel_pt or point, x, y)
+
+        def get_point(self_f: LuaTable, _idx: int = 1) -> Any:
+            pt = self_f["_point"]
+            if not pt:
+                return MultiReturn((None,))
+            return MultiReturn(pt)
 
         f["RegisterEvent"] = register_event
         f["RegisterUnitEvent"] = register_unit_event
@@ -252,12 +286,17 @@ class WoWForeverMockRuntime:
         f["Show"] = show
         f["Hide"] = hide
         f["IsShown"] = lambda self_f: bool(self_f["_shown"])
-        f["SetSize"] = lambda *_x: None
+        f["SetSize"] = lambda self_f, w, h: self_f.set("_size", (w, h))
         f["SetWidth"] = lambda *_x: None
         f["SetHeight"] = lambda *_x: None
-        f["SetPoint"] = lambda *_x: None
+        f["SetPoint"] = set_point
+        f["GetPoint"] = get_point
+        f["ClearAllPoints"] = lambda self_f: self_f.set("_point", None)
+        f["SetClampedToScreen"] = lambda *_x: None
         f["SetMovable"] = lambda *_x: None
         f["EnableMouse"] = lambda *_x: None
+        f["EnableMouseWheel"] = lambda *_x: None
+        f["RegisterForClicks"] = lambda *_x: None
         f["RegisterForDrag"] = lambda *_x: None
         f["StartMoving"] = lambda *_x: None
         f["StopMovingOrSizing"] = lambda *_x: None
@@ -287,6 +326,7 @@ class WoWForeverMockRuntime:
 
         G["UIParent"] = self._make_frame("Frame", "UIParent")
         G["WorldFrame"] = self._make_frame("Frame", "WorldFrame")
+        G["ObjectiveTrackerFrame"] = self._make_frame("Frame", "ObjectiveTrackerFrame", G["UIParent"], "SecureFrameTemplate")
         wmf = self._make_frame("Frame", "WorldMapFrame")
         wmf["GetMapID"] = lambda _s: self.current_map_id
 
@@ -330,6 +370,14 @@ class WoWForeverMockRuntime:
             }
         )
 
+        orig_tonumber = G.get("tonumber")
+
+        def safe_tonumber(val: Any, base: Any = None) -> Any:
+            if isinstance(val, SecretValue):
+                raise SecretValueViolationError(f"Illegal 'tonumber' on WoW SecretValue({val.label})")
+            return orig_tonumber(val) if base is None else orig_tonumber(val, base)
+
+        G["tonumber"] = safe_tonumber
         G["CreateFrame"] = lambda ftype, name=None, parent=None, template=None: self._make_frame(
             ftype, name, parent, template
         )
@@ -345,6 +393,9 @@ class WoWForeverMockRuntime:
         G["UnitName"] = lambda _u: self.player_name
         G["GetRealmName"] = lambda: self.realm_name
         G["UnitClass"] = lambda _u: MultiReturn((self.player_class.title(), self.player_class))
+        G["UnitLevel"] = lambda _u: self.player_level
+        G["GetRealZoneText"] = lambda: self.real_zone_text
+        G["GetZoneText"] = lambda: self.zone_text
         G["UnitHealth"] = lambda _u: self.player_hp
         G["UnitHealthMax"] = lambda _u: self.player_max_hp
         G["UnitIsDeadOrGhost"] = lambda _u: self.player_dead
@@ -493,18 +544,12 @@ class WoWForeverMockRuntime:
         G["C_SuperTrack"] = StrictCNamespaceTable(
             "C_SuperTrack",
             {
+                "GetSuperTrackedQuestID": lambda: self.super_tracked_quest_id or 0,
                 "SetSuperTrackedUserWaypoint": lambda flag: setattr(self, "super_tracked_waypoint", bool(flag)),
                 "SetSuperTrackedQuestID": lambda qid: setattr(self, "super_tracked_quest_id", int(qid)),
             },
         )
-        G["C_QuestLog"] = StrictCNamespaceTable(
-            "C_QuestLog",
-            {
-                "GetNumQuestLogEntries": lambda: MultiReturn((0, 0)),
-                "GetInfo": lambda _idx: None,
-                "GetDistanceSqToQuest": lambda _qid: MultiReturn((100.0, True)),
-            },
-        )
+        G["C_QuestLog"] = StrictCNamespaceTable("C_QuestLog", self._build_quest_log_methods())
         G["C_Spell"] = StrictCNamespaceTable(
             "C_Spell",
             {
@@ -554,6 +599,69 @@ class WoWForeverMockRuntime:
                 "NewTicker": timer_new_ticker,
             },
         )
+
+    def _active_watch_list(self) -> list[int]:
+        if self.watched_quest_ids is not None:
+            return self.watched_quest_ids
+        return [
+            int(e["questID"])
+            for e in self.quest_log_entries
+            if not e.get("isHeader") and isinstance(e.get("questID"), int)
+        ]
+
+    def _find_quest_entry(self, qid: int) -> tuple[int | None, dict[str, Any] | None]:
+        for idx, entry in enumerate(self.quest_log_entries, start=1):
+            if not entry.get("isHeader") and entry.get("questID") == qid:
+                return idx, entry
+        return None, None
+
+    def _toggle_quest_watch(self, qid: int, add: bool) -> bool:
+        if self.watched_quest_ids is None:
+            self.watched_quest_ids = self._active_watch_list()
+        if add and qid not in self.watched_quest_ids:
+            self.watched_quest_ids.append(qid)
+        elif (not add) and qid in self.watched_quest_ids:
+            self.watched_quest_ids.remove(qid)
+        return True
+
+    def _build_quest_log_methods(self) -> dict[str, Callable[..., Any]]:
+        return {
+            "GetNumQuestLogEntries": lambda: MultiReturn(
+                (
+                    self.quest_num_shown_entries
+                    if self.quest_num_shown_entries is not None
+                    else len(self.quest_log_entries),
+                    sum(1 for e in self.quest_log_entries if not e.get("isHeader")),
+                )
+            ),
+            "GetInfo": lambda idx: (
+                LuaTable(self.quest_log_entries[int(idx) - 1])
+                if 1 <= int(idx) <= len(self.quest_log_entries)
+                else None
+            ),
+            "GetLogIndexForQuestID": lambda qid: self._find_quest_entry(int(qid))[0],
+            "GetNumQuestWatches": lambda: len(self._active_watch_list()),
+            "GetQuestIDForQuestWatchIndex": lambda w_idx: (
+                self._active_watch_list()[int(w_idx) - 1]
+                if 1 <= int(w_idx) <= len(self._active_watch_list())
+                else None
+            ),
+            "GetQuestWatchType": lambda qid: 0 if int(qid) in self._active_watch_list() else None,
+            "AddQuestWatch": lambda qid: self._toggle_quest_watch(int(qid), True),
+            "RemoveQuestWatch": lambda qid: self._toggle_quest_watch(int(qid), False),
+            "GetQuestDifficultyLevel": lambda qid: (self._find_quest_entry(int(qid))[1] or {}).get("difficultyLevel"),
+            "GetQuestObjectives": lambda qid: LuaTable(
+                [LuaTable(o) for o in self.quest_objectives.get(int(qid), [])]
+            ),
+            "GetQuestTagInfo": lambda qid: (
+                LuaTable(self.quest_tags[int(qid)]) if int(qid) in self.quest_tags else None
+            ),
+            "IsComplete": lambda qid: bool((self._find_quest_entry(int(qid))[1] or {}).get("isComplete")),
+            "ReadyForTurnIn": lambda qid: bool((self._find_quest_entry(int(qid))[1] or {}).get("readyForTurnIn")),
+            "IsOnMap": lambda qid: bool((self._find_quest_entry(int(qid))[1] or {}).get("isOnMap")),
+            "SetSelectedQuest": lambda qid: setattr(self, "selected_quest_id", int(qid)),
+            "GetDistanceSqToQuest": lambda _qid: MultiReturn((100.0, True)),
+        }
 
     def parse_toc_files(self) -> tuple[dict[str, str], list[pathlib.Path]]:
         toc_path = self.addon_root / "ForeverSuite.toc"
