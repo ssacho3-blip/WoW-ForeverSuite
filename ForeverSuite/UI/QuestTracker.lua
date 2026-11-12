@@ -17,7 +17,7 @@ local READONLY_MSG = "읽기 전용 프로필(미래 스키마)에서는 설정�
 
 local RESET_DEFAULTS = {
     { "trackerEnabled", true }, { "groupMode", "zone" }, { "currentZoneOnly", false },
-    { "watchedOnly", true }, { "trackerMinimized", false }, { "trackerLocked", false },
+    { "watchedOnly", false }, { "trackerMinimized", false }, { "trackerLocked", false },
     { "trackerPoint", "TOPRIGHT" }, { "trackerRelPoint", "TOPRIGHT" },
     { "trackerX", -22 }, { "trackerY", -215 },
 }
@@ -444,7 +444,13 @@ function QuestTracker:EnsureFrame(ctx)
 
         CreateTrackerChrome(f)
         local title = ns.UI.CreateLabel(f, "퀘스트", "GameFontNormalSmall", ns.UI.COLORS.ACCENT)
-        if title then title:SetPoint("LEFT", f, "TOPLEFT", PADDING_X, -(HEADER_HEIGHT / 2)); f._fsHeaderTitle = title end
+        if title then
+            title:SetPoint("LEFT", f, "TOPLEFT", PADDING_X, -(HEADER_HEIGHT / 2))
+            if title.SetJustifyH then title:SetJustifyH("LEFT") end
+            if title.SetWordWrap then title:SetWordWrap(false) end
+            if title.SetWidth then title:SetWidth(96) end
+            f._fsHeaderTitle = title
+        end
 
         local prevPill = nil
         for _, ps in ipairs({
@@ -492,14 +498,16 @@ function QuestTracker:RenderSnapshot(snapshot)
     if self.minBtn and self.minBtn._fsLabel then self.minBtn._fsLabel:SetText(minimized and "+" or "–") end
 
     if self.headerTitle then
+        local totalSuffix = (snapshot.hiddenByFilter and snapshot.hiddenByFilter > 0)
+            and string_format("|cff64748b (%d)|r", snapshot.totalQuests or 0) or ""
         if snapshot.questLogUnavailable then
             self.headerTitle:SetText("퀘스트 |cff94a3b8—|r")
         elseif snapshot.visibleQuests == 0 then
-            self.headerTitle:SetText("퀘스트 |cff94a3b80|r")
+            self.headerTitle:SetText("퀘스트 |cff94a3b80|r" .. totalSuffix)
         elseif snapshot.visibleCompleted > 0 then
-            self.headerTitle:SetText(string_format("퀘스트 |cff4ade80%d|r/|cffcbd5e1%d|r", snapshot.visibleCompleted, snapshot.visibleQuests))
+            self.headerTitle:SetText(string_format("퀘스트 |cff4ade80%d|r/|cffcbd5e1%d|r%s", snapshot.visibleCompleted, snapshot.visibleQuests, totalSuffix))
         else
-            self.headerTitle:SetText(string_format("퀘스트 |cffcbd5e1%d|r", snapshot.visibleQuests))
+            self.headerTitle:SetText(string_format("퀘스트 |cffcbd5e1%d|r%s", snapshot.visibleQuests, totalSuffix))
         end
     end
 
@@ -536,12 +544,23 @@ function QuestTracker:RenderSnapshot(snapshot)
 
     local footerExtra = 0
     if self.scrollHint then
+        local hw, hz = snapshot.hiddenByWatch or 0, snapshot.hiddenByZone or 0
         if totalRows > MAX_VISIBLE_ROWS then
             footerExtra = 14
-            self.scrollHint:SetText(string_format("|cff94a3b8휠 스크롤 (%d~%d / %d줄)|r", self.scrollOffset + 1, self.scrollOffset + shownCount, totalRows))
+            if snapshot.hiddenByFilter > 0 then
+                self.scrollHint:SetText(string_format("|cff94a3b8휠 스크롤 (%d~%d / %d줄) · %d개 숨김|r", self.scrollOffset + 1, self.scrollOffset + shownCount, totalRows, snapshot.hiddenByFilter))
+            else
+                self.scrollHint:SetText(string_format("|cff94a3b8휠 스크롤 (%d~%d / %d줄)|r", self.scrollOffset + 1, self.scrollOffset + shownCount, totalRows))
+            end
         elseif snapshot.hiddenByFilter > 0 and snapshot.visibleQuests > 0 then
             footerExtra = 14
-            self.scrollHint:SetText(string_format("|cff94a3b8타 지역 미완료 %d개 숨김|r", snapshot.hiddenByFilter))
+            if hw > 0 and hz > 0 then
+                self.scrollHint:SetText(string_format("|cff94a3b8미추적 %d · 타 지역 미완료 %d개 숨김|r", hw, hz))
+            elseif hw > 0 then
+                self.scrollHint:SetText(string_format("|cff94a3b8미추적 퀘스트 %d개 숨김 (/fs quest all)|r", hw))
+            else
+                self.scrollHint:SetText(string_format("|cff94a3b8타 지역 미완료 %d개 숨김|r", hz))
+            end
         else
             self.scrollHint:SetText("")
         end

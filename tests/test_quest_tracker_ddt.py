@@ -219,9 +219,10 @@ def test_collapsed_blizzard_quest_log_header_recovers_watched_quest_and_zone_nam
     groups = _lua_list_items(snap["groups"])
     group_titles = [g["title"] for g in groups]
 
-    # Quest 301 at index 8 must still be recovered with its true '엘윈 숲' header!
+    # Both watched quest 301 AND unwatched quest 302 under collapsed '엘윈 숲' must be recovered!
     assert "엘윈 숲" in group_titles
-    assert snap["totalQuests"] == 5
+    assert snap["totalQuests"] == 6
+    assert snap["visibleQuests"] == 6
 
 
 # ---------------------------------------------------------------------------
@@ -266,17 +267,20 @@ def test_ac_qt4_supertrack_fold_watch_minimize_drag_and_slash_commands() -> None
     assert "[+]" in row_101["_rightText"]["_text"]
     assert not any("에드윈 밴클리프" in t for t in _visible_row_texts(tracker))
 
-    # 3. Shift + Left-click quest 101 -> untracks quest 101 and removes it from HUD; /fs quest all reveals untracked quests
+    # 3. Shift + Left-click quest 101 -> untracks in Blizzard watch list; /fs quest watched hides untracked; /fs quest all reveals all
     rt.shift_down = True
     rt._fire_widget_script(row_101, "OnClick", "LeftButton")
     assert 101 not in rt.watched_quest_ids
+    assert any("데피아즈단 두목 처치" in t for t in _visible_row_texts(tracker))
+    rt.run_slash("FOREVERSUITE", "quest watched")
     assert not any("데피아즈단 두목 처치" in t for t in _visible_row_texts(tracker))
+    assert "미추적" in tracker["scrollHint"]["_text"]
     rt.run_slash("FOREVERSUITE", "quest all")
+    rt.run_slash("FOREVERSUITE", "quest all")  # idempotent!
     assert any("데피아즈단 두목 처치" in t for t in _visible_row_texts(tracker))
     rt._fire_widget_script(_find_quest_row_widget(tracker, 101), "OnClick", "LeftButton")
     assert 101 in rt.watched_quest_ids
     rt.shift_down = False
-    rt.run_slash("FOREVERSUITE", "quest all")
 
     # 4. Minimize button collapses frame height to 30px header bar
     rt._fire_widget_script(tracker["minBtn"], "OnClick", "LeftButton")
@@ -543,11 +547,9 @@ def test_v030_ac2_modifier_clicks_fallback_chain_objective_tooltip_and_tracker_l
     rt.active_chat_edit = None
     rt._fire_widget_script(row_101, "OnClick", "LeftButton")
     assert 101 not in rt.watched_quest_ids
-    rt.run_slash("FOREVERSUITE", "quest all")
     rt._fire_widget_script(_find_quest_row_widget(tracker, 101), "OnClick", "LeftButton")
     assert 101 in rt.watched_quest_ids
     rt.shift_down = False
-    rt.run_slash("FOREVERSUITE", "quest all")
 
     obj_row = _find_objective_row_widget(tracker, 101)
     gt = rt.vm.G["GameTooltip"]
@@ -621,4 +623,165 @@ def test_v030_ac7_secure_quest_item_buttons_uiparent_isolation_and_combat_deferr
         if rt.vm.G[f"ForeverSuiteQuestItemBtn{i}"]["_shown"]
     ]
     assert set(shown_links) == {"|Hitem:5503|h[성스러운 정화수]|h", "|Hitem:5501|h[데피아즈단 신호탄]|h"}
+
+
+# 6. FS-QUEST-SYNC-FIX: Quest Log Parity, Migration, Noise Filtering & Truthful HUD Counts
+
+
+def test_fs_quest_sync_default_all_migration_and_accept_watch_sync() -> None:
+    rt_fresh = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt_fresh)
+    rt_fresh.watched_quest_ids = [101]
+    ns_fresh = rt_fresh.boot_session()
+    pm_fresh = ns_fresh["ProfileManager"]
+    assert rt_fresh.vm._invoke_callable(pm_fresh["Get"], (pm_fresh, "quest", "watchedOnly"))[0] is False
+    assert rt_fresh.vm.G["ForeverSuiteDB"]["_migrations"]["watchedOnlyDefaultV2"] == 1
+    assert ns_fresh["QuestTracker"]["lastSnapshot"]["visibleQuests"] == 6
+
+    rt_fresh.run_slash("FOREVERSUITE", "quest watched")
+    ns_fresh_re = rt_fresh.simulate_reload()
+    assert rt_fresh.vm._invoke_callable(
+        ns_fresh_re["ProfileManager"]["Get"], (ns_fresh_re["ProfileManager"], "quest", "watchedOnly")
+    )[0] is True
+
+    rt_mig = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt_mig)
+    rt_mig.watched_quest_ids = [101]
+    rt_mig.vm.G["ForeverSuiteDB"] = LuaTable(
+        {"schemaVersion": 2, "account": LuaTable({"quest": LuaTable({"watchedOnly": True})})}
+    )
+    ns_mig = rt_mig.boot_session()
+    assert rt_mig.vm.G["ForeverSuiteDB"]["schemaVersion"] == 2
+    assert rt_mig.vm.G["ForeverSuiteDB"]["_migrations"]["watchedOnlyDefaultV2"] == 1
+    assert rt_mig.vm._invoke_callable(
+        ns_mig["ProfileManager"]["Get"], (ns_mig["ProfileManager"], "quest", "watchedOnly")
+    )[0] is False
+    assert ns_mig["QuestTracker"]["lastSnapshot"]["visibleQuests"] == 6
+    assert any("/fs quest watched" in m for m in rt_mig.chat_messages)
+
+    rt_mig.run_slash("FOREVERSUITE", "quest watched")
+    ns_mig_re = rt_mig.simulate_reload()
+    assert rt_mig.vm._invoke_callable(
+        ns_mig_re["ProfileManager"]["Get"], (ns_mig_re["ProfileManager"], "quest", "watchedOnly")
+    )[0] is True
+
+    rt_mig.quest_log_entries.append({"questID": 401, "title": "신규 수락 퀘스트 A", "level": 24})
+    rt_mig.fire_event("QUEST_ACCEPTED", 10, 401)
+    assert 401 in rt_mig.watched_quest_ids and rt_mig.super_tracked_quest_id == 401
+
+    rt_mig.quest_log_entries.append({"questID": 402, "title": "신규 수락 퀘스트 B", "level": 24})
+    rt_mig.fire_event("QUEST_ACCEPTED", 402)
+    assert 402 in rt_mig.watched_quest_ids
+
+    rt_mig.quest_log_entries.append({"questID": 403, "title": "비밀 인자 복구 퀘스트", "level": 24})
+    rt_mig.fire_event("QUEST_ACCEPTED", len(rt_mig.quest_log_entries), SecretValue("sec_qid"))
+    assert 403 in rt_mig.watched_quest_ids
+
+    rt_mig.cvars["autoQuestWatch"] = "0"
+    rt_mig.quest_log_entries.append({"questID": 404, "title": "자동추적 꺼짐 퀘스트", "level": 24})
+    rt_mig.fire_event("QUEST_ACCEPTED", 404)
+    assert 404 not in rt_mig.watched_quest_ids
+    rt_mig.cvars.pop("autoQuestWatch", None)
+    rt_mig.super_tracked_quest_id = 401
+    rt_mig.fire_event("QUEST_ACCEPTED", 0.5)
+    rt_mig.fire_event("QUEST_ACCEPTED", float("inf"))
+    assert 0 not in rt_mig.watched_quest_ids and rt_mig.super_tracked_quest_id == 401
+
+
+def test_fs_quest_sync_hidden_headers_internal_tasks_and_collapsed_fallback_ddt() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_level = 24
+    rt.real_zone_text = "서부 몰락지대"
+    rt.zone_text = "서부 몰락지대"
+    rt.quest_log_entries = [
+        {"title": "서부 몰락지대", "isHeader": True},
+        {"title": "숨김 내부 캠페인 헤더", "isHeader": True, "isHidden": True},
+        {"questID": 101, "title": "정상 캠페인 퀘스트", "level": 23, "isStory": True},
+        {"questID": 901, "title": "내부 플래그 퀘스트", "level": 23, "isInternalOnly": True},
+        {"questID": 902, "title": "월드 보너스 태스크", "level": 23, "isTask": True},
+        {"questID": 903, "title": "사절 현상금", "level": 23, "isBounty": True},
+        {"questID": 904, "title": "숨김 퀘스트", "level": 23, "isHidden": True},
+        None,  # Sparse nil hole past numShown
+        {"title": "그늘숲", "isHeader": True, "isCollapsed": True},
+        {"questID": 501, "title": "까마귀 언덕 수색", "level": 22},
+        {"questID": 101, "title": "정상 캠페인 퀘스트 중복", "level": 23},  # Duplicate questID dedup check
+    ]
+    rt.quest_num_shown_entries = 7
+    rt.watched_quest_ids = [101]  # 501 is unwatched AND past numShown AND after a nil hole!
+
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+    snap = tracker["lastSnapshot"]
+    assert snap["totalQuests"] == 2
+    assert snap["visibleQuests"] == 2
+
+    groups = {g["title"]: g for g in _lua_list_items(snap["groups"])}
+    assert set(groups.keys()) == {"서부 몰락지대", "그늘숲"}
+    assert "숨김 내부 캠페인 헤더" not in groups
+
+    # Also test fallback when C_QuestLog.GetHeaderIndexForQuest returns nil
+    rt.vm.G["C_QuestLog"]["GetHeaderIndexForQuest"] = lambda _qid: None
+    snap2 = rt.vm._invoke_callable(tracker["Refresh"], (tracker,))[0]
+    groups2 = {g["title"]: g for g in _lua_list_items(snap2["groups"])}
+    assert set(groups2.keys()) == {"서부 몰락지대", "그늘숲"}
+
+
+@pytest.mark.parametrize(
+    ("watched_only", "current_zone_only", "expected_vis", "expected_hw", "expected_hz", "expected_hint_sub"),
+    [
+        (False, False, 6, 0, 0, ""),
+        (True, False, 2, 4, 0, "미추적 퀘스트 4개 숨김"),
+        (False, True, 3, 0, 3, "타 지역 미완료 3개 숨김"),
+        (True, True, 1, 4, 1, "미추적 4 · 타 지역 미완료 1개 숨김"),
+    ],
+)
+def test_fs_quest_sync_disjoint_filter_counts_header_badge_and_no_false_current_zone_ddt(
+    watched_only: bool,
+    current_zone_only: bool,
+    expected_vis: int,
+    expected_hw: int,
+    expected_hz: int,
+    expected_hint_sub: str,
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    # Watched: 101 (current zone) and 201 (Redridge, incomplete)
+    rt.watched_quest_ids = [101, 201]
+    ns = rt.boot_session()
+    pm = ns["ProfileManager"]
+    tracker = ns["QuestTracker"]
+
+    rt.vm._invoke_callable(pm["Set"], (pm, "quest", "watchedOnly", watched_only, "account"))
+    rt.vm._invoke_callable(pm["Set"], (pm, "quest", "currentZoneOnly", current_zone_only, "account"))
+    snap = tracker["lastSnapshot"]
+
+    assert snap["visibleQuests"] == expected_vis
+    assert snap["hiddenByWatch"] == expected_hw
+    assert snap["hiddenByZone"] == expected_hz
+    assert snap["hiddenByWatch"] + snap["hiddenByZone"] == snap["hiddenByFilter"]
+    assert snap["totalQuests"] - snap["visibleQuests"] == snap["hiddenByFilter"]
+
+    if expected_hint_sub:
+        assert expected_hint_sub in tracker["scrollHint"]["_text"]
+        assert "(6)" in tracker["headerTitle"]["_text"]
+    else:
+        assert tracker["scrollHint"]["_text"] == ""
+        assert "(6)" not in tracker["headerTitle"]["_text"]
+
+    # Standing in Stormwind with no exact zone header match: class/dungeon headers with isOnMap=True must NOT get '[현재 지역]'
+    rt_city = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_city.player_level = 24
+    rt_city.real_zone_text = "스톰윈드"
+    rt_city.zone_text = "스톰윈드"
+    rt_city.quest_log_entries = [
+        {"title": "붉은마루 산맥", "isHeader": True},
+        {"questID": 201, "title": "검은바위 오크 소탕", "level": 25, "isOnMap": False},
+        {"title": "사제", "isHeader": True},
+        {"questID": 601, "title": "빛의 은총 수련", "level": 20, "isOnMap": True},
+    ]
+    ns_city = rt_city.boot_session()
+    city_groups = _lua_list_items(ns_city["QuestTracker"]["lastSnapshot"]["groups"])
+    assert [g["title"] for g in city_groups] == ["사제", "붉은마루 산맥"]
+    assert all(g["isCurrentZone"] is False for g in city_groups)
+    assert "[현재 지역]" not in "\n".join(_visible_row_texts(ns_city["QuestTracker"]))
 

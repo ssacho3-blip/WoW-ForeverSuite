@@ -6,8 +6,10 @@
 local _, ns = ...
 
 local type = type
+local pcall = pcall
 local tonumber = tonumber
 local tostring = tostring
+local math_floor = math.floor
 local string_lower = string.lower
 local string_match = string.match
 
@@ -94,21 +96,50 @@ local function SafeQuestID(val)
     if ns.IsSecret(val) then
         return nil
     end
-    if type(val) == "number" then
-        return (val == val and val > 0) and val or nil
+    local num = (type(val) == "number") and val or ((type(val) == "string") and tonumber(val) or nil)
+    if not num or num ~= num or num < 1 or num >= 2147483648 then
+        return nil
     end
-    if type(val) == "string" then
-        local parsed = tonumber(val)
-        return (parsed and parsed > 0) and parsed or nil
+    local floored = math_floor(num)
+    return (floored == num) and floored or nil
+end
+
+local function ResolveAcceptedQuestID(arg1, arg2)
+    local q2 = SafeQuestID(arg2)
+    if q2 then
+        return q2
     end
-    return nil
+    local q1 = SafeQuestID(arg1)
+    if not q1 then
+        return nil
+    end
+    if arg2 ~= nil then
+        if C_QuestLog and C_QuestLog.GetInfo then
+            local okInfo, info = pcall(C_QuestLog.GetInfo, q1)
+            if okInfo and not ns.IsSecret(info) and type(info) == "table" then
+                return SafeQuestID(info.questID)
+            end
+        end
+        return nil
+    end
+    return q1
 end
 
 function Quest:OnQuestAccepted(_, arg1, arg2)
-    if ns.ProfileManager:Get("quest", "autoSuperTrack") then
-        local questID = SafeQuestID(arg2) or SafeQuestID(arg1)
-        if questID and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
-            C_SuperTrack.SetSuperTrackedQuestID(questID)
+    local questID = ResolveAcceptedQuestID(arg1, arg2)
+    if questID then
+        if ns.SafeGetCVar("autoQuestWatch") ~= "0" and C_QuestLog and C_QuestLog.AddQuestWatch then
+            local alreadyWatched = false
+            if C_QuestLog.GetQuestWatchType then
+                local okW, wType = pcall(C_QuestLog.GetQuestWatchType, questID)
+                alreadyWatched = okW and (not ns.IsSecret(wType)) and (wType ~= nil)
+            end
+            if not alreadyWatched then
+                pcall(C_QuestLog.AddQuestWatch, questID)
+            end
+        end
+        if ns.ProfileManager:Get("quest", "autoSuperTrack") and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+            pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
         end
     end
     self:OnTrackerRefreshEvent()
@@ -183,7 +214,15 @@ function Quest:HandleSlash(rawSub)
         end
         ns.Print("퀘스트 추적창 위치 잠금: " .. (locked and "켜짐 (드래그 이동 차단 · 클릭 유지)" or "꺼짐 (드래그 이동 가능)"))
         return true
-    elseif sub == "all" or sub == "watched" then
+    elseif sub == "all" or trimmed == "전체" then
+        local ok = ns.ProfileManager:Set("quest", "watchedOnly", false, "account")
+        if not ok then
+            ns.Warn("읽기 전용 프로필(미래 스키마)에서는 설정을 저장할 수 없습니다.")
+            return false
+        end
+        ns.Print("퀘스트 표시 범위: 수락한 전체 퀘스트 표시")
+        return true
+    elseif sub == "watched" or sub == "watch" or trimmed == "추적" or trimmed == "추적만" then
         local watchedOnly = ns.ProfileManager:Get("quest", "watchedOnly") and true or false
         local ok = ns.ProfileManager:Set("quest", "watchedOnly", not watchedOnly, "account")
         if not ok then
@@ -242,7 +281,7 @@ function Quest:HandleSlash(rawSub)
         return true
     end
 
-    ns.Print("사용법: /fs quest [zone | level | here | lock | toggle | default | reset]")
+    ns.Print("사용법: /fs quest [zone | level | here | all | watched | lock | toggle | default | reset]")
     return false
 end
 

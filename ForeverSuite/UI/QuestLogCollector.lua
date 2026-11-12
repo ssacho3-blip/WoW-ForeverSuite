@@ -122,11 +122,29 @@ function QuestTracker:ResolveLiveSpecialItem(questID)
     return nil, nil
 end
 
+local function ResolveHeaderViaAPI(questID)
+    if not (C_QuestLog and C_QuestLog.GetHeaderIndexForQuest and C_QuestLog.GetInfo) then
+        return nil
+    end
+    local okHdrIdx, hdrIdx = pcall(C_QuestLog.GetHeaderIndexForQuest, questID)
+    local cleanHdrIdx = okHdrIdx and SafeNumber(hdrIdx) or nil
+    if not cleanHdrIdx or cleanHdrIdx <= 0 then
+        return nil
+    end
+    local okHdr, hdrInfo = pcall(C_QuestLog.GetInfo, math_floor(cleanHdrIdx))
+    if okHdr and not ns.IsSecret(hdrInfo) and type(hdrInfo) == "table"
+        and SafeBool(hdrInfo.isHeader) and (not SafeBool(hdrInfo.isHidden)) then
+        return SafeString(hdrInfo.title)
+    end
+    return nil
+end
+
 local function BuildQuestRecordFromInfo(tracker, info, logIndex, fallbackHeader, watchedSet)
     if ns.IsSecret(info) or type(info) ~= "table" then
         return nil
     end
-    if SafeBool(info.isHeader) or SafeBool(info.isHidden) then
+    if SafeBool(info.isHeader) or SafeBool(info.isHidden) or SafeBool(info.isBounty)
+        or SafeBool(info.isTask) or SafeBool(info.isInternalOnly) then
         return nil
     end
     local qid = SafeNumber(info.questID)
@@ -218,13 +236,14 @@ local function BuildQuestRecordFromInfo(tracker, info, logIndex, fallbackHeader,
         end
     end
 
+    local resolvedZone = ResolveHeaderViaAPI(qid) or fallbackHeader or "기타 퀘스트"
     local specialLink, specialIcon = tracker:QueryQuestSpecialItemByLogIndex(logIndex)
 
     return {
         questID = qid,
         logIndex = logIndex,
         title = title,
-        zone = fallbackHeader or "기타 퀘스트",
+        zone = resolvedZone,
         level = qLevel,
         suggestedGroup = SafeNumber(info.suggestedGroup),
         frequency = SafeNumber(info.frequency),
@@ -274,14 +293,18 @@ function QuestTracker:CollectLiveQuests()
     local quests = {}
     local seen = {}
     local currentHeader = "기타 퀘스트"
+    local nilStreak = 0
 
-    for i = 1, count do
+    for i = 1, 200 do
         local okInfo, info = pcall(C_QuestLog.GetInfo, i)
         if okInfo and not ns.IsSecret(info) and type(info) == "table" then
+            nilStreak = 0
             if SafeBool(info.isHeader) then
-                local hdrTitle = SafeString(info.title)
-                if hdrTitle then
-                    currentHeader = hdrTitle
+                if not SafeBool(info.isHidden) then
+                    local hdrTitle = SafeString(info.title)
+                    if hdrTitle then
+                        currentHeader = hdrTitle
+                    end
                 end
             else
                 local rec = BuildQuestRecordFromInfo(self, info, i, currentHeader, watchedSet)
@@ -289,6 +312,11 @@ function QuestTracker:CollectLiveQuests()
                     seen[rec.questID] = true
                     quests[#quests + 1] = rec
                 end
+            end
+        elseif i > count then
+            nilStreak = nilStreak + 1
+            if nilStreak >= 3 then
+                break
             end
         end
     end
@@ -307,7 +335,8 @@ function QuestTracker:CollectLiveQuests()
                         local minScan = math_max(1, idxFloor - 40)
                         for k = idxFloor - 1, minScan, -1 do
                             local okHdr, hdrInfo = pcall(C_QuestLog.GetInfo, k)
-                            if okHdr and not ns.IsSecret(hdrInfo) and type(hdrInfo) == "table" and SafeBool(hdrInfo.isHeader) then
+                            if okHdr and not ns.IsSecret(hdrInfo) and type(hdrInfo) == "table"
+                                and SafeBool(hdrInfo.isHeader) and (not SafeBool(hdrInfo.isHidden)) then
                                 local hdrTitle = SafeString(hdrInfo.title)
                                 if hdrTitle then
                                     recoveredZone = hdrTitle
@@ -316,7 +345,7 @@ function QuestTracker:CollectLiveQuests()
                             end
                         end
                         local rec = BuildQuestRecordFromInfo(self, info, idxFloor, recoveredZone, watchedSet)
-                        if rec then
+                        if rec and not seen[rec.questID] then
                             seen[rec.questID] = true
                             quests[#quests + 1] = rec
                         end

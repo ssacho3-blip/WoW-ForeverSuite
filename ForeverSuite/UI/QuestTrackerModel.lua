@@ -370,6 +370,9 @@ local function SortZoneGroups(a, b)
     if a.isCurrentZone ~= b.isCurrentZone then
         return a.isCurrentZone
     end
+    if a.hasOnMap ~= b.hasOnMap then
+        return a.hasOnMap
+    end
     if a.hasSuperTracked ~= b.hasSuperTracked then
         return a.hasSuperTracked
     end
@@ -473,33 +476,25 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
 
     local filtered = {}
     local visibleCompleted = 0
+    local hiddenByWatch = 0
+    local hiddenByZone = 0
     for i = 1, #allNormalized do
         local q = allNormalized[i]
-        local keep = true
-        if watchedOnly and not q.isWatched and not q.isSuperTracked then
-            keep = false
-        end
-        if keep and currentZoneOnly and (not q.isCurrentZone) and (not q.isComplete) and (not q.isSuperTracked) then
-            keep = false
-        end
-        if keep then
+        if watchedOnly and (not q.isWatched) and (not q.isSuperTracked) then
+            hiddenByWatch = hiddenByWatch + 1
+        elseif currentZoneOnly and (not q.isCurrentZone) and (not q.isComplete) and (not q.isSuperTracked) then
+            hiddenByZone = hiddenByZone + 1
+        else
             filtered[#filtered + 1] = q
             if q.isComplete then
                 visibleCompleted = visibleCompleted + 1
             end
         end
     end
+    local hiddenByFilter = hiddenByWatch + hiddenByZone
 
     local groupsMap = {}
     local groups = {}
-    local anyExactZoneNameMatch = false
-    for i = 1, #filtered do
-        if filtered[i].isZoneNameMatch then
-            anyExactZoneNameMatch = true
-            break
-        end
-    end
-
     for i = 1, #filtered do
         local q = filtered[i]
         local gKey, gTitle, band, bandOrder
@@ -527,6 +522,7 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
                 minLevel = nil,
                 maxLevel = nil,
                 isCurrentZone = false,
+                hasOnMap = false,
                 hasSuperTracked = false,
                 isCollapsed = CheckCollapsed(collapsedChecker, gKey),
                 quests = {},
@@ -548,8 +544,11 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
             end
         end
         if mode == "zone" then
-            if q.isZoneNameMatch or ((not anyExactZoneNameMatch) and q.isOnMap) then
+            if q.isZoneNameMatch then
                 grp.isCurrentZone = true
+            end
+            if q.isOnMap then
+                grp.hasOnMap = true
             end
         elseif q.isCurrentZone then
             grp.isCurrentZone = true
@@ -577,10 +576,12 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
             emptyMsg = "|cfff87171퀘스트 로그 데이터를 읽을 수 없습니다.|r"
         elseif #allNormalized == 0 then
             emptyMsg = "|cff94a3b8진행 중인 퀘스트가 없습니다.|r"
-        elseif currentZoneOnly then
-            emptyMsg = string_format("|cff94a3b8현재 지역 퀘스트 없음 (타 지역 %d개 숨김)|r", #allNormalized)
+        elseif hiddenByWatch > 0 and hiddenByZone > 0 then
+            emptyMsg = string_format("|cff94a3b8표시할 퀘스트 없음 (미추적 %d · 타 지역 %d 숨김)|r", hiddenByWatch, hiddenByZone)
+        elseif hiddenByZone > 0 then
+            emptyMsg = string_format("|cff94a3b8현재 지역 퀘스트 없음 (타 지역 %d개 숨김)|r", hiddenByZone)
         else
-            emptyMsg = string_format("|cff94a3b8추적 중인 퀘스트 없음 (전체 %d개 · /fs quest all)|r", #allNormalized)
+            emptyMsg = string_format("|cff94a3b8추적 중인 퀘스트 없음 (미추적 %d개 · /fs quest all)|r", hiddenByWatch)
         end
         rows[#rows + 1] = {
             kind = "empty",
@@ -660,7 +661,9 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
         totalCompleted = totalCompleted,
         visibleQuests = #filtered,
         visibleCompleted = visibleCompleted,
-        hiddenByFilter = #allNormalized - #filtered,
+        hiddenByWatch = hiddenByWatch,
+        hiddenByZone = hiddenByZone,
+        hiddenByFilter = hiddenByFilter,
         groups = groups,
         rows = rows,
     }

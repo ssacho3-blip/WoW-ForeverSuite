@@ -47,7 +47,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         trackerEnabled = true,
         groupMode = "zone",
         currentZoneOnly = false,
-        watchedOnly = true,
+        watchedOnly = false,
         trackerMinimized = false,
         trackerLocked = false,
         hideDefaultTracker = true,
@@ -240,6 +240,14 @@ function ProfileManager:Init()
         rawAcct.account = type(rawAcct.account) == "table" and rawAcct.account or {}
         rawAcct.classes = type(rawAcct.classes) == "table" and rawAcct.classes or {}
         rawAcct.pendingCVarRestores = type(rawAcct.pendingCVarRestores) == "table" and rawAcct.pendingCVarRestores or {}
+        rawAcct._migrations = type(rawAcct._migrations) == "table" and rawAcct._migrations or {}
+        if rawAcct._migrations.watchedOnlyDefaultV2 ~= 1 then
+            if type(rawAcct.account.quest) == "table" and rawAcct.account.quest.watchedOnly == true then
+                rawAcct.account.quest.watchedOnly = false
+                ns.Print("퀘스트 추적창 기본 표시가 '수락한 전체 퀘스트'로 전환되었습니다 (추적 전용 전환: /fs quest watched).")
+            end
+            rawAcct._migrations.watchedOnlyDefaultV2 = 1
+        end
         FillDefaults(rawAcct.account, DEFAULT_ACCOUNT_SETTINGS)
         self.accountDB = rawAcct
         self.runtimeAccount = rawAcct.account

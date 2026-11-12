@@ -493,10 +493,11 @@ class WoWForeverMockRuntime:
             idx = int(log_idx)
             if 1 <= idx <= len(self.quest_log_entries):
                 entry = self.quest_log_entries[idx - 1]
-                qid = entry.get("questID")
-                if not entry.get("isHeader") and isinstance(qid, int) and qid in self.quest_special_items:
-                    link, icon = self.quest_special_items[qid]
-                    return MultiReturn((link, icon, 1, False))
+                if isinstance(entry, dict):
+                    qid = entry.get("questID")
+                    if not entry.get("isHeader") and isinstance(qid, int) and qid in self.quest_special_items:
+                        link, icon = self.quest_special_items[qid]
+                        return MultiReturn((link, icon, 1, False))
             return MultiReturn((None, None, 0, False))
 
         def get_quest_link(qid: Any) -> str | None:
@@ -726,14 +727,24 @@ class WoWForeverMockRuntime:
         return [
             int(e["questID"])
             for e in self.quest_log_entries
-            if not e.get("isHeader") and isinstance(e.get("questID"), int)
+            if isinstance(e, dict) and not e.get("isHeader") and isinstance(e.get("questID"), int)
         ]
 
     def _find_quest_entry(self, qid: int) -> tuple[int | None, dict[str, Any] | None]:
         for idx, entry in enumerate(self.quest_log_entries, start=1):
-            if not entry.get("isHeader") and entry.get("questID") == qid:
+            if isinstance(entry, dict) and not entry.get("isHeader") and entry.get("questID") == qid:
                 return idx, entry
         return None, None
+
+    def _find_header_index_for_quest(self, qid: int) -> int | None:
+        log_idx, _ = self._find_quest_entry(qid)
+        if log_idx is None:
+            return None
+        for k in range(log_idx - 1, 0, -1):
+            entry = self.quest_log_entries[k - 1]
+            if isinstance(entry, dict) and entry.get("isHeader") and not entry.get("isHidden"):
+                return k
+        return None
 
     def _toggle_quest_watch(self, qid: int, add: bool) -> bool:
         if self.watched_quest_ids is None:
@@ -751,14 +762,15 @@ class WoWForeverMockRuntime:
                     self.quest_num_shown_entries
                     if self.quest_num_shown_entries is not None
                     else len(self.quest_log_entries),
-                    sum(1 for e in self.quest_log_entries if not e.get("isHeader")),
+                    sum(1 for e in self.quest_log_entries if isinstance(e, dict) and not e.get("isHeader")),
                 )
             ),
             "GetInfo": lambda idx: (
                 LuaTable(self.quest_log_entries[int(idx) - 1])
-                if 1 <= int(idx) <= len(self.quest_log_entries)
+                if 1 <= int(idx) <= len(self.quest_log_entries) and self.quest_log_entries[int(idx) - 1] is not None
                 else None
             ),
+            "GetHeaderIndexForQuest": lambda qid: self._find_header_index_for_quest(int(qid)),
             "GetLogIndexForQuestID": lambda qid: self._find_quest_entry(int(qid))[0],
             "GetNumQuestWatches": lambda: len(self._active_watch_list()),
             "GetQuestIDForQuestWatchIndex": lambda w_idx: (

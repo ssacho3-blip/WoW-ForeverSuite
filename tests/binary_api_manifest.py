@@ -37,6 +37,7 @@ VERIFIED_WOWF_16001_C_APIS: frozenset[str] = frozenset(
         "C_Minimap.GetTrackingInfo",
         "C_QuestLog.AddQuestWatch",
         "C_QuestLog.GetDistanceSqToQuest",
+        "C_QuestLog.GetHeaderIndexForQuest",
         "C_QuestLog.GetInfo",
         "C_QuestLog.GetLogIndexForQuestID",
         "C_QuestLog.GetNumQuestLogEntries",
