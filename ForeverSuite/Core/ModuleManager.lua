@@ -1,3 +1,8 @@
+-- Module: Core/ModuleManager.lua
+-- Responsibility: Module lifecycle state machine (REGISTERED -> INITIALIZED -> ENABLED/DISABLED/YIELDED/FAULTED) & ctx sandbox.
+-- Dependencies: Core/Init.lua (ns.CombatQueue, ns.IsExternalAddonLoaded), Core/EventBus.lua, Core/ProfileManager.lua.
+-- Public API: ns.ModuleManager (Register, BootstrapAll, EnableModule, DisableModule, GetModule, ListModules, TotalActiveTickers).
+-- Combat/Secret Safety: Reclaims frames via CombatQueue:RunOrDefer when disabling/faulting during InCombatLockdown().
 local _, ns = ...
 
 local type = type

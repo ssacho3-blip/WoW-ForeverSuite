@@ -185,7 +185,7 @@ function Expand-SafeZipArchive([string]$ZipPath, [string]$DestDir) {{
 }}
 
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "  WoW Forever 통합 애드온 원클릭 설치기 (v0.2.0)" -ForegroundColor Yellow
+Write-Host "  WoW Forever 통합 애드온 원클릭 설치기 (v0.3.0)" -ForegroundColor Yellow
 Write-Host "  구성: 갓존슨 통합 애드온 (v{upstream_version}, 21개 폴더) + ForeverSuite + GJBridge" -ForegroundColor Gray
 Write-Host "=================================================================" -ForegroundColor Cyan
 
@@ -802,7 +802,12 @@ def _build_embedded_zip_b64(repo_root: pathlib.Path) -> str:
 
 
 def _verify_dist_targets_writable(cand: pathlib.Path) -> None:
-    for existing_name in ("ForeverSuite-v0.2.0.zip", "ForeverSuite-v0.1.0.zip", "ForeverSuite_Installer.exe"):
+    for existing_name in (
+        "ForeverSuite-v0.3.0.zip",
+        "ForeverSuite-v0.2.0.zip",
+        "ForeverSuite-v0.1.0.zip",
+        "ForeverSuite_Installer.exe",
+    ):
         existing_file = cand / existing_name
         if existing_file.exists() and not os.access(existing_file, os.W_OK):
             raise PermissionError(f"Cannot overwrite {existing_file}")

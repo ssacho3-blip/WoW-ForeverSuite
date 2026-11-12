@@ -998,10 +998,42 @@ class Lua51VM:
             t.set(length, None)
             return removed
 
+        import functools
+
+        def tbl_sort(t: LuaTable, comp: Any = None) -> None:
+            length = t.lua_len()
+            if length <= 1:
+                return
+            items = [t.get(k) for k in range(1, length + 1)]
+            if comp is not None and callable(comp):
+                def _cmp(a: Any, b: Any) -> int:
+                    ab = self._invoke_callable(comp, (a, b))
+                    if ab and lua_truthy(ab[0]):
+                        return -1
+                    ba = self._invoke_callable(comp, (b, a))
+                    if ba and lua_truthy(ba[0]):
+                        return 1
+                    return 0
+
+                items.sort(key=functools.cmp_to_key(_cmp))
+            else:
+                items.sort()
+            for idx, val in enumerate(items, start=1):
+                t.set(idx, val)
+
+        def tbl_concat(t: LuaTable, sep: str = "", i: int = 1, j: int | None = None) -> str:
+            end = t.lua_len() if j is None else int(j)
+            start = int(i)
+            if start > end:
+                return ""
+            return lua_to_string(sep).join(lua_to_string(t.get(k)) for k in range(start, end + 1))
+
         G["table"] = LuaTable(
             {
                 "insert": tbl_insert,
                 "remove": tbl_remove,
+                "sort": tbl_sort,
+                "concat": tbl_concat,
             }
         )
 

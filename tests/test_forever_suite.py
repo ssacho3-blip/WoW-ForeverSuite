@@ -118,7 +118,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
     assert meta["SavedVariables"] == "ForeverSuiteDB"
     assert meta["SavedVariablesPerCharacter"] == "ForeverSuiteCharDB"
     assert meta["AddonCompartmentFunc"] == "ForeverSuite_OnAddonCompartmentClick"
-    assert len(files) == 15
+    assert len(files) == 18
 
     all_c_calls: set[str] = set()
     for lua_file in files:
@@ -136,7 +136,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.2.0"
+    assert ns["VERSION"] == "0.3.0"
 
     allowed_globals = {
         "ForeverSuite",
@@ -774,3 +774,367 @@ def test_economy_first_event_after_enable_is_attributed_and_readonly_preserves_p
     assert ns_ro["ProfileManager"]["readOnly"] is True
     assert rt_ro.cvars["Sound_SFXVolume"] == "0.9"
     assert rt_ro.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["Sound_SFXVolume"] == "0.3"
+
+
+# ---------------------------------------------------------------------------
+# 11. v0.3.0 Full-Upgrade ATDD/DDT Suite (AC-1, AC-4, AC-5, AC-6, AC-8)
+# ---------------------------------------------------------------------------
+
+
+def _lua_table_string_keys(tbl: LuaTable) -> set[str]:
+    return {str(k) for k, v in tbl.items() if v is True}
+
+
+def _count_special_frame_occurrences(rt: WoWForeverMockRuntime, frame_name: str) -> int:
+    specials = rt.vm.G["UISpecialFrames"]
+    count = 0
+    idx = 1
+    while specials.get(idx) is not None:
+        if specials.get(idx) == frame_name:
+            count += 1
+        idx += 1
+    return count
+
+
+def _assert_v030_ac1_readonly_ui_rollback() -> None:
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 999})
+    ns_ro = rt_ro.boot_session()
+    sp_ro = ns_ro["SettingsPanel"]
+    rt_ro.run_slash("FOREVERSUITE", "ui")
+
+    for cmd in ("enable Quest", "disable Quest", "protect 9001", "move"):
+        rt_ro.chat_messages.clear()
+        rt_ro.run_slash("FOREVERSUITE", cmd)
+        assert len(rt_ro.chat_messages) == 1
+        assert "읽기 전용 프로필" in rt_ro.chat_messages[0]
+
+    q_row = _find_settings_row_for_module(sp_ro, "Quest")
+    assert q_row is not None
+    mod_chk = q_row["checkbox"]
+    assert rt_ro.vm._invoke_callable(mod_chk["GetChecked"], (mod_chk,))[0] is True
+    rt_ro._fire_widget_script(mod_chk, "OnClick", "LeftButton")
+    assert rt_ro.vm._invoke_callable(mod_chk["GetChecked"], (mod_chk,))[0] is True
+
+    opt_chk = sp_ro["drawerCheckboxes"][1]
+    before_opt = rt_ro.vm._invoke_callable(opt_chk["GetChecked"], (opt_chk,))[0]
+    rt_ro._fire_widget_script(opt_chk, "OnClick", "LeftButton")
+    assert rt_ro.vm._invoke_callable(opt_chk["GetChecked"], (opt_chk,))[0] is before_opt
+
+
+def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollback() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+    sp = ns["SettingsPanel"]
+    pm = ns["ProfileManager"]
+
+    for _ in range(5):
+        rt.run_slash("FOREVERSUITE", "ui")
+    assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
+    assert "v0.3.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+
+    drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
+    profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
+    assert drawer_keys == profile_keys
+
+    for active_key in ("modules", "bridge", "ledger"):
+        rt.vm._invoke_callable(sp["SelectTab"], (sp, active_key))
+        shown_tabs = [k for k in ("modules", "bridge", "ledger") if sp["tabPanels"][k]["_shown"]]
+        assert shown_tabs == [active_key]
+
+    rt.vm._invoke_callable(sp["SelectTab"], (sp, "modules"))
+    rt.vm._invoke_callable(sp["SelectDetailModule"], (sp, "Utility"))
+    first_opt = sp["drawerCheckboxes"][1]
+    assert first_opt["_fsSpec"]["key"] == "autoRepair"
+    rt._fire_widget_script(first_opt, "OnClick", "LeftButton")
+    assert rt.vm._invoke_callable(pm["Get"], (pm, "utility", "autoRepair"))[0] is False
+
+    ns2 = rt.simulate_reload()
+    rt.run_slash("FOREVERSUITE", "ui")
+    assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
+    assert rt.vm._invoke_callable(ns2["ProfileManager"]["Get"], (ns2["ProfileManager"], "utility", "autoRepair"))[0] is False
+    _assert_v030_ac1_readonly_ui_rollback()
+
+
+def test_v030_ac4_module_contract_headers_and_ui_line_budget() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _, toc_files = rt.parse_toc_files()
+    assert len(toc_files) == 18
+
+    required_headers = ("-- Responsibility:", "-- Dependencies:", "-- Public API:", "-- Combat/Secret Safety:")
+    for lua_path in toc_files:
+        head = "\n".join(lua_path.read_text(encoding="utf-8").splitlines()[:10])
+        for marker in required_headers:
+            assert marker in head, f"{lua_path.name} missing contract header marker {marker}"
+
+    for ui_file in sorted((ADDON_ROOT / "UI").glob("*.lua")):
+        line_count = len(ui_file.read_text(encoding="utf-8").splitlines())
+        assert line_count < 700, f"{ui_file.name} exceeds 700-line UI budget ({line_count} lines)"
+
+
+@pytest.mark.parametrize(
+    ("cls", "primary_sid", "variant_sid", "uses_enchant"),
+    [
+        ("MAGE", 1459, 23028, False),
+        ("PRIEST", 1243, 21562, False),
+        ("WARRIOR", 6673, 6673, False),
+        ("DRUID", 1126, 21849, False),
+        ("PALADIN", 19740, 25782, False),
+        ("SHAMAN", 324, 8017, True),
+        ("WARLOCK", 687, 706, False),
+        ("HUNTER", 13165, 5118, False),
+        ("ROGUE", 2842, 8679, True),
+    ],
+)
+def test_v030_ac5_nine_class_buff_families_weapon_enchant_and_suppressions_ddt(
+    cls: str, primary_sid: int, variant_sid: int, uses_enchant: bool
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_class = cls
+    rt.known_spells = {primary_sid, variant_sid}
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+
+    assert any("비전투 버프 누락 알림" in m for m in rt.chat_messages)
+    rt.chat_messages.clear()
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert rt.chat_messages == []
+
+    rt.player_auras = {variant_sid: LuaTable({"spellId": variant_sid})}
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+    rt.player_auras.clear()
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert any("비전투 버프 누락 알림" in m for m in rt.chat_messages)
+
+    if uses_enchant:
+        rt.player_auras.clear()
+        rt.weapon_enchant = (False, True)
+        assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+        rt.weapon_enchant = (SecretValue("mhEnchant"), False)
+        assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+        rt.weapon_enchant = (False, False)
+
+    rt.player_auras.clear()
+    rt.player_dead = True
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    rt.player_dead = False
+    rt.resting = True
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    rt.resting = False
+    rt.mounted = True
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    rt.mounted = False
+    rt.on_taxi = True
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    rt.on_taxi = False
+    rt.known_spells = set()
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+
+
+@pytest.mark.parametrize(
+    ("p_pos", "c_pos", "expected_coord"),
+    [
+        ((0.425, 0.652), (0.312, 0.804), "플레이어: 42.5, 65.2  |  커서: 31.2, 80.4"),
+        ((0.425, 0.652), (1.05, -0.1), "플레이어: 42.5, 65.2"),
+        ((-0.1, 0.5), (0.0, 1.0), "플레이어: —  |  커서: 0.0, 100.0"),
+        ((1.2, 0.5), (1.0, 0.0), "플레이어: —  |  커서: 100.0, 0.0"),
+        (None, (0.500, 0.250), "플레이어: —  |  커서: 50.0, 25.0"),
+        (None, None, "플레이어: —"),
+    ],
+)
+def test_v030_ac5_worldmap_player_and_cursor_coordinates_ddt(
+    p_pos: tuple[float, float] | None,
+    c_pos: tuple[float, float] | None,
+    expected_coord: str,
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_pos = p_pos
+    rt.cursor_pos = c_pos
+    ns = rt.boot_session()
+    map_mod = ns["ModuleManager"]["modules"]["Map"]["definition"]
+    actual = rt.vm._invoke_callable(map_mod["FormatPlayerCoordinateText"], (map_mod,))[0]
+    assert actual == expected_coord
+
+
+def _assert_v030_ac6_profession_gather_reconciliation(rt: WoWForeverMockRuntime, ns: LuaTable) -> None:
+    prof = ns["ModuleManager"]["modules"]["Profession"]["definition"]
+    rt.fire_event("CHAT_MSG_LOOT", "아이템을 획득했습니다: |Hitem:2770|h[구리 광석]|hx3.")
+    rt.fire_event("CHAT_MSG_LOOT", "아이템을 획득했습니다: |Hitem:2001|h[수습생의 지팡이]|h.")
+    rt.fire_event("CHAT_MSG_LOOT", "제이나님이 아이템을 획득했습니다: |Hitem:2770|h[구리 광석]|hx9.")
+    rt.fire_event("CHAT_MSG_LOOT", "아이템을 획득했습니다: |Hitem:8899|h[심해 무지개송어]|hx4.")
+
+    assert prof["sessionTotalItems"] == 8
+    assert prof["sessionGatherItems"] == 3
+    assert prof["sessionGeneralItems"] == 1
+    assert prof["sessionPendingItems"] == 4
+
+    rt.item_db[8899] = ("심해 무지개송어", "|Hitem:8899|h[심해 무지개송어]|h", 1, 15, 1, "직업용품", "요리", 20, "", 134005, 50, 7, 8)
+    rt.fire_event("GET_ITEM_INFO_RECEIVED", 8899, True)
+    assert prof["sessionPendingItems"] == 0
+    assert prof["sessionGatherItems"] == 7
+    assert prof["sessionGeneralItems"] == 1
+
+
+def test_v030_ac6_stack_vendor_tooltip_protect_sell_commands_and_profession_gather_yield() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+    gt = rt.vm.G["GameTooltip"]
+
+    rt.run_slash("FOREVERSUITE", "protect |Hitem:9001|h[깨진 늑대 송곳니]|h")
+    assert rt.vm._invoke_callable(ns["ProfileManager"]["IsProtectedItem"], (ns["ProfileManager"], 9001))[0] is True
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "protect list")
+    assert any("9001" in m for m in rt.chat_messages)
+
+    gt["ClearLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    line_count_once = gt["NumLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    assert gt["NumLines"](gt) == line_count_once
+    joined_tip = "\n".join(gt["_lines"])
+    assert "[판매 보호됨]" in joined_tip
+    assert "묶음 판매가(x5)" in joined_tip
+
+    gt["ClearLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9002, "|Hitem:9002|h[낡은 가죽 조각]|h", 1))
+    assert not any("묶음 판매가" in line for line in gt["_lines"])
+
+    rt.run_slash("FOREVERSUITE", "protect 9001")
+    for idx in range(1, 16):
+        rt.bags[0]["items"][idx] = {"itemID": 9001, "quality": 0, "stackCount": 1, "isLocked": False}
+    rt.chat_messages.clear()
+    rt.fire_event("MERCHANT_SHOW")
+    assert len(rt.sold_bag_slots) == 12
+    assert any("잔여 3칸" in m and "/fs sell" in m for m in rt.chat_messages)
+
+    rt.run_slash("FOREVERSUITE", "sell")
+    assert len(rt.sold_bag_slots) == 15
+    rt.fire_event("MERCHANT_CLOSED")
+    _assert_v030_ac6_profession_gather_reconciliation(rt, ns)
+
+
+def test_v030_ac8_hud_move_lock_persistence_and_live_bag_gold_tooltip() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+    bag_hud = rt.vm.G["ForeverSuiteBagHUD"]
+    alert_hud = rt.vm.G["ForeverSuiteHealthAlertFrame"]
+    gt = rt.vm.G["GameTooltip"]
+
+    assert alert_hud["IsMouseEnabled"](alert_hud) is False
+    assert alert_hud["_shown"] is False
+
+    rt.run_slash("FOREVERSUITE", "move")
+    assert alert_hud["IsMouseEnabled"](alert_hud) is True
+    assert alert_hud["_shown"] is True
+    assert "드래그 이동" in alert_hud["_fsAlertLabel"]["_text"]
+
+    rt._fire_widget_script(bag_hud, "OnDragStart")
+    bag_hud["SetPoint"](bag_hud, "TOPLEFT", rt.vm.G["UIParent"], "TOPLEFT", 88, -64)
+    rt._fire_widget_script(bag_hud, "OnDragStop")
+
+    rt._fire_widget_script(alert_hud, "OnDragStart")
+    alert_hud["SetPoint"](alert_hud, "TOP", rt.vm.G["UIParent"], "TOP", 12, -110)
+    rt._fire_widget_script(alert_hud, "OnDragStop")
+
+    ns_reloaded = rt.simulate_reload()
+    pm_rel = ns_reloaded["ProfileManager"]
+    assert rt.vm._invoke_callable(pm_rel["Get"], (pm_rel, "ui", "bagHudX"))[0] == 88
+    assert rt.vm._invoke_callable(pm_rel["Get"], (pm_rel, "ui", "healthAlertY"))[0] == -110
+
+    rt.run_slash("FOREVERSUITE", "move reset")
+    alert_rel = rt.vm.G["ForeverSuiteHealthAlertFrame"]
+    assert alert_rel["IsMouseEnabled"](alert_rel) is False
+    assert rt.vm._invoke_callable(pm_rel["Get"], (pm_rel, "ui", "bagHudX"))[0] == -16
+
+    bag_rel = rt.vm.G["ForeverSuiteBagHUD"]
+    gt_rel = rt.vm.G["GameTooltip"]
+    rt._fire_widget_script(bag_rel, "OnEnter")
+    assert any("세션 순증감" in line for line in gt_rel["_lines"])
+
+    rt.vm._invoke_callable(ns_reloaded["SetPendingMoneyReason"], ("QUEST", 1.5, 1, 2500))
+    rt.player_money += 2500
+    rt.fire_event("PLAYER_MONEY")
+    assert any("퀘스트 보상" in line and "25|cffc7c7cfs|r" in line for line in gt_rel["_lines"])
+
+    mm_rel = ns_reloaded["ModuleManager"]
+    rt.vm._invoke_callable(mm_rel["DisableModule"], (mm_rel, "Economy"))
+    rt._fire_widget_script(bag_rel, "OnEnter")
+    assert any("세션 순증감" in line and "—" in line for line in gt_rel["_lines"])
+
+
+def test_v030_codex_review_regressions_secret_throw_profession_classid_and_tooltip_clear() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+
+    # 1. Throwing _G.issecretvalue must fail closed (return True)
+    orig_secret_fn = rt.vm.G["issecretvalue"]
+
+    def throwing_secret(_v: object) -> bool:
+        raise RuntimeError("C_Secrets engine fault")
+
+    rt.vm.G["issecretvalue"] = throwing_secret
+    assert rt.vm._invoke_callable(ns["IsSecret"], (42,))[0] is True
+    rt.vm.G["issecretvalue"] = orig_secret_fn
+    assert rt.vm._invoke_callable(ns["IsSecret"], (42,))[0] is False
+
+    # 2. Authoritative numeric classID ~= 7 must NOT be overridden by 'Fish' / '물고기' subtype
+    prof = ns["ModuleManager"]["modules"]["Profession"]["definition"]
+    rt.item_db[7701] = ("구운 연어", "|Hitem:7701|h[구운 연어]|h", 1, 20, 1, "소비용품", "Fish", 20, "", 134005, 30, 0, 5)
+    rt.item_db[7702] = ("수수께끼 물고기", "|Hitem:7702|h[수수께끼 물고기]|h", 1, 20, 1, "기타", "물고기", 20, "", 134005, 30, None, 0)
+    rt.fire_event("CHAT_MSG_LOOT", "아이템을 획득했습니다: |Hitem:7701|h[구운 연어]|hx2.")
+    rt.fire_event("CHAT_MSG_LOOT", "아이템을 획득했습니다: |Hitem:7702|h[수수께끼 물고기]|hx3.")
+    assert prof["sessionGeneralItems"] == 2
+    assert prof["sessionGatherItems"] == 3
+
+    # 3. Tooltip ClearLines() + repopulating identical base line count must re-enrich (not skip)
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+    gt = rt.vm.G["GameTooltip"]
+    gt["ClearLines"](gt)
+    gt["AddLine"](gt, "깨진 늑대 송곳니")
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    enriched_total = gt["NumLines"](gt)
+    assert enriched_total >= 4
+
+    gt["ClearLines"](gt)
+    for idx in range(enriched_total):
+        gt["AddLine"](gt, f"BaseLine {idx}")
+    assert gt["NumLines"](gt) == enriched_total
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    assert gt["NumLines"](gt) > enriched_total
+    assert any("묶음 판매가(x5)" in line for line in gt["_lines"])
+
+    # 4. SettingsPanel Map drawer toggles must immediately stop/start coord ticker & unregister/re-register /way
+    wmf = rt.vm.G["WorldMapFrame"]
+    wmf["Show"](wmf)
+    map_mod = ns["ModuleManager"]["modules"]["Map"]["definition"]
+    assert map_mod["coordTicker"] is not None
+    assert rt.vm.G["SlashCmdList"].get("FOREVERSUITEWAY") is not None
+
+    rt.run_slash("FOREVERSUITE", "ui")
+    sp = ns["SettingsPanel"]
+    rt.vm._invoke_callable(sp["SelectTab"], (sp, "modules"))
+    rt.vm._invoke_callable(sp["SelectDetailModule"], (sp, "Map"))
+    coord_cb = sp["drawerCheckboxes"][1]
+    way_cb = sp["drawerCheckboxes"][2]
+    assert coord_cb["_fsSpec"]["key"] == "showCoordsOnWorldMap"
+    assert way_cb["_fsSpec"]["key"] == "enableWaySlash"
+
+    rt._fire_widget_script(coord_cb, "OnClick", "LeftButton")
+    assert map_mod["coordTicker"] is None
+    assert map_mod["coordHolder"]["_shown"] is False
+
+    rt._fire_widget_script(way_cb, "OnClick", "LeftButton")
+    assert rt.vm.G["SlashCmdList"].get("FOREVERSUITEWAY") is None
+    assert rt.vm._invoke_callable(map_mod["SetWaypointFromSlash"], (map_mod, "20 30"))[0] is False
+
+    rt._fire_widget_script(coord_cb, "OnClick", "LeftButton")
+    assert map_mod["coordTicker"] is not None
+    assert map_mod["coordHolder"]["_shown"] is True
+
+    rt._fire_widget_script(way_cb, "OnClick", "LeftButton")
+    assert rt.vm.G["SlashCmdList"].get("FOREVERSUITEWAY") is not None
+    assert rt.vm._invoke_callable(map_mod["SetWaypointFromSlash"], (map_mod, "20 30"))[0] is True
+
+
+

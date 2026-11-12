@@ -1,10 +1,10 @@
 ## Interface: 11701, 16001, 120105
 ## Title: |cffd4af37Forever|rSuite · GJ 브리지
 ## Title-koKR: |cffd4af37Forever|rSuite · GJ 브리지
-## Notes: 갓존슨 통합 애드온(v5.0.132+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
-## Notes-koKR: 갓존슨 통합 애드온(v5.0.132+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
+## Notes: 갓존슨 통합 애드온(v5.0.213+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
+## Notes-koKR: 갓존슨 통합 애드온(v5.0.213+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
 ## Author: Youngseo Cho (AI-Driven Personal Edition)
-## Version: 0.2.0
+## Version: 0.3.0
 ## IconTexture: 134063
 ## Category: 갓존슨 통합 애드온
 ## Group: GodJohnsonGoldBorder

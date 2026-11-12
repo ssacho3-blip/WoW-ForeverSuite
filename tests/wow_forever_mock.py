@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 from typing import Any, Callable
 
 from binary_api_manifest import VERIFIED_WOWF_16001_C_APIS
@@ -90,7 +91,12 @@ class WoWForeverMockRuntime:
         self.now: float = 1000.0
         self.combat_lockdown: bool = False
         self.shift_down: bool = False
+        self.ctrl_down: bool = False
+        self.alt_down: bool = False
         self.resting: bool = False
+        self.mounted: bool = False
+        self.on_taxi: bool = False
+        self.weapon_enchant: tuple[Any, Any] = (False, False)
         self.in_guild: bool = True
         self.can_merchant_repair: bool = True
         self.repair_cost: int = 0
@@ -139,6 +145,7 @@ class WoWForeverMockRuntime:
         # Map & Waypoint state
         self.current_map_id: int | None = 1429  # Elwynn Forest
         self.player_pos: tuple[float, float] | None = (0.425, 0.652)
+        self.cursor_pos: tuple[Any, Any] | None = None
         self.can_set_waypoint: bool = True
         self.user_waypoint: Any = None
         self.super_tracked_waypoint: bool = False
@@ -154,8 +161,12 @@ class WoWForeverMockRuntime:
         self.quest_num_shown_entries: int | None = None
         self.quest_objectives: dict[int, list[dict[str, Any]]] = {}
         self.quest_tags: dict[int, dict[str, Any]] = {}
+        self.quest_special_items: dict[int, tuple[str, Any]] = {}
         self.watched_quest_ids: list[int] | None = None
         self.selected_quest_id: int | None = None
+        self.opened_quest_details: list[tuple[str, Any]] = []
+        self.active_chat_edit: Any = None
+        self.inserted_chat_links: list[str] = []
         self.loot_slots: list[int] = []
         self.looted_slots: list[int] = []
 
@@ -174,6 +185,7 @@ class WoWForeverMockRuntime:
         self.scheduled_timers: list[tuple[float, Callable[..., Any]]] = []
         self.active_tickers: list[LuaTable] = []
         self.tooltip_post_calls: list[Callable[..., Any]] = []
+        self._toc_meta, _ = self.parse_toc_files()
 
         self._install_wow_globals()
         self.baseline_global_keys = set(self.vm.G.keys())
@@ -245,12 +257,14 @@ class WoWForeverMockRuntime:
 
         def create_texture(self_f: LuaTable, *_a: Any) -> LuaTable:
             tex = LuaTable()
+            tex["_tex"] = None
             tex["SetAllPoints"] = lambda *_x: None
             tex["SetPoint"] = lambda *_x: None
             tex["SetSize"] = lambda *_x: None
             tex["SetWidth"] = lambda *_x: None
             tex["SetHeight"] = lambda *_x: None
             tex["SetColorTexture"] = lambda *_x: None
+            tex["SetTexture"] = lambda s, val: s.set("_tex", val)
             return tex
 
         def create_font_string(self_f: LuaTable, *_a: Any) -> LuaTable:
@@ -266,10 +280,19 @@ class WoWForeverMockRuntime:
             return fs
 
         def set_point(self_f: LuaTable, point: str, rel_to: Any = None, rel_pt: Any = None, x: Any = 0, y: Any = 0) -> None:
+            if is_secure and self.combat_lockdown:
+                self._record_blocked("SecureFrame:SetPoint")
+                return
             if isinstance(rel_to, (int, float)) and rel_pt is not None:
                 self_f["_point"] = (point, parent, point, rel_to, rel_pt)
             else:
                 self_f["_point"] = (point, rel_to, rel_pt or point, x, y)
+
+        def clear_all_points(self_f: LuaTable) -> None:
+            if is_secure and self.combat_lockdown:
+                self._record_blocked("SecureFrame:ClearAllPoints")
+                return
+            self_f.set("_point", None)
 
         def get_point(self_f: LuaTable, _idx: int = 1) -> Any:
             pt = self_f["_point"]
@@ -277,6 +300,7 @@ class WoWForeverMockRuntime:
                 return MultiReturn((None,))
             return MultiReturn(pt)
 
+        f["_mouse_enabled"] = True
         f["RegisterEvent"] = register_event
         f["RegisterUnitEvent"] = register_unit_event
         f["UnregisterEvent"] = unregister_event
@@ -291,15 +315,16 @@ class WoWForeverMockRuntime:
         f["SetHeight"] = lambda *_x: None
         f["SetPoint"] = set_point
         f["GetPoint"] = get_point
-        f["ClearAllPoints"] = lambda self_f: self_f.set("_point", None)
+        f["ClearAllPoints"] = clear_all_points
         f["SetClampedToScreen"] = lambda *_x: None
         f["SetMovable"] = lambda *_x: None
-        f["EnableMouse"] = lambda *_x: None
+        f["EnableMouse"] = lambda self_f, flag=True: self_f.set("_mouse_enabled", bool(flag))
+        f["IsMouseEnabled"] = lambda self_f: bool(self_f.get("_mouse_enabled"))
         f["EnableMouseWheel"] = lambda *_x: None
-        f["RegisterForClicks"] = lambda *_x: None
+        f["RegisterForClicks"] = lambda self_f, *btns: self_f.set("_registered_clicks", btns)
         f["RegisterForDrag"] = lambda *_x: None
-        f["StartMoving"] = lambda *_x: None
-        f["StopMovingOrSizing"] = lambda *_x: None
+        f["StartMoving"] = lambda self_f: self_f.set("_moving", True)
+        f["StopMovingOrSizing"] = lambda self_f: self_f.set("_moving", False)
         f["SetAttribute"] = set_attribute
         f["CreateTexture"] = create_texture
         f["CreateFontString"] = create_font_string
@@ -329,20 +354,45 @@ class WoWForeverMockRuntime:
         G["ObjectiveTrackerFrame"] = self._make_frame("Frame", "ObjectiveTrackerFrame", G["UIParent"], "SecureFrameTemplate")
         wmf = self._make_frame("Frame", "WorldMapFrame")
         wmf["GetMapID"] = lambda _s: self.current_map_id
+        wmf["GetNormalizedCursorPosition"] = lambda _s: (
+            MultiReturn(self.cursor_pos) if self.cursor_pos is not None else MultiReturn((None, None))
+        )
 
         chat = LuaTable()
         chat["AddMessage"] = lambda _s, msg: self.chat_messages.append(str(msg))
         G["DEFAULT_CHAT_FRAME"] = chat
 
-        gt = LuaTable()
+        gt = self._make_frame("GameTooltip", "GameTooltip", G["UIParent"])
         gt["_lines"] = []
-        gt["SetOwner"] = lambda *_a: None
+        gt["_shown"] = False
+        gt["_owner"] = None
+        gt["SetOwner"] = lambda s, owner=None, *_a: (s["ClearLines"](s), s.set("_owner", owner))[1]
+        gt["GetOwner"] = lambda s: s.get("_owner")
+        gt["ClearLines"] = lambda s: (s["_lines"].clear(), self._fire_widget_script(s, "OnTooltipCleared"))[0]
+        gt["NumLines"] = lambda s: len(s["_lines"])
         gt["AddLine"] = lambda s, txt, *_c: s["_lines"].append(str(txt))
         gt["AddDoubleLine"] = lambda s, l, r, *_c: s["_lines"].append(f"{l}::{r}")
-        gt["Show"] = lambda *_a: None
-        gt["Hide"] = lambda *_a: None
         G["GameTooltip"] = gt
 
+        def hooksecurefunc(arg1: Any, arg2: Any, arg3: Any = None) -> None:
+            if arg3 is None:
+                target_tbl, fn_name, hook_fn = G, str(arg1), arg2
+            else:
+                target_tbl, fn_name, hook_fn = arg1, str(arg2), arg3
+            orig_fn = target_tbl.get(fn_name)
+            if not callable(orig_fn) or not callable(hook_fn):
+                return
+
+            def _wrapped(*call_args: Any) -> Any:
+                res = self.vm._invoke_callable(orig_fn, call_args)
+                self.vm._invoke_callable(hook_fn, call_args)
+                return MultiReturn(res) if len(res) != 1 else res[0]
+
+            target_tbl[fn_name] = _wrapped
+
+        G["hooksecurefunc"] = hooksecurefunc
+
+        G["UISpecialFrames"] = LuaTable()
         G["SlashCmdList"] = LuaTable()
         G["Enum"] = LuaTable(
             {
@@ -381,14 +431,24 @@ class WoWForeverMockRuntime:
         G["CreateFrame"] = lambda ftype, name=None, parent=None, template=None: self._make_frame(
             ftype, name, parent, template
         )
+        G["GetAddOnMetadata"] = lambda name, field: (
+            self._toc_meta.get(str(field)) if str(name) == "ForeverSuite" else None
+        )
         G["GetBuildInfo"] = lambda: MultiReturn(("1.60.1", "70707", "Oct 28 2026", 11701))
         G["GetTime"] = lambda: self.now
         G["InCombatLockdown"] = lambda: self.combat_lockdown
         G["issecretvalue"] = lambda v: isinstance(v, SecretValue)
         G["debugstack"] = lambda *_a: "MockStack:line 1"
         G["IsShiftKeyDown"] = lambda: self.shift_down
+        G["IsControlKeyDown"] = lambda: self.ctrl_down
+        G["IsAltKeyDown"] = lambda: self.alt_down
         G["IsModifiedClick"] = lambda _k: False
         G["IsResting"] = lambda: self.resting
+        G["IsMounted"] = lambda: self.mounted
+        G["UnitOnTaxi"] = lambda _u="player": self.on_taxi
+        G["GetWeaponEnchantInfo"] = lambda: MultiReturn(
+            (self.weapon_enchant[0], 0, 0, 0, self.weapon_enchant[1], 0, 0, 0)
+        )
         G["IsInGuild"] = lambda: self.in_guild
         G["UnitName"] = lambda _u: self.player_name
         G["GetRealmName"] = lambda: self.realm_name
@@ -429,7 +489,36 @@ class WoWForeverMockRuntime:
         def get_quest_reward(choice: Any = None) -> None:
             self.rewarded_choices.append(choice)
 
+        def get_quest_special_item_info(log_idx: Any) -> Any:
+            idx = int(log_idx)
+            if 1 <= idx <= len(self.quest_log_entries):
+                entry = self.quest_log_entries[idx - 1]
+                qid = entry.get("questID")
+                if not entry.get("isHeader") and isinstance(qid, int) and qid in self.quest_special_items:
+                    link, icon = self.quest_special_items[qid]
+                    return MultiReturn((link, icon, 1, False))
+            return MultiReturn((None, None, 0, False))
+
+        def get_quest_link(qid: Any) -> str | None:
+            _, entry = self._find_quest_entry(int(qid))
+            if not entry:
+                return None
+            return f"|cffffff00|Hquest:{int(qid)}:{entry.get('level', 1)}|h[{entry.get('title', 'Quest')}]|h|r"
+
+        def insert_chat_link(link: Any) -> bool:
+            if self.active_chat_edit is None:
+                return False
+            self.inserted_chat_links.append(str(link))
+            return True
+
         G["GetQuestReward"] = get_quest_reward
+        G["GetQuestLogSpecialItemInfo"] = get_quest_special_item_info
+        G["GetQuestLink"] = get_quest_link
+        G["ChatEdit_GetActiveWindow"] = lambda: self.active_chat_edit
+        G["ChatEdit_InsertLink"] = insert_chat_link
+        G["QuestMapFrame_OpenToQuestDetails"] = lambda qid: self.opened_quest_details.append(("OpenToQuestDetails", int(qid)))
+        G["QuestMapFrame_ShowQuestDetails"] = lambda qid: self.opened_quest_details.append(("ShowQuestDetails", int(qid)))
+        G["ToggleQuestLog"] = lambda: self.opened_quest_details.append(("ToggleQuestLog", self.selected_quest_id))
 
         def set_override_binding_click(owner: Any, _is_priority: bool, key: str, btn_name: str) -> None:
             if self.combat_lockdown:
@@ -508,8 +597,18 @@ class WoWForeverMockRuntime:
             },
         )
 
+        def _resolve_item_id(item_ref: Any) -> int | None:
+            if isinstance(item_ref, (int, float)) and not isinstance(item_ref, bool):
+                return int(item_ref)
+            s = str(item_ref)
+            m = re.search(r"\|Hitem:(\d+)", s)
+            if m:
+                return int(m.group(1))
+            return int(s) if s.isdigit() else None
+
         def get_item_info(item_id: Any) -> Any:
-            row = self.item_db.get(int(item_id))
+            resolved = _resolve_item_id(item_id)
+            row = self.item_db.get(resolved) if resolved is not None else None
             if not row:
                 return MultiReturn((None,))
             return MultiReturn(row)
@@ -519,7 +618,9 @@ class WoWForeverMockRuntime:
             {
                 "GetItemInfo": get_item_info,
                 "GetDetailedItemLevelInfo": lambda item_id: (
-                    self.item_db[int(item_id)][3] if int(item_id) in self.item_db else None
+                    self.item_db[_resolve_item_id(item_id)][3]  # type: ignore[index]
+                    if _resolve_item_id(item_id) in self.item_db
+                    else None
                 ),
             },
         )
@@ -550,14 +651,33 @@ class WoWForeverMockRuntime:
             },
         )
         G["C_QuestLog"] = StrictCNamespaceTable("C_QuestLog", self._build_quest_log_methods())
+        spell_names = {
+            1459: "신비한 지능",
+            23028: "신비한 총명함",
+            1243: "신의 권능: 인내",
+            21562: "인내의 기원",
+            6673: "전투의 외침",
+            1126: "야생의 징표",
+            21849: "야생의 선물",
+            19740: "힘의 축복",
+            25782: "상급 힘의 축복",
+            465: "기원의 오라",
+            324: "번개 보호막",
+            8017: "대지의 무기",
+            687: "악마의 피부",
+            706: "악마의 갑옷",
+            13165: "매의 상",
+            5118: "치타의 상",
+            2842: "독 조제",
+            8679: "순간 효과 독",
+            7620: "낚시",
+        }
         G["C_Spell"] = StrictCNamespaceTable(
             "C_Spell",
             {
                 "GetSpellInfo": lambda sid: LuaTable(
                     {
-                        "name": {1459: "신비한 지능", 1243: "신의 권능: 인내", 6673: "전투의 외침", 1126: "야생의 징표", 7620: "낚시"}.get(
-                            int(sid), f"Spell#{sid}"
-                        ),
+                        "name": spell_names.get(int(sid), f"Spell#{sid}"),
                         "spellID": int(sid),
                     }
                 ),

@@ -1,3 +1,8 @@
+-- Module: Modules/Quest.lua
+-- Responsibility: Safe quest auto-accept/turn-in (Shift bypass, multi-choice pause), SuperTrack on accept, and /fs quest slash dispatcher.
+-- Dependencies: Core/Init.lua, Core/MoneyLedgerQueue.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/QuestTracker.lua.
+-- Public API: Quest (OnQuestDetail, OnQuestProgress, OnQuestComplete, OnQuestAccepted, HandleSlash).
+-- Combat/Secret Safety: Yields to Questie when loaded; guards secret questID/choice counts; delegates HUD rendering to ns.QuestTracker.
 local _, ns = ...
 
 local type = type
@@ -171,6 +176,13 @@ function Quest:HandleSlash(rawSub)
         end
         ns.Print("현재 지역 퀘스트 필터: " .. (enabled and "켜짐 (현재 지역 + 완료 퀘스트)" or "꺼짐 (전체 지역 표시)"))
         return true
+    elseif sub == "lock" or trimmed == "잠금" then
+        local ok, locked = ns.QuestTracker:ToggleLocked()
+        if not ok then
+            return false
+        end
+        ns.Print("퀘스트 추적창 위치 잠금: " .. (locked and "켜짐 (드래그 이동 차단 · 클릭 유지)" or "꺼짐 (드래그 이동 가능)"))
+        return true
     elseif sub == "all" or sub == "watched" then
         local watchedOnly = ns.ProfileManager:Get("quest", "watchedOnly") and true or false
         local ok = ns.ProfileManager:Set("quest", "watchedOnly", not watchedOnly, "account")
@@ -230,7 +242,7 @@ function Quest:HandleSlash(rawSub)
         return true
     end
 
-    ns.Print("사용법: /fs quest [zone | level | here | toggle | default | reset]")
+    ns.Print("사용법: /fs quest [zone | level | here | lock | toggle | default | reset]")
     return false
 end
 

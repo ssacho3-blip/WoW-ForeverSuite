@@ -860,3 +860,168 @@ def test_forbidden_tooltip_guard_and_refundable_junk_skip_and_entry_pool_reuse()
     rt.bags[0]["items"][2] = {"itemID": 9001, "quality": 0, "stackCount": 2, "isLocked": False, "isRefundable": False}
     rt.fire_event("MERCHANT_SHOW")
     assert util["reusableSellEntryPool"][1] is first_entry_ref
+
+
+def _make_wrapped_gj_zip(zip_path: pathlib.Path, prefixes: tuple[str, ...], version: str = "5.0.300") -> str:
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for prefix in prefixes:
+            zf.writestr(f"{prefix}/GodJohnsonGoldBorder/GodJohnsonGoldBorder.toc", f"## Version: {version}\n")
+            zf.writestr(f"{prefix}/GodJohnsonGoldBorder/CompanionCore.lua", "C.releaseRevision = 801\n")
+    return hashlib.sha256(zip_path.read_bytes()).hexdigest().lower()
+
+
+def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_cleanup(
+    tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from package_release import _cleanup_stale_release_zips
+    from sync_upstream import (
+        _build_arg_parser,
+        _resolve_sync_targets,
+        main as sync_main,
+        resolve_default_extract_dir,
+        verify_extracted_dir,
+    )
+
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "ForeverSuite_GJBridge").mkdir(parents=True)
+    bridge_path = fake_repo / "ForeverSuite_GJBridge" / "Bridge.lua"
+    bridge_path.write_text('ns.UPSTREAM_PIN = "5.0.213"\n', encoding="utf-8")
+    pin_path = fake_repo / "pinned_upstream.json"
+    pin_path.write_text(
+        json.dumps(
+            {
+                "version": "5.0.213",
+                "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.3.0.zip",
+                "patch_zip_sha256": "f" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    wrapped_zip = tmp_path / "GodJohnson-5.0.300.zip"
+    wrapped_sha = _make_wrapped_gj_zip(wrapped_zip, ("GodJohnson-v5.0.300",))
+    extract_dest = tmp_path / "gj_dest"
+
+    with pytest.raises(ValueError, match="Upstream SHA-256 mismatch"):
+        sync_upstream_zip(wrapped_zip, extract_dest, fake_repo, expected_sha256="0" * 64)
+    assert not extract_dest.exists()
+    assert json.loads(pin_path.read_text(encoding="utf-8"))["version"] == "5.0.213"
+    assert 'ns.UPSTREAM_PIN = "5.0.213"' in bridge_path.read_text(encoding="utf-8")
+
+    manifest = sync_upstream_zip(wrapped_zip, extract_dest, fake_repo, expected_sha256=wrapped_sha)
+    assert manifest["version"] == "5.0.300"
+    assert manifest["patch_zip_sha256"] == "f" * 64
+    assert (extract_dest / "GodJohnsonGoldBorder" / "GodJohnsonGoldBorder.toc").is_file()
+
+    ambig_zip = tmp_path / "GodJohnson-5.0.301.zip"
+    _make_wrapped_gj_zip(ambig_zip, ("WrapA", "WrapB"))
+    with pytest.raises(ValueError, match="Ambiguous multiple top-level wrapper directories"):
+        sync_upstream_zip(ambig_zip, tmp_path / "ambig_dest", fake_repo)
+
+    assert sync_main(["--print-extract-dir"]) == 0
+    printed_dir = capsys.readouterr().out.strip()
+    assert printed_dir == str(resolve_default_extract_dir(REPO_ROOT))
+    assert verify_extracted_dir(fake_repo, extract_dest) == 1
+    ap = _build_arg_parser()
+    resolved_zip, resolved_dest, _ = _resolve_sync_targets(ap.parse_args([str(wrapped_zip), str(extract_dest)]), fake_repo)
+    assert resolved_zip == wrapped_zip.resolve() and resolved_dest == extract_dest.resolve()
+
+    dist_dir = tmp_path / "dist"
+    dist_dir.mkdir()
+    for fname in ("ForeverSuite-v0.1.0.zip", "ForeverSuite-v0.2.0.zip", "ForeverSuite-v0.3.0.zip", "ForeverSuite_Offline_Installer.exe"):
+        (dist_dir / fname).write_bytes(b"ok")
+    removed = _cleanup_stale_release_zips(dist_dir, "ForeverSuite-v0.3.0.zip")
+    assert removed == ["ForeverSuite-v0.1.0.zip", "ForeverSuite-v0.2.0.zip"]
+    assert (dist_dir / "ForeverSuite-v0.3.0.zip").is_file()
+    assert (dist_dir / "ForeverSuite_Offline_Installer.exe").is_file()
+
+    ps1 = build_embedded_ps1_script(
+        {
+            "download_url": "https://mediafilez.forgecdn.net/files/9520/137/GodJohnson-5.0.213.zip",
+            "zip_sha256": "a" * 64,
+            "version": "5.0.213",
+            "file_name": "GodJohnson-5.0.213.zip",
+        },
+        base64.b64encode(b"PK").decode("ascii"),
+    )
+    assert "(v0.3.0)" in ps1
+
+
+def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    fake_repo = tmp_path / "repo"
+    (fake_repo / "ForeverSuite_GJBridge").mkdir(parents=True)
+    (fake_repo / "ForeverSuite_GJBridge" / "Bridge.lua").write_text('ns.UPSTREAM_PIN = "5.0.213"\n', encoding="utf-8")
+
+    old_zip = tmp_path / "GodJohnson-5.0.213.zip"
+    old_sha = _make_wrapped_gj_zip(old_zip, ("GodJohnson-v5.0.213",), version="5.0.213")
+    new_zip = tmp_path / "GodJohnson-5.0.300.zip"
+    new_sha = _make_wrapped_gj_zip(new_zip, ("GodJohnson-v5.0.300",), version="5.0.300")
+    extract_dest = tmp_path / "gj_dest"
+
+    # 1. Empty string expected_sha256="" must fail closed (must NOT coerce to None)
+    with pytest.raises(ValueError, match="Upstream SHA-256 mismatch"):
+        sync_upstream_zip(old_zip, extract_dest, fake_repo, expected_sha256="")
+    assert not extract_dest.exists()
+
+    # 2. Populate initial valid upstream tree
+    sync_upstream_zip(old_zip, extract_dest, fake_repo, expected_sha256=old_sha)
+    toc_file = extract_dest / "GodJohnsonGoldBorder" / "GodJohnsonGoldBorder.toc"
+    assert "5.0.213" in toc_file.read_text(encoding="utf-8")
+
+    # 3. Simulate failure when swapping staging_dir -> extract_dest; backup must restore 5.0.213
+    real_replace = os.replace
+
+    def flaky_replace(src: os.PathLike[str] | str, dst: os.PathLike[str] | str) -> None:
+        src_p, dst_p = pathlib.Path(src), pathlib.Path(dst)
+        if src_p.name.startswith(".gj_sync_stage_") and dst_p == extract_dest:
+            raise OSError("simulated os.replace failure during stage swap")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky_replace)
+    with pytest.raises(OSError, match="simulated os.replace failure"):
+        sync_upstream_zip(new_zip, extract_dest, fake_repo, expected_sha256=new_sha)
+    monkeypatch.setattr(os, "replace", real_replace)
+
+    assert toc_file.is_file()
+    assert "5.0.213" in toc_file.read_text(encoding="utf-8")
+
+    # 3b. Invalid metadata (file_id) or unsafe TOC version (quote injection) must fail pre-swap
+    with pytest.raises(ValueError):
+        sync_upstream_zip(new_zip, extract_dest, fake_repo, release_meta={"file_id": "bad_id"}, expected_sha256=new_sha)
+    bad_ver_zip = tmp_path / "custom_upstream.zip"
+    bad_ver_sha = _make_wrapped_gj_zip(bad_ver_zip, ("GodJohnson-custom",), version='5.0."300')
+    with pytest.raises(ValueError, match="Unsafe or malformed upstream version"):
+        sync_upstream_zip(bad_ver_zip, extract_dest, fake_repo, expected_sha256=bad_ver_sha)
+    assert "5.0.213" in toc_file.read_text(encoding="utf-8")
+    assert json.loads((fake_repo / "pinned_upstream.json").read_text(encoding="utf-8"))["version"] == "5.0.213"
+
+    # 3c. Failure during Bridge.lua write (after extract_dest + manifest write) must roll back ALL three
+    import sync_upstream as su_mod
+
+    real_write_text = su_mod._write_text_atomic
+
+    def fail_on_bridge(path: pathlib.Path, content: str) -> None:
+        if path.name == "Bridge.lua":
+            raise OSError("simulated Bridge.lua write failure")
+        real_write_text(path, content)
+
+    monkeypatch.setattr(su_mod, "_write_text_atomic", fail_on_bridge)
+    with pytest.raises(OSError, match="simulated Bridge.lua write failure"):
+        sync_upstream_zip(new_zip, extract_dest, fake_repo, expected_sha256=new_sha)
+    monkeypatch.setattr(su_mod, "_write_text_atomic", real_write_text)
+
+    assert "5.0.213" in toc_file.read_text(encoding="utf-8")
+    assert json.loads((fake_repo / "pinned_upstream.json").read_text(encoding="utf-8"))["version"] == "5.0.213"
+    assert 'ns.UPSTREAM_PIN = "5.0.213"' in (fake_repo / "ForeverSuite_GJBridge" / "Bridge.lua").read_text(encoding="utf-8")
+
+    # 4. Normal overwrite of existing extract_dest succeeds and cleans backup
+    sync_upstream_zip(new_zip, extract_dest, fake_repo, expected_sha256=new_sha)
+    assert "5.0.300" in toc_file.read_text(encoding="utf-8")
+    leftover_baks = list(tmp_path.glob(".gj_sync_bak_*"))
+    assert leftover_baks == []
+
+

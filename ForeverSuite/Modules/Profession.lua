@@ -1,9 +1,13 @@
+-- Module: Modules/Profession.lua
+-- Responsibility: Combat-safe double-right-click fishing (dual release), crash-safe sound boost, and classID gather vs general loot yield tracker.
+-- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua.
+-- Public API: Profession (IsFishingPoleEquipped, ClearFishingBindingSafe, ReconcilePendingLoot, PrintSessionYield).
+-- Combat/Secret Safety: Defers SetOverrideBindingClick/ClearOverrideBindings via CombatQueue; preserves uncached item counts without data loss.
 local _, ns = ...
 
 local type = type
 local pairs = pairs
 local tonumber = tonumber
-local tostring = tostring
 local string_find = string.find
 local string_format = string.format
 local string_lower = string.lower
@@ -11,11 +15,12 @@ local string_match = string.match
 
 local MAINHAND_SLOT = 16
 local FISHING_BASE_SPELL_ID = 7620
+local TRADE_GOODS_CLASS_ID = 7
 
 local Profession = {
     title = "전문기술 · 채집 · 낚시 편의 (Profession)",
     priority = "P1",
-    description = "비전투 안전 더블우클릭 낚시(2중 해제), 크래시 복구 사운드 부스트, 채집 수확량 추적",
+    description = "비전투 안전 더블우클릭 낚시(2중 해제), 크래시 복구 사운드 부스트, 채집물 별도 집계",
     yieldTo = { "FishingBuddy" },
     active = false,
     secureBtn = nil,
@@ -25,7 +30,11 @@ local Profession = {
     lastRightClickAt = 0,
     sessionStartAt = 0,
     sessionTotalItems = 0,
+    sessionGatherItems = 0,
+    sessionGeneralItems = 0,
+    sessionPendingItems = 0,
     sessionByItemID = {},
+    pendingUncachedByItemID = {},
     clearBindingFn = nil,
 }
 
@@ -49,7 +58,6 @@ function Profession:IsFishingPoleEquipped()
     end
     if C_Item and C_Item.GetItemInfo then
         local _, _, _, _, _, _, itemSubType, _, _, _, _, classID, subClassID = C_Item.GetItemInfo(itemID)
-        -- Weapon(2) + Fishing Pole(20), or localized subtype match
         if classID == 2 and subClassID == 20 then
             return true
         end
@@ -123,16 +131,10 @@ function Profession:OnWorldMouseDown(mouseButton)
     if not self.active or mouseButton ~= "RightButton" then
         return
     end
-    if ns.IsFeatureYielded("fishing") then
+    if ns.IsFeatureYielded("fishing") or not ns.ProfileManager:Get("profession", "doubleClickFishing") then
         return
     end
-    if not ns.ProfileManager:Get("profession", "doubleClickFishing") then
-        return
-    end
-    if ns.InCombat() or not self.secureBtn then
-        return
-    end
-    if not self:IsFishingPoleEquipped() then
+    if ns.InCombat() or not self.secureBtn or not self:IsFishingPoleEquipped() then
         return
     end
 
@@ -173,7 +175,6 @@ function Profession:SyncFishingSoundBoost()
 end
 
 function Profession:OnCombatEntering()
-    -- Attempt immediate release if pre-lockdown; otherwise safely defer via CombatQueue (AC-3)
     self:ClearFishingBindingSafe()
 end
 
@@ -186,6 +187,54 @@ function Profession:OnEquipmentChanged(_, slotID)
     end
 end
 
+local function ClassifyItemLootBucket(itemID)
+    if not (C_Item and C_Item.GetItemInfo) then
+        return nil
+    end
+    local itemName, _, _, _, _, itemType, itemSubType, _, _, _, _, classID = C_Item.GetItemInfo(itemID)
+    if itemName == nil or ns.IsSecret(itemName) then
+        return nil
+    end
+    if ns.IsSecret(classID) then
+        return "general"
+    end
+    if type(classID) == "number" then
+        return (classID == TRADE_GOODS_CLASS_ID) and "gather" or "general"
+    end
+    if type(itemType) == "string" and not ns.IsSecret(itemType) then
+        if string_find(itemType, "직업용품", 1, true) or string_find(string_lower(itemType), "trade goods", 1, true) then
+            return "gather"
+        end
+    end
+    if type(itemSubType) == "string" and not ns.IsSecret(itemSubType) then
+        if string_find(itemSubType, "물고기", 1, true) or string_find(string_lower(itemSubType), "fish", 1, true) then
+            return "gather"
+        end
+    end
+    return "general"
+end
+
+function Profession:ReconcilePendingLoot()
+    for pid, pendingQty in pairs(self.pendingUncachedByItemID) do
+        local bucket = ClassifyItemLootBucket(pid)
+        if bucket == "gather" then
+            self.sessionGatherItems = self.sessionGatherItems + pendingQty
+            self.sessionPendingItems = self.sessionPendingItems - pendingQty
+            self.pendingUncachedByItemID[pid] = nil
+        elseif bucket == "general" then
+            self.sessionGeneralItems = self.sessionGeneralItems + pendingQty
+            self.sessionPendingItems = self.sessionPendingItems - pendingQty
+            self.pendingUncachedByItemID[pid] = nil
+        end
+    end
+end
+
+function Profession:OnItemInfoReceived()
+    if self.sessionPendingItems > 0 then
+        self:ReconcilePendingLoot()
+    end
+end
+
 function Profession:OnLootChatMsg(_, msg)
     if not ns.ProfileManager:Get("profession", "trackGatherYield") then
         return
@@ -193,15 +242,30 @@ function Profession:OnLootChatMsg(_, msg)
     if type(msg) ~= "string" or ns.IsSecret(msg) then
         return
     end
-    local itemIDStr = string_match(msg, "|Hitem:(%d+):")
+    -- Ignore party/raid members' loot lines
+    if string_find(msg, "님이 아이템을 획득", 1, true) or string_find(msg, " receives loot:", 1, true) then
+        return
+    end
+    local itemIDStr = string_match(msg, "|Hitem:(%d+)")
     local itemID = tonumber(itemIDStr)
     if not itemID then
         return
     end
-    local qtyStr = string_match(msg, "|h|rx(%d+)") or string_match(msg, "x(%d+)%.?$")
+    local qtyStr = string_match(msg, "|h|rx(%d+)") or string_match(msg, "|hx(%d+)") or string_match(msg, "x(%d+)%.?$")
     local qty = tonumber(qtyStr) or 1
     self.sessionByItemID[itemID] = (self.sessionByItemID[itemID] or 0) + qty
     self.sessionTotalItems = self.sessionTotalItems + qty
+
+    local bucket = ClassifyItemLootBucket(itemID)
+    if bucket == "gather" then
+        self.sessionGatherItems = self.sessionGatherItems + qty
+    elseif bucket == "general" then
+        self.sessionGeneralItems = self.sessionGeneralItems + qty
+    else
+        self.pendingUncachedByItemID[itemID] = (self.pendingUncachedByItemID[itemID] or 0) + qty
+        self.sessionPendingItems = self.sessionPendingItems + qty
+    end
+    self:ReconcilePendingLoot()
 end
 
 function Profession:CheckGatheringTracking()
@@ -226,10 +290,9 @@ function Profession:CheckGatheringTracking()
             active = info.active
             category = info.type
         else
-            name, _, active, category = info, nil, nil, nil
+            name = info
         end
-        if
-            not ns.IsSecret(name)
+        if not ns.IsSecret(name)
             and not ns.IsSecret(active)
             and not ns.IsSecret(category)
             and type(name) == "string"
@@ -249,24 +312,37 @@ function Profession:CheckGatheringTracking()
 end
 
 function Profession:PrintSessionYield()
+    self:ReconcilePendingLoot()
     local elapsedSec = ns.GetNow() - self.sessionStartAt
     local perHourText = "—"
-    if elapsedSec >= 30 and self.sessionTotalItems > 0 then
-        local rate = (self.sessionTotalItems / elapsedSec) * 3600
+    if elapsedSec >= 30 and self.sessionGatherItems > 0 then
+        local rate = (self.sessionGatherItems / elapsedSec) * 3600
         perHourText = string_format("%.1f개/시간", rate)
     end
     local distinct = 0
     for _ in pairs(self.sessionByItemID) do
         distinct = distinct + 1
     end
-    ns.Print(string_format("세션 전리품/채집 집계: 총 %d개 (%d종류) | 속도: %s", self.sessionTotalItems, distinct, perHourText))
+    ns.Print(string_format(
+        "세션 집계 — 총 %d개 (%d종) | 채집물: %d개 | 일반 전리품: %d개 | 미캐시 대기: %d개 | 채집 속도: %s",
+        self.sessionTotalItems,
+        distinct,
+        self.sessionGatherItems,
+        self.sessionGeneralItems,
+        self.sessionPendingItems,
+        perHourText
+    ))
 end
 
 function Profession:OnInitialize()
     self.sessionStartAt = ns.GetNow()
     self.sessionTotalItems = 0
+    self.sessionGatherItems = 0
+    self.sessionGeneralItems = 0
+    self.sessionPendingItems = 0
     self.lastRightClickAt = 0
     ns.WipeTable(self.sessionByItemID)
+    ns.WipeTable(self.pendingUncachedByItemID)
     self.clearBindingFn = function()
         Profession:ClearFishingBindingSafe()
     end
@@ -291,6 +367,7 @@ function Profession:OnEnable(ctx)
     ctx:RegisterEvent("PLAYER_REGEN_ENABLED", Profession.SyncFishingSoundBoost)
     ctx:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", Profession.OnEquipmentChanged)
     ctx:RegisterEvent("CHAT_MSG_LOOT", Profession.OnLootChatMsg)
+    ctx:RegisterEvent("GET_ITEM_INFO_RECEIVED", Profession.OnItemInfoReceived)
     ctx:RegisterEvent("ZONE_CHANGED_NEW_AREA", Profession.CheckGatheringTracking)
 
     ctx:AddCleanup(function()

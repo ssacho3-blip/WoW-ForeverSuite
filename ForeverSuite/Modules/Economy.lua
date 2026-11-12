@@ -1,3 +1,8 @@
+-- Module: Modules/Economy.lua
+-- Responsibility: Session gold delta ledger (vendorSell, repair, quest, other) with Auctionator coexistence and live BagHUD tooltip sync.
+-- Dependencies: Core/Init.lua, Core/MoneyLedgerQueue.lua, Core/ProfileManager.lua, Core/ModuleManager.lua.
+-- Public API: Economy (ResetSessionBaseline, SyncCursorToCurrentMoney, OnPlayerMoney, GetNetDelta, PrintLedgerSummary).
+-- Combat/Secret Safety: Guards secret GetMoney() returns via secretGap recovery without fabricating zero deltas.
 local _, ns = ...
 
 local type = type
@@ -20,6 +25,13 @@ local Economy = {
         other = 0,
     },
 }
+
+local function NotifyHoveredBagTooltip()
+    local invRec = ns.ModuleManager and ns.ModuleManager:GetModule("Inventory")
+    if invRec and invRec.state == "ENABLED" and invRec.definition and invRec.definition.RefreshHoveredGoldTooltip then
+        invRec.definition:RefreshHoveredGoldTooltip()
+    end
+end
 
 function Economy:SyncCursorToCurrentMoney()
     if not _G.GetMoney then
@@ -50,6 +62,7 @@ function Economy:ResetSessionBaseline()
     self.ledger.quest = 0
     self.ledger.other = 0
     self.initializedBaseline = true
+    NotifyHoveredBagTooltip()
 end
 
 function Economy:OnInitialize()
@@ -100,9 +113,9 @@ function Economy:OnPlayerMoney()
     elseif reason == "QUEST" and delta > 0 then
         self.ledger.quest = self.ledger.quest + delta
     else
-        -- Unclassified changes are strictly recorded as 'other' to preserve exact delta invariant (AC-6)
         self.ledger.other = self.ledger.other + delta
     end
+    NotifyHoveredBagTooltip()
 end
 
 function Economy:GetNetDelta()

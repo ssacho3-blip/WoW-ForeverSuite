@@ -407,7 +407,7 @@ def test_readonly_profile_quest_slash_rejects_false_success_and_char_override_ex
     quest_def = ns_ro["ModuleManager"]["modules"]["Quest"]["definition"]
     rt_ro.chat_messages.clear()
 
-    for sub in ("mode", "zone", "level", "here", "min", "reset"):
+    for sub in ("mode", "zone", "level", "here", "lock", "min", "reset"):
         ok = rt_ro.vm._invoke_callable(quest_def["HandleSlash"], (quest_def, sub))[0]
         assert ok is False
 
@@ -476,3 +476,149 @@ def test_edit_mode_disable_retains_restore_ownership_and_query_failures_avoid_fa
     assert "—" in ns2["QuestTracker"]["headerTitle"]["_text"]
     assert "읽을 수 없습니다" in _visible_row_texts(ns2["QuestTracker"])[0]
     assert rt2.addon_action_blocked_count == 0
+
+
+# ---------------------------------------------------------------------------
+# 5. v0.3.0 QuestTracker ATDD/DDT (AC-2 Modifier Clicks/Lock & AC-7 Item Pool)
+# ---------------------------------------------------------------------------
+
+
+def _find_objective_row_widget(tracker: LuaTable, quest_id: int) -> LuaTable:
+    for w in _lua_list_items(tracker["rowWidgets"]):
+        d = w.get("_rowData")
+        if d and d.get("kind") == "objective" and d.get("questID") == quest_id:
+            return w
+    raise AssertionError(f"Objective row widget for questID={quest_id} not found")
+
+
+def _assert_ctrl_click_fallback_chain(rt: WoWForeverMockRuntime, row_101: LuaTable) -> None:
+    rt.ctrl_down = True
+    rt.opened_quest_details.clear()
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.opened_quest_details == [("OpenToQuestDetails", 101)]
+
+    rt.vm.G["QuestMapFrame_OpenToQuestDetails"] = None
+    rt.opened_quest_details.clear()
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.opened_quest_details == [("ShowQuestDetails", 101)]
+
+    rt.vm.G["QuestMapFrame_ShowQuestDetails"] = None
+    rt.opened_quest_details.clear()
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.opened_quest_details == [("ToggleQuestLog", 101)]
+
+    rt.combat_lockdown = True
+    rt.opened_quest_details.clear()
+    rt.chat_messages.clear()
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.opened_quest_details == []
+    assert any("전투 중에는 퀘스트 상세 창을 열 수 없습니다" in m for m in rt.chat_messages)
+    rt.combat_lockdown = False
+    rt.ctrl_down = False
+
+
+def test_v030_ac2_modifier_clicks_fallback_chain_objective_tooltip_and_tracker_lock() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    long_obj = "붉은마루 산맥 깊은 협곡 동굴 안쪽의 검은바위 지휘관 가르톡을 처치하고 작전 지령서 회수: 0/1"
+    rt.quest_objectives[101] = [{"text": long_obj, "finished": False}]
+    rt.watched_quest_ids = [101, 102, 201, 202, 301, 302]
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+
+    row_101 = _find_quest_row_widget(tracker, 101)
+    _assert_ctrl_click_fallback_chain(rt, row_101)
+
+    rt.active_chat_edit = LuaTable()
+    rt.alt_down = True
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert len(rt.inserted_chat_links) == 1 and "Hquest:101" in rt.inserted_chat_links[0]
+    rt.alt_down = False
+
+    rt.shift_down = True
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert len(rt.inserted_chat_links) == 2
+    assert 101 in rt.watched_quest_ids
+
+    rt.active_chat_edit = None
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert 101 not in rt.watched_quest_ids
+    rt.run_slash("FOREVERSUITE", "quest all")
+    rt._fire_widget_script(_find_quest_row_widget(tracker, 101), "OnClick", "LeftButton")
+    assert 101 in rt.watched_quest_ids
+    rt.shift_down = False
+    rt.run_slash("FOREVERSUITE", "quest all")
+
+    obj_row = _find_objective_row_widget(tracker, 101)
+    gt = rt.vm.G["GameTooltip"]
+    rt._fire_widget_script(obj_row, "OnEnter")
+    assert gt["IsShown"](gt) is True
+    assert any(long_obj in line for line in gt["_lines"])
+    assert any("데피아즈단 두목 처치" in line for line in gt["_lines"])
+    rt._fire_widget_script(obj_row, "OnLeave")
+    assert gt["IsShown"](gt) is False
+
+    rt._fire_widget_script(tracker["lockBtn"], "OnClick", "LeftButton")
+    assert rt.vm._invoke_callable(ns["ProfileManager"]["Get"], (ns["ProfileManager"], "quest", "trackerLocked"))[0] is True
+    f = tracker["frame"]
+    rt._fire_widget_script(f, "OnDragStart")
+    assert f.get("_moving") is not True
+    rt._fire_widget_script(_find_quest_row_widget(tracker, 102), "OnClick", "LeftButton")
+    assert rt.super_tracked_quest_id == 102
+    rt.run_slash("FOREVERSUITE", "quest lock")
+    assert rt.vm._invoke_callable(ns["ProfileManager"]["Get"], (ns["ProfileManager"], "quest", "trackerLocked"))[0] is False
+
+
+def test_v030_ac7_secure_quest_item_buttons_uiparent_isolation_and_combat_deferral() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    rt.quest_special_items = {
+        101: ("|Hitem:5501|h[데피아즈단 신호탄]|h", 133710),
+        201: ("|Hitem:5502|h[검은바위 폭탄]|h", 133711),
+    }
+    ns = rt.boot_session()
+    ui_parent = rt.vm.G["UIParent"]
+    tracker_frame = rt.vm.G["ForeverSuiteQuestTracker"]
+
+    btn1 = rt.vm.G["ForeverSuiteQuestItemBtn1"]
+    btn2 = rt.vm.G["ForeverSuiteQuestItemBtn2"]
+    btn3 = rt.vm.G["ForeverSuiteQuestItemBtn3"]
+    for idx in range(1, 7):
+        btn = rt.vm.G[f"ForeverSuiteQuestItemBtn{idx}"]
+        assert btn["_parent"] is ui_parent
+        assert btn["_parent"] is not tracker_frame
+        assert btn["_registered_clicks"] == ("AnyUp", "AnyDown")
+
+    assert btn1["_shown"] is True and btn2["_shown"] is True and btn3["_shown"] is False
+    assert btn1["_point"][1] is ui_parent
+    assert btn1["_attrs"]["type"] == "item"
+    assert btn1["_attrs"]["item"] == "|Hitem:5501|h[데피아즈단 신호탄]|h"
+    assert btn1["_fsIcon"]["_tex"] == 133710
+
+    # Enter combat, abandon Redridge quests so quest 101's logIndex shifts up, and add quest 103 with a new item!
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    rt.quest_log_entries = [
+        {"title": "서부 몰락지대", "isHeader": True},
+        {"questID": 103, "title": "오염된 우물 정화", "level": 20, "isComplete": False, "isOnMap": True},
+        {"questID": 101, "title": "데피아즈단 두목 처치", "level": 23, "isComplete": False, "isOnMap": True},
+    ]
+    rt.quest_objectives[103] = [{"text": "정화수 살포: 0/1", "finished": False}]
+    rt.quest_special_items[103] = ("|Hitem:5503|h[성스러운 정화수]|h", 134999)
+
+    rt.fire_event("QUEST_LOG_UPDATE")
+    rt.advance_time(0.20)
+    assert rt.addon_action_blocked_count == 0
+    assert rt.vm._invoke_callable(ns["CombatQueue"]["PendingCount"], (ns["CombatQueue"],))[0] >= 1
+
+    # Leaving combat flushes queued item button sync using LIVE shifted questID -> logIndex resolution!
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.addon_action_blocked_count == 0
+    shown_links = [
+        rt.vm.G[f"ForeverSuiteQuestItemBtn{i}"]["_attrs"]["item"]
+        for i in range(1, 7)
+        if rt.vm.G[f"ForeverSuiteQuestItemBtn{i}"]["_shown"]
+    ]
+    assert set(shown_links) == {"|Hitem:5503|h[성스러운 정화수]|h", "|Hitem:5501|h[데피아즈단 신호탄]|h"}
+

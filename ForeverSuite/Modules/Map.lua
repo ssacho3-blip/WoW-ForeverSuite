@@ -1,6 +1,12 @@
+-- Module: Modules/Map.lua
+-- Responsibility: WorldMap open-only 0.15s player & cursor coordinate display and /way native SuperTrack pin integration.
+-- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/Framework.lua.
+-- Public API: Map (QueryPlayerCoords, QueryCursorCoords, FormatPlayerCoordinateText, RefreshCoords, SetWaypointFromSlash).
+-- Combat/Secret Safety: Cancels ticker immediately when WorldMapFrame hides (0 idle tickers); guards secret map/cursor coords.
 local _, ns = ...
 
 local type = type
+local pcall = pcall
 local tonumber = tonumber
 local tostring = tostring
 local string_format = string.format
@@ -9,7 +15,7 @@ local string_match = string.match
 local Map = {
     title = "지도 좌표 및 경로 안내 (Map)",
     priority = "P1",
-    description = "월드맵 열림 전용 0.15s 좌표 Ticker, /way <x> <y> 네이티브 3D 화살표 연동",
+    description = "월드맵 열림 전용 0.15s 플레이어·커서 좌표, /way 네이티브 3D 화살표 연동",
     yieldTo = { "TomTom" },
     coordLabel = nil,
     coordTicker = nil,
@@ -18,17 +24,17 @@ local Map = {
     lastCoordText = "플레이어: —",
 }
 
-function Map:FormatPlayerCoordinateText()
+function Map:QueryPlayerCoords()
     if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition) then
-        return "플레이어: —"
+        return nil, nil
     end
     local uiMapID = C_Map.GetBestMapForUnit("player")
     if not uiMapID or ns.IsSecret(uiMapID) then
-        return "플레이어: —"
+        return nil, nil
     end
     local pos = C_Map.GetPlayerMapPosition(uiMapID, "player")
-    if not pos then
-        return "플레이어: —"
+    if not pos or ns.IsSecret(pos) then
+        return nil, nil
     end
     local x, y
     if type(pos.GetXY) == "function" then
@@ -37,17 +43,58 @@ function Map:FormatPlayerCoordinateText()
         x, y = pos.x, pos.y
     end
     if type(x) ~= "number" or type(y) ~= "number" or ns.IsSecret(x) or ns.IsSecret(y) then
-        return "플레이어: —"
+        return nil, nil
     end
-    if x <= 0 and y <= 0 then
-        return "플레이어: —"
+    if x ~= x or y ~= y or x < 0 or x > 1 or y < 0 or y > 1 or (x == 0 and y == 0) then
+        return nil, nil
     end
-    return string_format("플레이어: %.1f, %.1f", x * 100, y * 100)
+    return x * 100, y * 100
+end
+
+function Map:QueryCursorCoords()
+    local wmf = _G.WorldMapFrame
+    if type(wmf) ~= "table" or ns.IsSecret(wmf) then
+        return nil, nil
+    end
+    local ok, cx, cy = false, nil, nil
+    local sc = wmf.ScrollContainer
+    if type(sc) == "table" and not ns.IsSecret(sc) and type(sc.GetNormalizedCursorPosition) == "function" then
+        ok, cx, cy = pcall(sc.GetNormalizedCursorPosition, sc)
+    elseif type(wmf.GetNormalizedCursorPosition) == "function" then
+        ok, cx, cy = pcall(wmf.GetNormalizedCursorPosition, wmf)
+    end
+    if not ok or ns.IsSecret(cx) or ns.IsSecret(cy) or type(cx) ~= "number" or type(cy) ~= "number" then
+        return nil, nil
+    end
+    if cx ~= cx or cy ~= cy or cx < 0 or cx > 1 or cy < 0 or cy > 1 then
+        return nil, nil
+    end
+    return cx * 100, cy * 100
+end
+
+function Map:FormatPlayerCoordinateText()
+    local px, py = self:QueryPlayerCoords()
+    local cx, cy = self:QueryCursorCoords()
+    if px and py and cx and cy then
+        return string_format("플레이어: %.1f, %.1f  |  커서: %.1f, %.1f", px, py, cx, cy)
+    elseif px and py then
+        return string_format("플레이어: %.1f, %.1f", px, py)
+    elseif cx and cy then
+        return string_format("플레이어: —  |  커서: %.1f, %.1f", cx, cy)
+    end
+    return "플레이어: —"
 end
 
 function Map:RefreshCoords()
-    if not self.active then
+    if not self.active or not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+        self:StopMapTicker()
+        if self.coordHolder and self.coordHolder.Hide then
+            self.coordHolder:Hide()
+        end
         return
+    end
+    if self.coordHolder and self.coordHolder.Show then
+        self.coordHolder:Show()
     end
     local text = self:FormatPlayerCoordinateText()
     self.lastCoordText = text
@@ -57,13 +104,20 @@ function Map:RefreshCoords()
 end
 
 function Map:StartMapTicker(ctx)
+    if not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+        self:StopMapTicker()
+        if self.coordHolder and self.coordHolder.Hide then
+            self.coordHolder:Hide()
+        end
+        return
+    end
+    if self.coordHolder and self.coordHolder.Show then
+        self.coordHolder:Show()
+    end
+    self:RefreshCoords()
     if self.coordTicker and self.coordTicker:IsActive() then
         return
     end
-    if not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
-        return
-    end
-    self:RefreshCoords()
     self.coordTicker = ctx:NewTicker(0.15, function()
         Map:RefreshCoords()
     end)
@@ -77,7 +131,7 @@ function Map:StopMapTicker()
 end
 
 function Map:SetWaypointFromSlash(rawInput)
-    if not self.active then
+    if not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
         return false
     end
     local clean = tostring(rawInput or "")
@@ -134,6 +188,71 @@ function Map:SetWaypointFromSlash(rawInput)
     return true
 end
 
+function Map:UnregisterWaySlash()
+    if self.wayOwned then
+        if type(_G.SlashCmdList) == "table" then
+            _G.SlashCmdList["FOREVERSUITEWAY"] = nil
+        end
+        _G.SLASH_FOREVERSUITEWAY1 = nil
+        self.wayOwned = false
+    end
+    ns.SetFeatureYield("way", false, nil)
+end
+
+function Map:SyncWayCommand()
+    if not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
+        self:UnregisterWaySlash()
+        return
+    end
+    if self.wayOwned then
+        return
+    end
+    local hasExtWay, extWayOwner = ns.HasExternalWayCommand()
+    if hasExtWay then
+        ns.SetFeatureYield("way", true, extWayOwner)
+        return
+    end
+    ns.SetFeatureYield("way", false, nil)
+    _G.SLASH_FOREVERSUITEWAY1 = "/way"
+    if type(_G.SlashCmdList) == "table" then
+        _G.SlashCmdList["FOREVERSUITEWAY"] = function(msg)
+            Map:SetWaypointFromSlash(msg)
+        end
+    end
+    self.wayOwned = true
+end
+
+function Map:SyncSettings(ctx)
+    if not self.active or not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+        self:StopMapTicker()
+        if self.coordHolder and self.coordHolder.Hide then
+            self.coordHolder:Hide()
+        end
+    else
+        if self.coordHolder and self.coordHolder.Show then
+            self.coordHolder:Show()
+        end
+        local effCtx = ctx or ((ns.ModuleManager:GetModule("Map") or {}).ctx)
+        if _G.WorldMapFrame and _G.WorldMapFrame.IsShown and _G.WorldMapFrame:IsShown() and effCtx then
+            self:StartMapTicker(effCtx)
+        else
+            self:RefreshCoords()
+        end
+    end
+    self:SyncWayCommand()
+end
+
+function Map:OnInitialize()
+    if not self.settingListenerBound then
+        self.settingListenerBound = true
+        ns.ProfileManager:OnSettingChanged(function(section)
+            if section == "map" and Map.active then
+                Map:SyncSettings()
+            end
+        end)
+    end
+end
+
 function Map:OnEnable(ctx)
     self.active = true
 
@@ -142,7 +261,7 @@ function Map:OnEnable(ctx)
         if holder then
             if not holder._fsInitialized then
                 holder._fsInitialized = true
-                holder:SetSize(200, 20)
+                holder:SetSize(340, 20)
                 holder:SetPoint("BOTTOMLEFT", _G.WorldMapFrame, "BOTTOMLEFT", 16, 8)
                 local lbl = ns.UI.CreateLabel(holder, "플레이어: —", "GameFontHighlightSmall", ns.UI.COLORS.ACCENT)
                 if lbl then
@@ -150,6 +269,7 @@ function Map:OnEnable(ctx)
                     holder._fsCoordLabel = lbl
                 end
             end
+            self.coordHolder = holder
             self.coordLabel = holder._fsCoordLabel
         end
 
@@ -167,37 +287,22 @@ function Map:OnEnable(ctx)
                 Map:StopMapTicker()
             end)
         end
-
-        if _G.WorldMapFrame.IsShown and _G.WorldMapFrame:IsShown() then
-            self:StartMapTicker(ctx)
-        end
     end
 
-    if ns.ProfileManager:Get("map", "enableWaySlash") then
-        local hasExtWay, extWayOwner = ns.HasExternalWayCommand()
-        if hasExtWay then
-            ns.SetFeatureYield("way", true, extWayOwner)
-        else
-            ns.SetFeatureYield("way", false, nil)
-            _G.SLASH_FOREVERSUITEWAY1 = "/way"
-            if type(_G.SlashCmdList) == "table" then
-                _G.SlashCmdList["FOREVERSUITEWAY"] = function(msg)
-                    Map:SetWaypointFromSlash(msg)
-                end
-            end
-            ctx:AddCleanup(function()
-                if type(_G.SlashCmdList) == "table" then
-                    _G.SlashCmdList["FOREVERSUITEWAY"] = nil
-                end
-                _G.SLASH_FOREVERSUITEWAY1 = nil
-            end)
-        end
-    end
+    ctx:AddCleanup(function()
+        Map:UnregisterWaySlash()
+    end)
+    self:SyncSettings(ctx)
 end
 
 function Map:OnDisable()
     self.active = false
     self:StopMapTicker()
+    self:UnregisterWaySlash()
+    if self.coordHolder and self.coordHolder.Hide then
+        self.coordHolder:Hide()
+    end
+    self.coordHolder = nil
     self.coordLabel = nil
 end
 

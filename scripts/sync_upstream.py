@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -153,7 +154,33 @@ def _scan_single_folder(folders: dict[str, dict], item: pathlib.Path) -> None:
     }
 
 
+def _has_direct_addon_dir(directory: pathlib.Path) -> bool:
+    for item in directory.iterdir():
+        if _is_valid_addon_dir(item):
+            return True
+    return False
+
+
+def _unwrap_single_wrapper_dir(staging_dir: pathlib.Path) -> None:
+    if _has_direct_addon_dir(staging_dir):
+        return
+    top_dirs = [d for d in sorted(staging_dir.iterdir()) if d.is_dir() and not d.is_symlink()]
+    wrapper_candidates = [d for d in top_dirs if _has_direct_addon_dir(d)]
+    if len(wrapper_candidates) > 1:
+        raise ValueError("Ambiguous multiple top-level wrapper directories in upstream archive")
+    if len(wrapper_candidates) != 1:
+        return
+    tmp_wrap = staging_dir / f".__unwrap_{os.getpid()}__"
+    os.replace(wrapper_candidates[0], tmp_wrap)
+    try:
+        for child in sorted(tmp_wrap.iterdir()):
+            os.replace(child, staging_dir / child.name)
+    finally:
+        shutil.rmtree(tmp_wrap, ignore_errors=True)
+
+
 def _scan_extracted_folders(staging_dir: pathlib.Path) -> dict[str, dict]:
+    _unwrap_single_wrapper_dir(staging_dir)
     folders: dict[str, dict] = {}
     for item in sorted(staging_dir.iterdir()):
         _scan_single_folder(folders, item)
@@ -162,21 +189,71 @@ def _scan_extracted_folders(staging_dir: pathlib.Path) -> dict[str, dict]:
     return folders
 
 
-def _extract_and_swap_upstream(zip_path: pathlib.Path, extract_dest: pathlib.Path) -> dict[str, dict]:
-    parent_dir = extract_dest.parent
-    parent_dir.mkdir(parents=True, exist_ok=True)
-    staging_dir = pathlib.Path(tempfile.mkdtemp(prefix=".gj_sync_stage_", dir=str(parent_dir)))
+def _restore_text_snapshot(path: pathlib.Path, snapshot: str | None) -> None:
+    if snapshot is None:
+        path.unlink(missing_ok=True)
+    else:
+        _write_text_atomic(path, snapshot)
+
+
+def _rollback_directory_swap(
+    extract_dest: pathlib.Path, backup_dir: pathlib.Path | None, had_existing: bool
+) -> None:
+    if extract_dest.exists():
+        shutil.rmtree(extract_dest, ignore_errors=True)
+    if had_existing and backup_dir is not None and backup_dir.exists():
+        os.replace(backup_dir, extract_dest)
+
+
+SAFE_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9A-Za-z_-]+)+$")
+
+
+def validate_version_string(version: str) -> str:
+    clean = str(version).strip()
+    if not SAFE_VERSION_RE.fullmatch(clean):
+        raise ValueError(f"Unsafe or malformed upstream version string: {version!r}")
+    return clean
+
+
+def _prepare_bridge_update(bridge_lua: pathlib.Path, version: str) -> tuple[str | None, str | None]:
+    safe_ver = validate_version_string(version)
+    if not bridge_lua.is_file():
+        return None, None
+    old_src = bridge_lua.read_text(encoding="utf-8")
+    new_src = re.sub(r'ns\.UPSTREAM_PIN\s*=\s*"[^"]+"', lambda _m: f'ns.UPSTREAM_PIN = "{safe_ver}"', old_src, count=1)
+    return old_src, new_src
+
+
+def _commit_sync_transaction(
+    staging_dir: pathlib.Path,
+    extract_dest: pathlib.Path,
+    manifest_path: pathlib.Path,
+    manifest_json: str,
+    bridge_lua: pathlib.Path,
+    version: str,
+) -> None:
+    old_manifest = manifest_path.read_text(encoding="utf-8") if manifest_path.is_file() else None
+    old_bridge, new_bridge = _prepare_bridge_update(bridge_lua, version)
+    had_existing = extract_dest.exists()
+    backup_dir: pathlib.Path | None = None
+    if had_existing:
+        backup_dir = extract_dest.parent / f".gj_sync_bak_{staging_dir.name.lstrip('.')}"
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        os.replace(extract_dest, backup_dir)
     try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            extract_zip_safely(zf, staging_dir)
-        folders = _scan_extracted_folders(staging_dir)
-        if extract_dest.exists():
-            shutil.rmtree(extract_dest)
         os.replace(staging_dir, extract_dest)
-        return folders
-    finally:
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir, ignore_errors=True)
+        _write_text_atomic(manifest_path, manifest_json)
+        if new_bridge is not None and new_bridge != old_bridge:
+            _write_text_atomic(bridge_lua, new_bridge)
+    except BaseException:
+        _rollback_directory_swap(extract_dest, backup_dir, had_existing)
+        _restore_text_snapshot(manifest_path, old_manifest)
+        if old_bridge is not None:
+            _restore_text_snapshot(bridge_lua, old_bridge)
+        raise
+    if backup_dir is not None and backup_dir.exists():
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def _parse_version_from_zip_or_toc(extract_dest: pathlib.Path, zip_name: str, fallback: str) -> str:
@@ -274,14 +351,45 @@ def fetch_latest_curseforge_zip(
     return zip_path, {"file_id": file_id, "download_url": download_url, "release_date": uploaded_at[:10]}
 
 
-def _update_bridge_upstream_pin(repo_root: pathlib.Path, version: str) -> None:
-    bridge_lua = repo_root / "ForeverSuite_GJBridge" / "Bridge.lua"
-    if not bridge_lua.is_file():
-        return
-    src = bridge_lua.read_text(encoding="utf-8")
-    updated = re.sub(r'ns\.UPSTREAM_PIN\s*=\s*"[^"]+"', f'ns.UPSTREAM_PIN = "{version}"', src, count=1)
-    if updated != src:
-        bridge_lua.write_text(updated, encoding="utf-8")
+def _write_text_atomic(path: pathlib.Path, content: str) -> None:
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = pathlib.Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out_f:
+            out_f.write(content)
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _write_json_atomic(path: pathlib.Path, payload: dict) -> None:
+    _write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
+
+def resolve_default_extract_dir(repo_root: pathlib.Path) -> pathlib.Path:
+    candidates = (
+        repo_root.parent / "GodJohnson_5.0.132",
+        pathlib.Path("/Users/choyoungseo/workspace/GodJohnson_5.0.132"),
+    )
+    for cand in candidates:
+        if (cand / "GodJohnsonGoldBorder" / "GodJohnsonGoldBorder.toc").is_file():
+            return cand
+    return candidates[0]
+
+
+def verify_extracted_dir(repo_root: pathlib.Path, target_dir: pathlib.Path) -> int:
+    manifest = _load_existing_manifest(repo_root / "pinned_upstream.json")
+    folders = manifest.get("folders") or {}
+    if not folders:
+        raise ValueError("pinned_upstream.json contains no folder hashes")
+    for folder_name, meta in folders.items():
+        toc_file = target_dir / folder_name / f"{folder_name}.toc"
+        if not toc_file.is_file():
+            raise ValueError(f"Missing upstream TOC: {toc_file}")
+        actual_sha = hashlib.sha256(toc_file.read_bytes()).hexdigest()
+        if actual_sha != meta["toc_sha256"]:
+            raise ValueError(f"Upstream TOC SHA-256 mismatch [{folder_name}]: {actual_sha} != {meta['toc_sha256']}")
+    return len(folders)
 
 
 def _load_existing_manifest(manifest_path: pathlib.Path) -> dict:
@@ -297,34 +405,48 @@ def _pick_meta_value(meta: dict, existing: dict, key: str, default: object) -> o
     return existing.get(key, default)
 
 
-def sync_upstream_zip(
+def _verify_expected_sha256(actual_sha256: str, expected_sha256: str | None) -> None:
+    if expected_sha256 is None:
+        return
+    norm_expected = str(expected_sha256).strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", norm_expected) or actual_sha256.lower() != norm_expected:
+        raise ValueError(f"Upstream SHA-256 mismatch: expected={norm_expected!r} actual={actual_sha256!r}")
+
+
+def _preserve_patch_metadata(manifest: dict, meta: dict, existing: dict) -> None:
+    patch_url = meta.get("patch_zip_url") or existing.get("patch_zip_url")
+    patch_sha = meta.get("patch_zip_sha256") or existing.get("patch_zip_sha256")
+    if isinstance(patch_url, str) and patch_url and isinstance(patch_sha, str) and patch_sha:
+        manifest["patch_zip_url"] = patch_url
+        manifest["patch_zip_sha256"] = patch_sha
+
+
+def _build_manifest_payload(
+    staging_dir: pathlib.Path,
     zip_path: pathlib.Path,
-    extract_dest: pathlib.Path,
-    repo_root: pathlib.Path,
-    release_meta: dict | None = None,
+    zip_sha256: str,
+    zip_size: int,
+    folders: dict[str, dict],
+    meta: dict,
+    existing: dict,
 ) -> dict:
-    meta = release_meta or {}
-    zip_sha256 = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-    zip_size = zip_path.stat().st_size
-    folders = _extract_and_swap_upstream(zip_path, extract_dest)
-
-    manifest_path = repo_root / "pinned_upstream.json"
-    existing = _load_existing_manifest(manifest_path)
-
-    version = _parse_version_from_zip_or_toc(extract_dest, zip_path.name, existing.get("version", "5.0.132"))
-    revision = _parse_release_revision(extract_dest, int(existing.get("release_revision", 484)))
+    version = validate_version_string(
+        _parse_version_from_zip_or_toc(staging_dir, zip_path.name, str(existing.get("version", "5.0.132")))
+    )
+    revision = _parse_release_revision(staging_dir, int(existing.get("release_revision", 484)))
     file_id = int(_pick_meta_value(meta, existing, "file_id", 9432165))
+    if file_id <= 0:
+        raise ValueError(f"Invalid non-positive file_id: {file_id}")
     default_url = build_forgecdn_url(file_id, zip_path.name)
-    download_url = str(_pick_meta_value(meta, existing, "download_url", default_url))
+    download_url = validate_https_download_url(str(_pick_meta_value(meta, existing, "download_url", default_url)))
     release_date = str(_pick_meta_value(meta, existing, "release_date", "2026-11-09"))
-
     manifest = {
         "upstream_name": "GodJohnson Integrated Addon",
-        "curseforge_project_id": existing.get("curseforge_project_id", 1707376),
+        "curseforge_project_id": int(existing.get("curseforge_project_id", 1707376)),
         "version": version,
         "release_revision": revision,
         "release_date": release_date,
-        "target_client_build": existing.get("target_client_build", "1.60.1.70790"),
+        "target_client_build": str(existing.get("target_client_build", "1.60.1.70790")),
         "file_id": file_id,
         "file_name": zip_path.name,
         "download_url": download_url,
@@ -333,25 +455,77 @@ def sync_upstream_zip(
         "folder_count": len(folders),
         "folders": folders,
     }
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    _update_bridge_upstream_pin(repo_root, version)
+    _preserve_patch_metadata(manifest, meta, existing)
     return manifest
 
 
-def _resolve_cli_inputs(args: list[str], root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, dict]:
-    edest = pathlib.Path(args[1]).resolve() if len(args) >= 2 else (root.parent / "GodJohnson_5.0.132")
-    if not args or args[0] == "--fetch-latest":
+def sync_upstream_zip(
+    zip_path: pathlib.Path,
+    extract_dest: pathlib.Path,
+    repo_root: pathlib.Path,
+    release_meta: dict | None = None,
+    expected_sha256: str | None = None,
+) -> dict:
+    meta = release_meta or {}
+    zip_sha256 = hashlib.sha256(zip_path.read_bytes()).hexdigest().lower()
+    resolved_expected = expected_sha256 if expected_sha256 is not None else meta.get("expected_sha256")
+    _verify_expected_sha256(zip_sha256, resolved_expected)
+    zip_size = zip_path.stat().st_size
+
+    manifest_path = repo_root / "pinned_upstream.json"
+    existing = _load_existing_manifest(manifest_path)
+    bridge_lua = repo_root / "ForeverSuite_GJBridge" / "Bridge.lua"
+
+    parent_dir = extract_dest.parent
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = pathlib.Path(tempfile.mkdtemp(prefix=".gj_sync_stage_", dir=str(parent_dir)))
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            extract_zip_safely(zf, staging_dir)
+        folders = _scan_extracted_folders(staging_dir)
+        manifest = _build_manifest_payload(staging_dir, zip_path, zip_sha256, zip_size, folders, meta, existing)
+        manifest_json = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+        _commit_sync_transaction(staging_dir, extract_dest, manifest_path, manifest_json, bridge_lua, manifest["version"])
+        return manifest
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Sync or verify GodJohnson upstream archive.")
+    parser.add_argument("zip_path", nargs="?", help="Local upstream .zip path")
+    parser.add_argument("extract_dest", nargs="?", help="Target directory for extracted GodJohnson folders")
+    parser.add_argument("--fetch-latest", action="store_true", help="Fetch latest CurseForge release")
+    parser.add_argument("--expected-sha256", dest="expected_sha256", default=None, help="Expected 64-hex SHA-256")
+    parser.add_argument("--print-extract-dir", action="store_true", help="Print resolved default extract dir and exit")
+    parser.add_argument("--verify-dir", dest="verify_dir", default=None, help="Verify extracted TOC hashes in DIR")
+    return parser
+
+
+def _resolve_sync_targets(parsed: argparse.Namespace, root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, dict]:
+    if parsed.fetch_latest or not parsed.zip_path:
+        raw_dest = parsed.extract_dest or parsed.zip_path
+        edest = pathlib.Path(raw_dest).resolve() if raw_dest else resolve_default_extract_dir(root)
         existing = _load_existing_manifest(root / "pinned_upstream.json")
         zpath, meta = fetch_latest_curseforge_zip(trusted_pin=existing)
         return zpath, edest, meta
-    return pathlib.Path(args[0]).resolve(), edest, {}
+    edest = pathlib.Path(parsed.extract_dest).resolve() if parsed.extract_dest else resolve_default_extract_dir(root)
+    return pathlib.Path(parsed.zip_path).resolve(), edest, {}
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
+    parsed = _build_arg_parser().parse_args(argv if argv is not None else sys.argv[1:])
     root = pathlib.Path(__file__).resolve().parent.parent
-    zpath, edest, meta = _resolve_cli_inputs(args, root)
-    res = sync_upstream_zip(zpath, edest, root, release_meta=meta)
+    if parsed.print_extract_dir:
+        print(str(resolve_default_extract_dir(root)))
+        return 0
+    if parsed.verify_dir:
+        count = verify_extracted_dir(root, pathlib.Path(parsed.verify_dir).resolve())
+        print(f"[OK] Verified {count} upstream folders in {parsed.verify_dir}")
+        return 0
+    zpath, edest, meta = _resolve_sync_targets(parsed, root)
+    res = sync_upstream_zip(zpath, edest, root, release_meta=meta, expected_sha256=parsed.expected_sha256)
     print(
         f"[OK] Synced upstream {res['file_name']} v{res['version']} (rev {res['release_revision']}, "
         f"{res['folder_count']} folders, sha256={res['zip_sha256'][:16]}...)"

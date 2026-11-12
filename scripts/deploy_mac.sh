@@ -4,7 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WOW_ADDONS_DIR="${1:-/Applications/World of Warcraft/_forever_/Interface/AddOns}"
-GJ_EXTRACTED_DIR="${2:-/Users/choyoungseo/workspace/GodJohnson_5.0.132}"
+if [[ -n "${2:-}" ]]; then
+  GJ_EXTRACTED_DIR="${2}"
+else
+  GJ_EXTRACTED_DIR="$(python3 "${SCRIPT_DIR}/sync_upstream.py" --print-extract-dir)"
+fi
 
 if [[ ! -d "${WOW_ADDONS_DIR}" ]]; then
   echo "[ERROR] WoW Forever AddOns 경로가 존재하지 않습니다: ${WOW_ADDONS_DIR}" >&2

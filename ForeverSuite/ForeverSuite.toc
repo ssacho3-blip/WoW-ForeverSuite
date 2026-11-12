@@ -2,7 +2,7 @@
 ## Title: |cffd4af37Forever|rSuite
 ## Notes: WoW 포에버 개인용 초경량 통합 애드온 (Core · 퀘스트 · 지도 · 가방 · 전문기술 · 경제 · 전투 보조)
 ## Author: Youngseo Cho (AI-Driven Personal Edition)
-## Version: 0.2.0
+## Version: 0.3.0
 ## IconTexture: 134063
 ## SavedVariables: ForeverSuiteDB
 ## SavedVariablesPerCharacter: ForeverSuiteCharDB
@@ -11,11 +11,14 @@
 ## AddonCompartmentFuncOnLeave: ForeverSuite_OnAddonCompartmentLeave
 
 Core/Init.lua
+Core/MoneyLedgerQueue.lua
 Core/EventBus.lua
 Core/ProfileManager.lua
 Core/ModuleManager.lua
 UI/Framework.lua
 UI/QuestTrackerModel.lua
+UI/QuestLogCollector.lua
+UI/DefaultTrackerSync.lua
 UI/QuestTracker.lua
 UI/SettingsPanel.lua
 Modules/Utility.lua

@@ -13,7 +13,7 @@ local string_lower = string.lower
 local string_match = string.match
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.2.0"
+ns.VERSION = "0.3.0"
 ns.UPSTREAM_PIN = "5.0.213"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "

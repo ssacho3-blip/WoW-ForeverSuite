@@ -1,21 +1,55 @@
+-- Module: Core/Init.lua
+-- Responsibility: Shared namespace bootstrap, C_Secrets/InCombatLockdown guards, CombatQueue, FeatureYields, and API probe.
+-- Dependencies: None (first file in ForeverSuite.toc load order).
+-- Public API: ns.Print, ns.Warn, ns.ErrorMsg, ns.IsSecret, ns.InCombat, ns.FormatMoney, ns.CombatQueue, ns.RunClientProbe.
+-- Combat/Secret Safety: Wraps issecretvalue via pcall; CombatQueue defers protected actions with last-write-wins keying.
 local ADDON_NAME, ns = ...
 
 ns = ns or {}
 _G.ForeverSuite = ns
 
-ns.ADDON_NAME = ADDON_NAME or "ForeverSuite"
-ns.VERSION = "0.2.0"
-ns.TARGET_TOC = 11701
-ns.PREFIX = "|cffd4af37[ForeverSuite]|r "
-
 local type = type
 local tostring = tostring
-local select = select
+local tonumber = tonumber
 local ipairs = ipairs
 local pairs = pairs
+local pcall = pcall
+local xpcall = xpcall
 local math_floor = math.floor
 local math_abs = math.abs
 local string_format = string.format
+local string_match = string.match
+
+ns.ADDON_NAME = ADDON_NAME or "ForeverSuite"
+
+local function ResolveRuntimeVersionMetadata(addonName)
+    local ver = "0.3.0"
+    local clientVer = "1.60.1"
+    local targetToc = 16001
+    if type(_G.GetAddOnMetadata) == "function" then
+        local okV, rawV = pcall(_G.GetAddOnMetadata, addonName, "Version")
+        if okV and type(rawV) == "string" and rawV ~= "" then
+            ver = rawV
+        end
+        local okI, rawI = pcall(_G.GetAddOnMetadata, addonName, "Interface")
+        if okI and type(rawI) == "string" and rawI ~= "" then
+            local tok = string_match(rawI, "(160%d%d)") or string_match(rawI, "(%d+)")
+            if tok then
+                targetToc = tonumber(tok) or targetToc
+            end
+        end
+    end
+    if type(_G.GetBuildInfo) == "function" then
+        local okB, bVer = pcall(_G.GetBuildInfo)
+        if okB and type(bVer) == "string" and bVer ~= "" then
+            clientVer = bVer
+        end
+    end
+    return ver, clientVer, targetToc
+end
+
+ns.VERSION, ns.CLIENT_VERSION, ns.TARGET_TOC = ResolveRuntimeVersionMetadata(ns.ADDON_NAME)
+ns.PREFIX = "|cffd4af37[ForeverSuite]|r "
 
 function ns.Print(msg)
     local text = ns.PREFIX .. tostring(msg or "")
@@ -36,7 +70,10 @@ function ns.IsSecret(val)
     local fn = _G.issecretvalue
     if type(fn) == "function" then
         local ok, res = pcall(fn, val)
-        return (ok and res) and true or false
+        if not ok then
+            return true
+        end
+        return res and true or false
     end
     return false
 end
@@ -114,178 +151,6 @@ function ns.SafeSetCVar(name, value)
         return ok and true or false
     end
     return false
-end
-
-ns.PendingMoneyReasons = {}
-
-local REASON_EXPECTED_SIGN = {
-    REPAIR = -1,
-    VENDOR_SELL = 1,
-    QUEST = 1,
-}
-
-function ns.ClearPendingMoneyReasons()
-    ns.WipeTable(ns.PendingMoneyReasons)
-    ns.PendingMoneyReason = nil
-    ns.PendingMoneyReasonAt = nil
-end
-
-function ns.SetPendingMoneyReason(reason, ttlSec, expectedSign, expectedDelta)
-    if type(reason) ~= "string" or reason == "" then
-        return
-    end
-    local now = ns.GetNow()
-    local rawTtl = tonumber(ttlSec) or 1.5
-    local ttl = (rawTtl > 0 and rawTtl <= 1.5) and rawTtl or 1.5
-    local sign = expectedSign or REASON_EXPECTED_SIGN[reason] or 0
-    local expDelta = (type(expectedDelta) == "number" and not ns.IsSecret(expectedDelta)) and expectedDelta or nil
-    if expDelta == 0 then
-        expDelta = nil
-    end
-    if expDelta ~= nil and expDelta ~= 0 then
-        sign = expDelta > 0 and 1 or -1
-    end
-    local q = ns.PendingMoneyReasons
-    local writeIdx = 1
-    for readIdx = 1, #q do
-        local item = q[readIdx]
-        if item and now <= item.expiresAt then
-            q[writeIdx] = item
-            writeIdx = writeIdx + 1
-        end
-    end
-    for i = writeIdx, #q do
-        q[i] = nil
-    end
-    if #q >= 32 then
-        for k = 1, #q - 1 do
-            q[k] = q[k + 1]
-        end
-        q[#q] = nil
-    end
-    q[#q + 1] = {
-        reason = reason,
-        sign = sign,
-        expectedDelta = expDelta,
-        createdAt = now,
-        expiresAt = now + ttl,
-    }
-    ns.PendingMoneyReason = reason
-    ns.PendingMoneyReasonAt = now
-end
-
-function ns.ConsumePendingMoneyReason(deltaOrNil)
-    local q = ns.PendingMoneyReasons
-    if #q == 0 then
-        ns.PendingMoneyReason = nil
-        ns.PendingMoneyReasonAt = nil
-        return nil
-    end
-    local now = ns.GetNow()
-    local delta = (type(deltaOrNil) == "number" and not ns.IsSecret(deltaOrNil)) and deltaOrNil or nil
-
-    -- First prune any expired entries strictly by item.expiresAt
-    local liveWrite = 1
-    for readIdx = 1, #q do
-        local item = q[readIdx]
-        if item and now <= item.expiresAt then
-            q[liveWrite] = item
-            liveWrite = liveWrite + 1
-        end
-    end
-    for i = liveWrite, #q do
-        q[i] = nil
-    end
-    if #q == 0 then
-        ns.PendingMoneyReason = nil
-        ns.PendingMoneyReasonAt = nil
-        return nil
-    end
-
-    local matchedReason = nil
-    local removeMask = {}
-
-    -- Pass 1: Exact expectedDelta match (prevents VENDOR_SELL vs QUEST cross-consumption)
-    if delta ~= nil then
-        for i = 1, #q do
-            local item = q[i]
-            if item.expectedDelta ~= nil and item.expectedDelta == delta then
-                matchedReason = item.reason
-                removeMask[i] = true
-                break
-            end
-        end
-    end
-
-    -- Pass 1b: Coalesced batch prefix match (e.g., server coalesced k VENDOR_SELL items into one PLAYER_MONEY)
-    if not matchedReason and delta ~= nil then
-        for startIdx = 1, #q do
-            local first = q[startIdx]
-            if first.expectedDelta ~= nil then
-                local running = first.expectedDelta
-                local indices = { startIdx }
-                for nextIdx = startIdx + 1, #q do
-                    local nxt = q[nextIdx]
-                    if nxt.reason == first.reason and nxt.expectedDelta ~= nil then
-                        running = running + nxt.expectedDelta
-                        indices[#indices + 1] = nextIdx
-                        if running == delta then
-                            matchedReason = first.reason
-                            for _, rmIdx in ipairs(indices) do
-                                removeMask[rmIdx] = true
-                            end
-                            break
-                        end
-                    else
-                        break
-                    end
-                end
-                if matchedReason then
-                    break
-                end
-            end
-        end
-    end
-
-    -- Pass 2: Sign-based fallback ONLY for entries that did not specify an exact expectedDelta
-    if not matchedReason then
-        for i = 1, #q do
-            local item = q[i]
-            if item.expectedDelta == nil then
-                local signOk = true
-                if delta ~= nil and item.sign ~= 0 then
-                    signOk = (delta > 0 and item.sign > 0) or (delta < 0 and item.sign < 0)
-                end
-                if signOk then
-                    matchedReason = item.reason
-                    removeMask[i] = true
-                    break
-                end
-            end
-        end
-    end
-
-    if matchedReason then
-        local outIdx = 1
-        for readIdx = 1, #q do
-            if not removeMask[readIdx] then
-                q[outIdx] = q[readIdx]
-                outIdx = outIdx + 1
-            end
-        end
-        for i = outIdx, #q do
-            q[i] = nil
-        end
-    end
-
-    if #q == 0 then
-        ns.PendingMoneyReason = nil
-        ns.PendingMoneyReasonAt = nil
-    else
-        ns.PendingMoneyReason = q[1].reason
-        ns.PendingMoneyReasonAt = q[1].createdAt
-    end
-    return matchedReason
 end
 
 function ns.IsExternalAddonLoaded(addonName)
@@ -385,7 +250,6 @@ function CombatQueue:Flush()
     for i = 1, total do
         local key = batch[i]
         if ns.InCombat() then
-            -- Re-entered combat mid-flush: preserve remaining unexecuted keys in order
             for r = i, total do
                 local remKey = batch[r]
                 if self.tasks[remKey] then

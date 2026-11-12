@@ -1,11 +1,21 @@
+-- Module: Modules/Utility.lua
+-- Responsibility: Auto-repair (guild -> personal fallback), 12-item buyback-capped junk seller, /fs protect, /fs sell, fast loot, QoL CVars.
+-- Dependencies: Core/Init.lua, Core/MoneyLedgerQueue.lua, Core/ProfileManager.lua, Core/ModuleManager.lua.
+-- Public API: Utility (TryAutoRepair, TryAutoSellJunk, ManualSellBatch, HandleProtectCommand, CleanActionBarsNow).
+-- Combat/Secret Safety: Zero ActionBar frame/CVar auto-touch; caps each batch at <=12 items without auto-looping; guards secret prices.
 local _, ns = ...
 
 local type = type
+local pcall = pcall
 local select = select
 local tonumber = tonumber
 local tostring = tostring
+local table_sort = table.sort
 local math_min = math.min
+local math_max = math.max
 local math_floor = math.floor
+local string_lower = string.lower
+local string_match = string.match
 
 local NUM_TOTAL_BAGS = 4
 local POOR_QUALITY = (_G.Enum and _G.Enum.ItemQuality and _G.Enum.ItemQuality.Poor) or 0
@@ -14,31 +24,28 @@ local BUYBACK_HARD_CAP = 12
 local Utility = {
     title = "편의 및 상점 자동화 (Utility)",
     priority = "P1",
-    description = "자동 수리(길드→개인), 회색템 판매(12개 한도), 고속 루팅, QoL CVar 자동 제어",
+    description = "자동 수리(길드→개인), 회색템 판매(12개 한도·/fs sell·보호목록), 고속 루팅",
     yieldTo = { "Leatrix_Plus" },
     merchantOpen = false,
     qolApplied = false,
+    lastResidualCount = 0,
     reusableSellQueue = {},
     reusableSellEntryPool = {},
 }
 
 local function IsShiftBypassActive()
-    if _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
-        return true
-    end
-    return false
+    return (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
 end
 
 function Utility:OnInitialize()
     self.merchantOpen = false
     self.qolApplied = false
+    self.lastResidualCount = 0
     ns.WipeTable(self.reusableSellQueue)
     ns.WipeTable(self.reusableSellEntryPool)
 end
 
 function Utility:RevertExtraActionBarsIfNeeded(markFinal)
-    -- Zero-Taint Policy: Never touch Blizzard ActionBar frames, Settings proxies, or ActionBar CVars
-    -- automatically on login/reload. Only purge legacy ForeverSuiteDB table keys.
     if not (ns.ProfileManager and ns.ProfileManager:CanWrite()) then
         return false
     end
@@ -97,11 +104,64 @@ function Utility:RestoreQoLCVars()
     end
 end
 
-function Utility:TryAutoRepair()
-    if ns.IsFeatureYielded("repair") then
-        return
+function Utility:HandleProtectCommand(rawArg)
+    local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
+    local trimmed = string_match(clean, "^%s*(.-)%s*$") or ""
+    local sub = string_lower(trimmed)
+
+    if trimmed == "" or sub == "list" then
+        local ids = ns.ProfileManager:GetProtectedItemIDs()
+        table_sort(ids)
+        if #ids == 0 then
+            ns.Print("등록된 판매 보호 아이템이 없습니다. (사용법: /fs protect <아이템링크 | 아이템ID | list>)")
+            return true
+        end
+        local summary = "판매 보호 목록 (" .. tostring(#ids) .. "종): "
+        for i = 1, #ids do
+            local id = ids[i]
+            local label = "#" .. tostring(id)
+            if C_Item and C_Item.GetItemInfo then
+                local name, link = C_Item.GetItemInfo(id)
+                if type(link) == "string" and not ns.IsSecret(link) and link ~= "" then
+                    label = link
+                elseif type(name) == "string" and not ns.IsSecret(name) and name ~= "" then
+                    label = name .. "(#" .. tostring(id) .. ")"
+                end
+            end
+            summary = summary .. ((i > 1) and ", " or "") .. label
+        end
+        ns.Print(summary)
+        return true
     end
-    if not ns.ProfileManager:Get("utility", "autoRepair") then
+
+    local parsedStr = string_match(trimmed, "|Hitem:(%d+)") or string_match(trimmed, "^(%d+)$")
+    local itemID = parsedStr and tonumber(parsedStr) or nil
+    if not itemID or itemID <= 0 then
+        ns.Warn("사용법: /fs protect <아이템링크 | 아이템ID | list>")
+        return false
+    end
+    itemID = math_floor(itemID)
+
+    if not ns.ProfileManager:CanWrite() then
+        ns.Warn("읽기 전용 프로필(미래 스키마)에서는 판매 보호 목록을 변경할 수 없습니다.")
+        return false
+    end
+
+    local nextProtected = not ns.ProfileManager:IsProtectedItem(itemID)
+    ns.ProfileManager:SetProtectedItem(itemID, nextProtected)
+    local itemLabel = "#" .. tostring(itemID)
+    if C_Item and C_Item.GetItemInfo then
+        local _, link = C_Item.GetItemInfo(itemID)
+        if type(link) == "string" and not ns.IsSecret(link) and link ~= "" then
+            itemLabel = link
+        end
+    end
+    ns.Print(itemLabel .. " → " .. (nextProtected and "[판매 보호 등록됨]" or "[판매 보호 해제됨]"))
+    return true
+end
+
+function Utility:TryAutoRepair()
+    if ns.IsFeatureYielded("repair") or not ns.ProfileManager:Get("utility", "autoRepair") then
         return
     end
     if not (_G.CanMerchantRepair and _G.CanMerchantRepair()) then
@@ -140,32 +200,20 @@ function Utility:TryAutoRepair()
     end
 end
 
-function Utility:TryAutoSellJunk()
-    if ns.IsFeatureYielded("sell") then
-        return 0
-    end
-    if not ns.ProfileManager:Get("utility", "autoSellJunk") then
-        return 0
-    end
-    if not self.merchantOpen or IsShiftBypassActive() then
-        return 0
-    end
+function Utility:SellJunkBatch(isManual)
     if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo and C_Container.UseContainerItem) then
         return 0
     end
-
     local configuredCap = tonumber(ns.ProfileManager:Get("utility", "maxSellBatch")) or BUYBACK_HARD_CAP
     local batchLimit = math_min(BUYBACK_HARD_CAP, configuredCap > 0 and configuredCap or BUYBACK_HARD_CAP)
 
     local queue = ns.WipeTable(self.reusableSellQueue)
+    local totalEligible = 0
 
     for bag = 0, NUM_TOTAL_BAGS do
         local numSlots = C_Container.GetContainerNumSlots(bag) or 0
         if type(numSlots) == "number" and not ns.IsSecret(numSlots) then
             for slot = 1, numSlots do
-                if #queue >= batchLimit then
-                    break
-                end
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if type(info) == "table"
                     and not ns.IsSecret(info.quality)
@@ -176,39 +224,36 @@ function Utility:TryAutoSellJunk()
                 then
                     local itemID = info.itemID
                     if itemID and not ns.IsSecret(itemID) and not ns.ProfileManager:IsProtectedItem(itemID) then
-                        local rawSell = nil
-                        if C_Item and C_Item.GetItemInfo then
-                            rawSell = select(11, C_Item.GetItemInfo(itemID))
-                        end
+                        local rawSell = (C_Item and C_Item.GetItemInfo) and select(11, C_Item.GetItemInfo(itemID)) or nil
                         local sellPrice = (type(rawSell) == "number" and not ns.IsSecret(rawSell)) and rawSell or 0
                         if sellPrice > 0 then
-                            local rawStack = info.stackCount
-                            local stackCount = (type(rawStack) == "number" and not ns.IsSecret(rawStack)) and rawStack or 1
-                            local nextIdx = #queue + 1
-                            local entry = self.reusableSellEntryPool[nextIdx]
-                            if not entry then
-                                entry = {}
-                                self.reusableSellEntryPool[nextIdx] = entry
+                            totalEligible = totalEligible + 1
+                            if #queue < batchLimit then
+                                local rawStack = info.stackCount
+                                local stackCount = (type(rawStack) == "number" and not ns.IsSecret(rawStack)) and rawStack or 1
+                                local nextIdx = #queue + 1
+                                local entry = self.reusableSellEntryPool[nextIdx]
+                                if not entry then
+                                    entry = {}
+                                    self.reusableSellEntryPool[nextIdx] = entry
+                                end
+                                entry.bag = bag
+                                entry.slot = slot
+                                entry.itemID = itemID
+                                entry.expected = sellPrice * stackCount
+                                queue[nextIdx] = entry
                             end
-                            entry.bag = bag
-                            entry.slot = slot
-                            entry.itemID = itemID
-                            entry.expected = sellPrice * stackCount
-                            queue[nextIdx] = entry
                         end
                     end
                 end
             end
-        end
-        if #queue >= batchLimit then
-            break
         end
     end
 
     local soldCount = 0
     local expectedCopper = 0
     for i = 1, #queue do
-        if not self.merchantOpen or IsShiftBypassActive() then
+        if not self.merchantOpen or (not isManual and IsShiftBypassActive()) then
             break
         end
         local entry = queue[i]
@@ -219,6 +264,7 @@ function Utility:TryAutoSellJunk()
             and not liveInfo.isRefundable
             and not ns.IsSecret(liveInfo.itemID)
             and liveInfo.itemID == entry.itemID
+            and not ns.ProfileManager:IsProtectedItem(liveInfo.itemID)
             and not ns.IsSecret(liveInfo.quality)
             and liveInfo.quality == POOR_QUALITY
         then
@@ -229,10 +275,40 @@ function Utility:TryAutoSellJunk()
         end
     end
 
+    local remaining = math_max(0, totalEligible - soldCount)
+    self.lastResidualCount = remaining
     if soldCount > 0 then
-        ns.Print("회색 잡템 " .. tostring(soldCount) .. "칸 판매 요청 (예상 수익: " .. ns.FormatMoney(expectedCopper) .. ", 1회 안전 한도 " .. tostring(batchLimit) .. "칸)")
+        local baseMsg = "회색 잡템 " .. tostring(soldCount) .. "칸 판매 요청 (예상 수익: " .. ns.FormatMoney(expectedCopper) .. ", 1회 안전 한도 " .. tostring(batchLimit) .. "칸)"
+        if remaining > 0 then
+            baseMsg = baseMsg .. " | 잔여 " .. tostring(remaining) .. "칸 — 추가 판매: /fs sell"
+        end
+        ns.Print(baseMsg)
+    elseif isManual then
+        ns.Print("판매 가능한 회색 잡템이 없습니다.")
     end
     return soldCount
+end
+
+function Utility:TryAutoSellJunk()
+    if ns.IsFeatureYielded("sell") or not ns.ProfileManager:Get("utility", "autoSellJunk") then
+        return 0
+    end
+    if not self.merchantOpen or IsShiftBypassActive() then
+        return 0
+    end
+    return self:SellJunkBatch(false)
+end
+
+function Utility:ManualSellBatch()
+    if ns.IsFeatureYielded("sell") then
+        ns.Warn("상점 판매 기능이 외부 애드온에 양보(YIELDED)된 상태입니다.")
+        return 0
+    end
+    if not self.merchantOpen then
+        ns.Warn("상점 창이 열려 있을 때만 /fs sell 명령을 사용할 수 있습니다.")
+        return 0
+    end
+    return self:SellJunkBatch(true)
 end
 
 function Utility:OnMerchantShow()
@@ -250,10 +326,7 @@ function Utility:OnMerchantClosed()
 end
 
 function Utility:OnLootReady()
-    if not ns.ProfileManager:Get("utility", "fastAutoLoot") then
-        return
-    end
-    if ns.InCombat() or IsShiftBypassActive() then
+    if not ns.ProfileManager:Get("utility", "fastAutoLoot") or ns.InCombat() or IsShiftBypassActive() then
         return
     end
     if not (_G.GetNumLootItems and _G.LootSlot) then

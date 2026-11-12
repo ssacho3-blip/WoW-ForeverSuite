@@ -1,3 +1,8 @@
+-- Module: Core/EventBus.lua
+-- Responsibility: Single-frame WoW event dispatcher, unit-filtered event listeners, bucket throttling, and tombstone sweeps.
+-- Dependencies: Core/Init.lua (ns.SummarizeStack, ns.ErrorMsg).
+-- Public API: ns.EventBus (RegisterEvent, RegisterUnitEvent, RegisterBucketEvent, UnregisterOwner, ActiveEventCount).
+-- Combat/Secret Safety: Forwards opaque event args without touching secret values; re-entrant safe during combat dispatch.
 local _, ns = ...
 
 local type = type

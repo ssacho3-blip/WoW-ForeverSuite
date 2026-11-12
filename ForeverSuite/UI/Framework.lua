@@ -1,6 +1,16 @@
+-- Module: UI/Framework.lua
+-- Responsibility: Lightweight dark-slate & gold UI widget factory (panels, labels, buttons, pill buttons, checkboxes, badges).
+-- Dependencies: Core/Init.lua (ns).
+-- Public API: ns.UI (COLORS, STATE_HEX, CreatePanel, CreateLabel, CreateButton, CreatePillButton, StylePillButton, CreateCheckbox, FormatStateBadge).
+-- Combat/Secret Safety: Creates only non-secure Frame/Button widgets; zero legacy UIDropDownMenu or taint-prone templates.
 local _, ns = ...
 
 local tostring = tostring
+
+local ACTIVE_PILL_BG = { 0.30, 0.24, 0.08, 0.98 }
+local ACTIVE_PILL_BORDER = { 0.88, 0.73, 0.25, 1.00 }
+local INACTIVE_PILL_BG = { 0.13, 0.16, 0.20, 0.95 }
+local INACTIVE_PILL_BORDER = { 0.30, 0.35, 0.43, 0.90 }
 
 local UI = {
     COLORS = {
@@ -57,6 +67,8 @@ local function ApplySolidBox(frame, bgCol, borderCol)
         right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         right:SetColorTexture(borderCol[1], borderCol[2], borderCol[3], borderCol[4])
+
+        frame._fsBorders = { top, bottom, left, right }
     end
 end
 
@@ -113,6 +125,81 @@ function UI.CreateButton(parent, label, width, height, onClick)
     return btn
 end
 
+function UI.StylePillButton(btn, isSelected)
+    if not btn then
+        return
+    end
+    btn._fsSelected = isSelected and true or false
+    local bg = isSelected and ACTIVE_PILL_BG or INACTIVE_PILL_BG
+    local bd = isSelected and ACTIVE_PILL_BORDER or INACTIVE_PILL_BORDER
+    if btn._fsBg and btn._fsBg.SetColorTexture then
+        btn._fsBg:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
+    end
+    if btn._fsBorders then
+        for i = 1, #btn._fsBorders do
+            local tex = btn._fsBorders[i]
+            if tex and tex.SetColorTexture then
+                tex:SetColorTexture(bd[1], bd[2], bd[3], bd[4])
+            end
+        end
+    end
+    if btn._fsLabel and btn._fsLabel.SetTextColor then
+        if isSelected then
+            btn._fsLabel:SetTextColor(1.00, 0.88, 0.42, 1.00)
+        else
+            btn._fsLabel:SetTextColor(0.80, 0.84, 0.90, 1.00)
+        end
+    end
+end
+
+function UI.CreatePillButton(parent, label, width, height, tooltipTitle, tooltipBody, onClick)
+    if not _G.CreateFrame then
+        return nil
+    end
+    local btn = _G.CreateFrame("Button", nil, parent)
+    btn:SetSize(width, height)
+    if btn.RegisterForClicks then
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    end
+    ApplySolidBox(btn, INACTIVE_PILL_BG, INACTIVE_PILL_BORDER)
+    local txt = UI.CreateLabel(btn, label, "GameFontHighlightSmall", UI.COLORS.TEXT)
+    if txt then
+        txt:SetPoint("CENTER", btn, "CENTER", 0, 0)
+        btn._fsLabel = txt
+    end
+    UI.StylePillButton(btn, false)
+
+    btn:SetScript("OnEnter", function(self)
+        if self._fsBg and self._fsBg.SetColorTexture then
+            if self._fsSelected then
+                self._fsBg:SetColorTexture(0.38, 0.30, 0.10, 1.00)
+            else
+                self._fsBg:SetColorTexture(0.22, 0.26, 0.33, 1.00)
+            end
+        end
+        if tooltipTitle and _G.GameTooltip and _G.GameTooltip.SetOwner then
+            _G.GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+            _G.GameTooltip:AddLine(tooltipTitle, 1.0, 0.85, 0.35)
+            if tooltipBody then
+                _G.GameTooltip:AddLine(tooltipBody, 0.82, 0.86, 0.92)
+            end
+            _G.GameTooltip:Show()
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        UI.StylePillButton(self, self._fsSelected)
+        if _G.GameTooltip and _G.GameTooltip.Hide then
+            _G.GameTooltip:Hide()
+        end
+    end)
+    btn:SetScript("OnClick", function(self, mouseBtn)
+        if onClick then
+            onClick(self, mouseBtn)
+        end
+    end)
+    return btn
+end
+
 function UI.CreateCheckbox(parent, labelText, initialChecked, onToggle)
     if not _G.CreateFrame then
         return nil
@@ -128,6 +215,7 @@ function UI.CreateCheckbox(parent, labelText, initialChecked, onToggle)
     local lbl = UI.CreateLabel(box, labelText, "GameFontHighlightSmall", UI.COLORS.TEXT)
     if lbl then
         lbl:SetPoint("LEFT", box, "RIGHT", 8, 0)
+        box._fsLabel = lbl
     end
 
     box._checked = initialChecked and true or false

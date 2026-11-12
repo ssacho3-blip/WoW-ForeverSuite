@@ -1,3 +1,8 @@
+-- Module: UI/QuestTrackerModel.lua
+-- Responsibility: Pure MVVM ViewModel transforming raw quest records into zone/level groups, difficulty bands, and flat HUD rows.
+-- Dependencies: Core/Init.lua (ns.IsSecret).
+-- Public API: ns.QuestTrackerModel (ComputeGreenRange, ComputeDifficulty, FormatQuestTagBadge, BuildSnapshot).
+-- Combat/Secret Safety: 100% pure computation (zero WoW Frame/C_* calls); strips secret fields cleanly without math/comparison traps.
 local _, ns = ...
 
 local type = type
@@ -284,8 +289,16 @@ local function NormalizeQuestEntry(raw, index, playerLevel, zoneMatchSet, superT
         end
     end
 
+    local logIndex = SafeNumber(raw.logIndex)
+    if logIndex and logIndex <= 0 then
+        logIndex = nil
+    end
+    local specialItemLink = SafeString(raw.specialItemLink)
+    local specialItemIcon = (not ns.IsSecret(raw.specialItemIcon)) and raw.specialItemIcon or nil
+
     return {
         questID = math_floor(qid),
+        logIndex = logIndex and math_floor(logIndex) or nil,
         orderIndex = index,
         title = plainTitle,
         zone = plainZone,
@@ -299,6 +312,8 @@ local function NormalizeQuestEntry(raw, index, playerLevel, zoneMatchSet, superT
         isZoneNameMatch = isZoneNameMatch,
         isCurrentZone = isCurrentZone,
         isSuperTracked = isSuperTracked,
+        specialItemLink = specialItemLink,
+        specialItemIcon = specialItemIcon,
         objectives = objectives,
     }
 end
@@ -592,12 +607,16 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
                     rows[#rows + 1] = {
                         kind = "quest",
                         questID = q.questID,
+                        questTitle = q.title,
+                        logIndex = q.logIndex,
                         groupKey = grp.key,
                         text = FormatQuestTitleLine(q, mode),
-                        rightText = questFolded and "|cff64748b[+]|r" or "",
+                        rightText = questFolded and "|cff64748b[+]|r" or (q.specialItemLink and "|cffffd23f[아이템]|r" or ""),
                         isComplete = q.isComplete,
                         isSuperTracked = q.isSuperTracked,
                         isWatched = q.isWatched,
+                        specialItemLink = q.specialItemLink,
+                        specialItemIcon = q.specialItemIcon,
                     }
 
                     if not questFolded then
@@ -605,9 +624,12 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
                             rows[#rows + 1] = {
                                 kind = "objective",
                                 questID = q.questID,
+                                questTitle = q.title,
+                                fullObjectiveText = "목표 달성 — NPC에게 완료 보고 가능",
                                 text = "    |cff4ade80• 목표 달성 — NPC에게 완료 보고 가능|r",
                                 rightText = "",
                                 finished = true,
+                                isWatched = q.isWatched,
                             }
                         else
                             for oi = 1, #q.objectives do
@@ -616,9 +638,12 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
                                 rows[#rows + 1] = {
                                     kind = "objective",
                                     questID = q.questID,
+                                    questTitle = q.title,
+                                    fullObjectiveText = obj.text,
                                     text = objPrefix .. obj.text .. "|r",
                                     rightText = "",
                                     finished = obj.finished,
+                                    isWatched = q.isWatched,
                                 }
                             end
                         end

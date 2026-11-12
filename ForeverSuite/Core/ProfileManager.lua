@@ -1,3 +1,8 @@
+-- Module: Core/ProfileManager.lua
+-- Responsibility: Hierarchical profile storage (char > class > account > default), schema migration, Read-Only guard, CVar recovery.
+-- Dependencies: Core/Init.lua (ns.IsSecret, ns.Warn, ns.WipeTable, ns.SafeGetCVar, ns.SafeSetCVar).
+-- Public API: ns.ProfileManager (Init, Get, Set, CanWrite, IsModuleEnabled, SetModuleEnabled, IsProtectedItem, SetProtectedItem, GetConfigurableBooleanKeys).
+-- Combat/Secret Safety: Rejects secret keys/values via ns.IsSecret; blocks all mutations when schemaVersion > CURRENT_SCHEMA_VERSION.
 local _, ns = ...
 
 local type = type
@@ -44,6 +49,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         currentZoneOnly = false,
         watchedOnly = true,
         trackerMinimized = false,
+        trackerLocked = false,
         hideDefaultTracker = true,
         trackerPoint = "TOPRIGHT",
         trackerRelPoint = "TOPRIGHT",
@@ -65,6 +71,17 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         remindMissingClassBuff = true,
         lowHealthAlert = true,
         lowHealthThreshold = 0.30,
+    },
+    ui = {
+        hudUnlocked = false,
+        bagHudPoint = "BOTTOMRIGHT",
+        bagHudRelPoint = "BOTTOMRIGHT",
+        bagHudX = -16,
+        bagHudY = 46,
+        healthAlertPoint = "CENTER",
+        healthAlertRelPoint = "CENTER",
+        healthAlertX = 0,
+        healthAlertY = 140,
     },
 }
 
@@ -392,6 +409,36 @@ function ProfileManager:SetProtectedItem(itemID, isProtected)
         acctUtil.protectedItems[itemID] = nil
     end
     return true
+end
+
+function ProfileManager:GetProtectedItemIDs()
+    local out = {}
+    local tbl = self:Get("utility", "protectedItems")
+    if type(tbl) == "table" then
+        for rawId, flag in pairs(tbl) do
+            if flag and not ns.IsSecret(rawId) then
+                local numId = tonumber(rawId)
+                if numId and numId > 0 then
+                    out[#out + 1] = numId
+                end
+            end
+        end
+    end
+    return out
+end
+
+function ProfileManager:GetConfigurableBooleanKeys()
+    local keys = {}
+    for section, secTbl in pairs(DEFAULT_ACCOUNT_SETTINGS) do
+        if section ~= "modules" and type(secTbl) == "table" then
+            for key, val in pairs(secTbl) do
+                if type(val) == "boolean" then
+                    keys[section .. "." .. key] = true
+                end
+            end
+        end
+    end
+    return keys
 end
 
 function ProfileManager:IsQuestGroupCollapsed(groupKey)
