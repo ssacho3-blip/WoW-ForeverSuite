@@ -258,25 +258,49 @@ class WoWForeverMockRuntime:
         def create_texture(self_f: LuaTable, *_a: Any) -> LuaTable:
             tex = LuaTable()
             tex["_tex"] = None
+            tex["_shown"] = True
+            tex["_color_rgba"] = None
+            tex["_width"] = 0
+            tex["_height"] = 0
+            tex["_point"] = None
             tex["SetAllPoints"] = lambda *_x: None
-            tex["SetPoint"] = lambda *_x: None
-            tex["SetSize"] = lambda *_x: None
-            tex["SetWidth"] = lambda *_x: None
-            tex["SetHeight"] = lambda *_x: None
-            tex["SetColorTexture"] = lambda *_x: None
+            tex["SetPoint"] = lambda s, *pts: s.set("_point", pts)
+            tex["ClearAllPoints"] = lambda s: s.set("_point", None)
+            tex["SetSize"] = lambda s, w, h: (s.set("_width", w), s.set("_height", h))[0]
+            tex["SetWidth"] = lambda s, w: s.set("_width", w)
+            tex["SetHeight"] = lambda s, h: s.set("_height", h)
+            tex["SetColorTexture"] = lambda s, r, g, b, a=1.0: s.set("_color_rgba", (r, g, b, a))
             tex["SetTexture"] = lambda s, val: s.set("_tex", val)
+            tex["Show"] = lambda s: s.set("_shown", True)
+            tex["Hide"] = lambda s: s.set("_shown", False)
+            tex["IsShown"] = lambda s: bool(s.get("_shown"))
             return tex
 
-        def create_font_string(self_f: LuaTable, *_a: Any) -> LuaTable:
+        def create_font_string(self_f: LuaTable, _name: Any = None, _layer: Any = None, font_obj: Any = None, *_a: Any) -> LuaTable:
             fs = LuaTable()
             fs["_text"] = ""
+            fs["_font_object"] = font_obj
+            fs["_shadow_color"] = None
+            fs["_shadow_offset"] = None
+            fs["_point"] = None
+            fs["_width"] = None
+            def set_font_object(s: LuaTable, fobj: Any) -> None:
+                s.set("_font_object", fobj)
+                s.set("_shadow_offset", (0, 0))
+                s.set("_shadow_color", (0.0, 0.0, 0.0, 0.0))
+
             fs["SetText"] = lambda s, t: s.set("_text", str(t))
             fs["GetText"] = lambda s: s.get("_text")
-            fs["SetPoint"] = lambda *_x: None
+            fs["SetFontObject"] = set_font_object
+            fs["GetFontObject"] = lambda s: s.get("_font_object")
+            fs["SetShadowColor"] = lambda s, r, g, b, a=1.0: s.set("_shadow_color", (r, g, b, a))
+            fs["SetShadowOffset"] = lambda s, x, y: s.set("_shadow_offset", (x, y))
+            fs["SetPoint"] = lambda s, *pts: s.set("_point", pts)
+            fs["ClearAllPoints"] = lambda s: s.set("_point", None)
             fs["SetTextColor"] = lambda *_x: None
             fs["SetJustifyH"] = lambda *_x: None
             fs["SetWordWrap"] = lambda *_x: None
-            fs["SetWidth"] = lambda *_x: None
+            fs["SetWidth"] = lambda s, w: s.set("_width", w)
             return fs
 
         def set_point(self_f: LuaTable, point: str, rel_to: Any = None, rel_pt: Any = None, x: Any = 0, y: Any = 0) -> None:

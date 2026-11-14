@@ -152,6 +152,13 @@ function Quest:OnTrackerRefreshEvent()
     ns.QuestTracker:Refresh()
 end
 
+function Quest:OnCombatFadeEvent()
+    if not self.active or not ns.QuestTracker or not ns.QuestTracker.UpdateCombatVisuals then
+        return
+    end
+    ns.QuestTracker:UpdateCombatVisuals()
+end
+
 function Quest:OnInitialize()
     if not self.settingListenerBound then
         self.settingListenerBound = true
@@ -213,6 +220,13 @@ function Quest:HandleSlash(rawSub)
             return false
         end
         ns.Print("퀘스트 추적창 위치 잠금: " .. (locked and "켜짐 (드래그 이동 차단 · 클릭 유지)" or "꺼짐 (드래그 이동 가능)"))
+        return true
+    elseif sub == "fade" or trimmed == "반투명" or trimmed == "전투반투명" then
+        local ok, enabled = ns.QuestTracker:ToggleCombatFade()
+        if not ok then
+            return false
+        end
+        ns.Print("전투 중 추적창 배경 반투명 완화: " .. (enabled and "켜짐" or "꺼짐"))
         return true
     elseif sub == "all" or trimmed == "전체" then
         local ok = ns.ProfileManager:Set("quest", "watchedOnly", false, "account")
@@ -281,7 +295,7 @@ function Quest:HandleSlash(rawSub)
         return true
     end
 
-    ns.Print("사용법: /fs quest [zone | level | here | all | watched | lock | toggle | default | reset]")
+    ns.Print("사용법: /fs quest [zone | level | here | all | watched | lock | fade | toggle | default | reset]")
     return false
 end
 
@@ -301,6 +315,8 @@ function Quest:OnEnable(ctx)
     ctx:RegisterEvent("ZONE_CHANGED", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("PLAYER_LEVEL_UP", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("SUPER_TRACKING_CHANGED", Quest.OnTrackerRefreshEvent)
+    ctx:RegisterEvent("PLAYER_REGEN_DISABLED", Quest.OnCombatFadeEvent)
+    ctx:RegisterEvent("PLAYER_REGEN_ENABLED", Quest.OnCombatFadeEvent)
 
     if ns.QuestTracker then
         ns.QuestTracker:Enable(ctx)

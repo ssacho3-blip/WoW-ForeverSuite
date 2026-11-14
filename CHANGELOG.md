@@ -4,6 +4,12 @@ All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are docume
 
 ## [0.3.0] - 2026-11-12
 
+### Improved (`FS-QUEST-HUD-V2` & `FS-QUEST-HUD-V2-POLISH` — 2026-11-14)
+- **High-Visibility Right-Side Quest Tracker HUD (`UI/QuestTrackerModel.lua`, `UI/QuestTracker.lua`, `Modules/Quest.lua`)**:
+  - 3-tier visual hierarchy (`GameFontNormal` group/quest headers vs `GameFontHighlightSmall` objective sub-rows) with `1px` crisp drop shadows preserved across `SetFontObject` transitions, `340px` width, `22px` row height, `3px`/`4px` semantic left accent bars, and `2px` objective guide rails.
+  - Right-aligned quest progress summary badges (`c/m`, `완료`, `실패`, `[아이템]`) and 100% KS X 1001 Korean WoW (`koKR`) font glyph compatibility (`●`, `×`, `▶`, `◆`, `▷`, `·`).
+  - Automatic combat backdrop semi-transparency (`PLAYER_REGEN_DISABLED` / `PLAYER_REGEN_ENABLED`, toggleable via `/fs quest fade`) and `0.45s` golden row highlight flash upon objective progress/completion increments.
+
 ### Added (`P0` · `P1` · `P2` Full Upgrade — `FS-V030-FULL-UPGRADE`)
 - **Settings Panel (`UI/SettingsPanel.lua`, `UI/Framework.lua`, `Core/ProfileManager.lua`)**:
   - Idempotent `_G.UISpecialFrames` registration (`ESC` closes `/fs`, never duplicates across opens or `/reload`).

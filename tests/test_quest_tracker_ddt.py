@@ -282,11 +282,11 @@ def test_ac_qt4_supertrack_fold_watch_minimize_drag_and_slash_commands() -> None
     assert 101 in rt.watched_quest_ids
     rt.shift_down = False
 
-    # 4. Minimize button collapses frame height to 30px header bar
+    # 4. Minimize button collapses frame height to 32px header bar
     rt._fire_widget_script(tracker["minBtn"], "OnClick", "LeftButton")
-    assert tracker["frame"]["_size"] == (308, 30)
+    assert tracker["frame"]["_size"] == (340, 32)
     rt._fire_widget_script(tracker["minBtn"], "OnClick", "LeftButton")
-    assert tracker["frame"]["_size"][1] > 30
+    assert tracker["frame"]["_size"][1] > 32
 
     # 5. Dragging tracker saves anchor coordinates to ProfileManager
     f = tracker["frame"]
@@ -784,4 +784,228 @@ def test_fs_quest_sync_disjoint_filter_counts_header_badge_and_no_false_current_
     assert [g["title"] for g in city_groups] == ["사제", "붉은마루 산맥"]
     assert all(g["isCurrentZone"] is False for g in city_groups)
     assert "[현재 지역]" not in "\n".join(_visible_row_texts(ns_city["QuestTracker"]))
+
+
+# ---------------------------------------------------------------------------
+# 7. FS-QUEST-HUD-V2: High-Visibility Typography, Card Accents & Progress Summary DDT
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected_cur", "expected_max"),
+    [
+        ("검은바위 투사: 4/10", 4, 10),
+        ("코볼트 양초: 3 / 8", 3, 8),
+        ("검은바위 지휘관 처치: 2/5 (선택)", 2, 5),
+        ("4/10 검은바위 투사 처치", 4, 10),
+        ("(3/8) 코볼트 양초 수집", 3, 8),
+        ("정찰병 탈론 처치: 0/1", 0, 1),
+        ("그라이언 스타우트맨틀에게 보고", None, None),
+        ("오류 데이터: 0/0", None, None),
+        ("처치: -1/10", None, None),
+        ("처치: -12/10", None, None),
+        ("처치: 1.5/10", None, None),
+        ("처치: 1/2.5 (선택)", None, None),
+        ("이벤트 기한 2026/11/14", None, None),
+        ("점검일: 2026/11/14", None, None),
+    ],
+)
+def test_viewmodel_parse_objective_progress_ddt(
+    raw_text: str,
+    expected_cur: int | None,
+    expected_max: int | None,
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.load_addon("ForeverSuite")
+    model = ns["QuestTrackerModel"]
+
+    cur, total = rt.vm._invoke_callable(model["ParseObjectiveProgress"], (raw_text,))
+    assert (cur, total) == (expected_cur, expected_max)
+
+    sec_cur, sec_total = rt.vm._invoke_callable(
+        model["ParseObjectiveProgress"], (SecretValue("sec_obj_prog", lua_type="string"),)
+    )
+    assert (sec_cur, sec_total) == (None, None)
+
+
+def _first_row_of_kind(tracker: LuaTable, kind: str) -> LuaTable:
+    for w in _lua_list_items(tracker["rowWidgets"]):
+        if w.get("_shown") and w["_rowData"]["kind"] == kind:
+            return w
+    raise AssertionError(f"No visible row with kind={kind}")
+
+
+def _is_quest_objective_widget(w: LuaTable, quest_id: int) -> bool:
+    if not w.get("_shown"):
+        return False
+    d = w.get("_rowData") or {}
+    return d.get("kind") == "objective" and d.get("questID") == quest_id
+
+
+def _quest_objective_widgets(tracker: LuaTable, quest_id: int) -> list[LuaTable]:
+    return [w for w in _lua_list_items(tracker["rowWidgets"]) if _is_quest_objective_widget(w, quest_id)]
+
+
+def _widget_pool_index(tracker: LuaTable, target: LuaTable) -> int:
+    for idx, w in enumerate(_lua_list_items(tracker["rowWidgets"]), start=1):
+        if w is target:
+            return idx
+    raise AssertionError("Target row widget not found in pool")
+
+
+def test_hud_v2_visual_hierarchy_fonts_shadows_accents_and_progress_badges() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    rt.quest_special_items = {
+        201: ("|Hitem:5502|h[검은바위 폭탄]|h", 133711),
+    }
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+
+    hdr_title = tracker["headerTitle"]
+    assert hdr_title["_font_object"] == "GameFontNormal"
+    assert hdr_title["_shadow_offset"] == (1, -1)
+
+    group_widget = _first_row_of_kind(tracker, "group")
+    assert group_widget["_rowData"]["visualState"] == "group_current"
+    assert group_widget["_leftText"]["_font_object"] == "GameFontNormal"
+    assert group_widget["_leftText"]["_shadow_offset"] == (1, -1)
+    assert group_widget["_accent"]["_shown"] is True
+    assert group_widget["_accent"]["_width"] == 3
+
+    row_102 = _find_quest_row_widget(tracker, 102)
+    assert row_102["_rowData"]["visualState"] == "quest_complete"
+    assert row_102["_leftText"]["_font_object"] == "GameFontNormal"
+    assert row_102["_accent"]["_width"] == 3
+    assert "완료" in row_102["_rightText"]["_text"]
+
+    row_101 = _find_quest_row_widget(tracker, 101)
+    assert row_101["_rowData"]["visualState"] == "quest_active"
+    assert "|cfffde68a" in row_101["_leftText"]["_text"]
+    assert "1/2" in row_101["_rightText"]["_text"]
+    resting_bg_101 = row_101["_bg"]["_color_rgba"]
+    assert resting_bg_101 is not None
+    assert resting_bg_101[3] > 0.3
+
+    rt._fire_widget_script(row_101, "OnEnter")
+    assert row_101["_bg"]["_color_rgba"] != resting_bg_101
+    rt._fire_widget_script(row_101, "OnLeave")
+    assert row_101["_bg"]["_color_rgba"] == resting_bg_101
+
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    row_101_super = _find_quest_row_widget(tracker, 101)
+    assert row_101_super["_rowData"]["visualState"] == "quest_super"
+    assert "|cfffff3a3" in row_101_super["_leftText"]["_text"]
+    assert row_101_super["_accent"]["_width"] == 4
+
+    obj_widgets_101 = _quest_objective_widgets(tracker, 101)
+    assert len(obj_widgets_101) == 2
+    assert obj_widgets_101[0]["_rowData"]["visualState"] == "obj_done"
+    assert obj_widgets_101[1]["_rowData"]["visualState"] == "obj_pending"
+    assert obj_widgets_101[0]["_leftText"]["_font_object"] == "GameFontHighlightSmall"
+    assert obj_widgets_101[0]["_leftText"]["_shadow_offset"] == (1, -1)
+    assert obj_widgets_101[0]["_accent"]["_width"] == 2
+    assert obj_widgets_101[0]["_leftText"]["_width"] > row_101_super["_leftText"]["_width"]
+
+    row_201 = _find_quest_row_widget(tracker, 201)
+    row_202 = _find_quest_row_widget(tracker, 202)
+    assert "[아이템]" in row_201["_rightText"]["_text"]
+    assert "4/10" in row_201["_rightText"]["_text"]
+    assert "0/1" in row_202["_rightText"]["_text"]
+
+    obj_201 = _find_objective_row_widget(tracker, 201)
+    assert obj_201["_rowData"]["visualState"] == "obj_progress"
+    assert "▷" in obj_201["_leftText"]["_text"]
+
+    row_201_idx = _widget_pool_index(tracker, row_201)
+    btn1 = rt.vm.G["ForeverSuiteQuestItemBtn1"]
+    assert btn1["_shown"] is True
+    assert btn1["_point"][4] == -215 - (32 + 6 + (row_201_idx - 1) * 22)
+
+    # Folding an item quest preserves '[아이템]' alongside '[+]'
+    rt._fire_widget_script(row_201, "OnClick", "RightButton")
+    row_201_folded = _find_quest_row_widget(tracker, 201)
+    assert "[아이템]" in row_201_folded["_rightText"]["_text"]
+    assert "[+]" in row_201_folded["_rightText"]["_text"]
+
+    # Dragging tracker to horizontal center ('TOP', x=0, y=-40) places item button at +176 (width/2 + 6)
+    f = tracker["frame"]
+    f["SetPoint"](f, "TOP", rt.vm.G["UIParent"], "TOP", 0, -40)
+    rt._fire_widget_script(f, "OnDragStop")
+    assert btn1["_point"][0] == "TOPLEFT"
+    assert btn1["_point"][3] == 176
+
+
+def _non_ksx1001_chars_in_lua_code(source_text: str) -> set[str]:
+    bad: set[str] = set()
+    for line in source_text.splitlines():
+        if line.lstrip().startswith("--"):
+            continue
+        for ch in line:
+            if ch == "—":
+                continue
+            try:
+                ch.encode("euc-kr")
+            except UnicodeEncodeError:
+                bad.add(ch)
+    return bad
+
+
+def test_hud_v2_korean_ksx1001_font_glyph_safety() -> None:
+    for rel in ("UI/QuestTrackerModel.lua", "UI/QuestTracker.lua"):
+        src = (ADDON_ROOT / rel).read_text(encoding="utf-8")
+        assert _non_ksx1001_chars_in_lua_code(src) == set(), f"Non-KSX1001 tofu-risk glyphs in {rel}"
+
+
+def test_hud_v2_combat_fade_and_progress_flash_ddt() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+    frame = tracker["frame"]
+
+    # 1. Initial boot does not trigger false progress flashes
+    row_201 = _find_quest_row_widget(tracker, 201)
+    obj_201 = _find_objective_row_widget(tracker, 201)
+    assert row_201.get("_flashToken") is None
+    assert obj_201.get("_flashToken") is None
+    assert frame["_fsBg"]["_color_rgba"][3] == pytest.approx(0.92)
+
+    # 2. Entering combat softens frame & row resting backgrounds with zero taint/blocked actions
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    assert frame["_fsBg"]["_color_rgba"][3] == pytest.approx(0.38)
+    assert row_201["_bg"]["_color_rgba"][3] == pytest.approx(0.52 * 0.45)
+    assert rt.addon_action_blocked_count == 0
+
+    # /fs quest fade toggles combat semi-transparency off and back on dynamically
+    rt.run_slash("FOREVERSUITE", "quest fade")
+    assert frame["_fsBg"]["_color_rgba"][3] == pytest.approx(0.92)
+    rt.run_slash("FOREVERSUITE", "quest fade")
+    assert frame["_fsBg"]["_color_rgba"][3] == pytest.approx(0.38)
+
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert frame["_fsBg"]["_color_rgba"][3] == pytest.approx(0.92)
+    assert row_201["_bg"]["_color_rgba"][3] == pytest.approx(0.52)
+
+    # 3. Objective progress increment (4/10 -> 5/10) pulses quest & objective rows for 0.45s, then restores
+    rt.quest_objectives[201] = [{"text": "검은바위 투사: 5/10", "finished": False}]
+    rt.fire_event("QUEST_WATCH_LIST_CHANGED")
+    row_201 = _find_quest_row_widget(tracker, 201)
+    obj_201 = _find_objective_row_widget(tracker, 201)
+    row_101 = _find_quest_row_widget(tracker, 101)
+    assert "5/10" in row_201["_rightText"]["_text"]
+    assert row_201["_flashToken"] is not None
+    assert obj_201["_flashToken"] is not None
+    assert row_101.get("_flashToken") is None
+    assert row_201["_bg"]["_color_rgba"] == pytest.approx((0.98, 0.80, 0.22, 0.56))
+
+    rt.advance_time(0.5)
+    assert row_201.get("_flashToken") is None
+    assert obj_201.get("_flashToken") is None
+    assert row_201["_bg"]["_color_rgba"][3] == pytest.approx(0.52)
+
+
+
 
