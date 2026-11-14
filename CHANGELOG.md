@@ -4,6 +4,11 @@ All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are docume
 
 ## [0.3.0] - 2026-11-12
 
+### Synced (`FS-UPSTREAM-GJ-5236` — 2026-11-14)
+- **GodJohnson Upstream `v5.236` (`rev 588`, Client `1.60.1.70938`)**:
+  - Updated `pinned_upstream.json` and `ForeverSuite_GJBridge` (`ns.UPSTREAM_PIN = "5.236"`, CurseForge File ID `9609539`, 21 folders, SHA-256 `900d2c532396eec4...`) and rebuilt `dist/ForeverSuite_Installer.exe` + `dist/ForeverSuite-v0.3.0.zip`.
+  - Extended `scripts/sync_upstream.py` to parse 2-segment archive versions (`GodJohnson-5.236.zip`) directly and auto-detect target WoW Forever client builds (`1.60.1.70938`).
+
 ### Improved (`FS-QUEST-HUD-V2` & `FS-QUEST-HUD-V2-POLISH` — 2026-11-14)
 - **High-Visibility Right-Side Quest Tracker HUD (`UI/QuestTrackerModel.lua`, `UI/QuestTracker.lua`, `Modules/Quest.lua`)**:
   - 3-tier visual hierarchy (`GameFontNormal` group/quest headers vs `GameFontHighlightSmall` objective sub-rows) with `1px` crisp drop shadows preserved across `SetFontObject` transitions, `340px` width, `22px` row height, `3px`/`4px` semantic left accent bars, and `2px` objective guide rails.

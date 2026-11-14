@@ -1,10 +1,10 @@
-# ForeverSuite v0.3.0 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.0.213+` 3-Tier Bridge Edition)
+# ForeverSuite v0.3.0 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.236+` 3-Tier Bridge Edition)
 
-- **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.70790`, TOC `11701, 16001, 120105`)
+- **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.70938`, TOC `11701, 16001, 120105`)
 - **지원 OS**: **macOS & Windows 양방향 100% 호환** (Windows 원클릭 `.exe` 설치기 포함)
 - **개발 저장소**: macOS `/Users/choyoungseo/WoW_Forever/ForeverSuite` · GitHub Private `https://github.com/ssacho3-blip/WoW-ForeverSuite`
 - **설계 원칙 (`Claude Opus 5.5` & `Claude Fable 5.2` 합의 아키텍처)**:
-  - **Tier 1 (Upstream Read-Only Base)**: 유튜버 **갓존슨(GodJohnson) 통합 애드온 `v5.0.213`** 원본 21개 폴더 무수정(`0 diff`, SHA-256 고정 [`pinned_upstream.json`](pinned_upstream.json), 14개 `GodJohnsonFontChoice_*` 7비트 레지스터 폴더 100% 보존)
+  - **Tier 1 (Upstream Read-Only Base)**: 유튜버 **갓존슨(GodJohnson) 통합 애드온 `v5.236`** 원본 21개 폴더 무수정(`0 diff`, SHA-256 고정 [`pinned_upstream.json`](pinned_upstream.json), 14개 `GodJohnsonFontChoice_*` 7비트 레지스터 폴더 100% 보존)
   - **Tier 2 (`ForeverSuite` v0.3.0, 18개 Lua 모듈)**: 개인용 코어/경제/전투/유틸리티 스위트 (`xpcall` 서킷 브레이커, `C_Secrets` 가드, `CombatQueue` 전투 격리, 4대 중복 도메인 Single-Owner 자동 양보)
   - **Tier 3 (`ForeverSuite_GJBridge` v0.3.0)**: 비침습 런타임 브리지 (`GJCompanion` 개인용 브랜딩·사운드 오버라이드 + 지연 생성 프레임 `GodJohnsonGoldBorderLauncher` 스킨 + 4대 중복 기능 Fail-Safe 단일 소유자 중재)
 

@@ -22,6 +22,7 @@ from sync_upstream import (
     SafeHTTPSRedirectHandler,
     _is_verified_cached_zip,
     _parse_release_revision,
+    _parse_target_client_build,
     _parse_version_from_zip_or_toc,
     _trusted_sha_for_file,
     build_forgecdn_url,
@@ -113,9 +114,10 @@ def test_pinned_upstream_manifest_and_21_folders_unmodified() -> None:
     manifest_path = REPO_ROOT / "pinned_upstream.json"
     assert manifest_path.is_file()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "5.0.213"
-    assert manifest["file_id"] == 9520137
-    assert manifest["release_revision"] == 565
+    assert manifest["version"] == "5.236"
+    assert manifest["file_id"] == 9609539
+    assert manifest["release_revision"] == 588
+    assert manifest["target_client_build"] == "1.60.1.70938"
     assert manifest["folder_count"] == 21
     assert len(manifest["folders"]) == 21
 
@@ -624,8 +626,8 @@ def test_windows_one_click_exe_pe32plus_and_payload_integrity(tmp_path: pathlib.
     assert start_marker in raw and end_marker in raw
     ps1_bytes = raw.rsplit(start_marker, 1)[1].split(end_marker, 1)[0]
     ps1_text = ps1_bytes.decode("utf-8")
-    assert "ae532c87b3591f2c6d9685d0ad28515371527a7950c9acb85acbb0df25cec6c5" in ps1_text
-    assert "GodJohnson-5.0.213.zip" in ps1_text
+    assert "900d2c532396eec44ad21854e455326382cd88c46afc50e8bcc5fdb71c2f92ed" in ps1_text
+    assert "GodJohnson-5.236.zip" in ps1_text
     assert "ForeverSuite_AutoUpdate" in ps1_text
     assert "Register-ScheduledTask" in ps1_text
     assert "Security hash mismatch blocked" in ps1_text
@@ -1024,4 +1026,72 @@ def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
     leftover_baks = list(tmp_path.glob(".gj_sync_bak_*"))
     assert leftover_baks == []
 
+
+def test_gj_v5236_two_segment_version_client_build_and_retired_vital_alerts(tmp_path: pathlib.Path) -> None:
+    assert _parse_version_from_zip_or_toc(tmp_path, "GodJohnson-5.236.zip", "5.0.213") == "5.236"
+    assert _parse_version_from_zip_or_toc(tmp_path, "GodJohnson-5.0.213.zip", "5.0.0") == "5.0.213"
+    assert _parse_version_from_zip_or_toc(tmp_path, "prefix_GodJohnson-5.236.zip", "5.0.0") == "5.0.0"
+    assert _parse_target_client_build(tmp_path, "1.60.1.70790") == "1.60.1.70790"
+
+    fake_repo = tmp_path / "repo_5236"
+    (fake_repo / "ForeverSuite_GJBridge").mkdir(parents=True)
+    bridge_path = fake_repo / "ForeverSuite_GJBridge" / "Bridge.lua"
+    bridge_path.write_text('ns.UPSTREAM_PIN = "5.0.213"\n', encoding="utf-8")
+    (fake_repo / "pinned_upstream.json").write_text(
+        json.dumps({"version": "5.0.213", "target_client_build": None}),
+        encoding="utf-8",
+    )
+
+    zip_5236 = tmp_path / "GodJohnson-5.236.zip"
+    with zipfile.ZipFile(zip_5236, "w") as zf:
+        zf.writestr("GodJohnsonGoldBorder/GodJohnsonGoldBorder.toc", "## Interface: 16001,120105\n## Version: 5.236\n")
+        zf.writestr("GodJohnsonGoldBorder/CompanionCore.lua", "C.version='5.236'\nC.releaseRevision=588\n")
+        zf.writestr("GodJohnsonGoldBorder/ActionBarLoadout220.lua", "-- Forever 1.60.1.70938 MultiActionBars.xml\n")
+    sha_5236 = hashlib.sha256(zip_5236.read_bytes()).hexdigest().lower()
+
+    extract_dest = tmp_path / "gj_5236_dest"
+    manifest = sync_upstream_zip(zip_5236, extract_dest, fake_repo, expected_sha256=sha_5236)
+    assert manifest["version"] == "5.236"
+    assert manifest["release_revision"] == 588
+    assert manifest["target_client_build"] == "1.60.1.70938"
+    assert 'ns.UPSTREAM_PIN = "5.236"' in bridge_path.read_text(encoding="utf-8")
+
+    # Verify Bridge.lua cleanly handles v5.236 retired ExtraSchemas.vitalAlerts == nil
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        _lastPlayedSound = nil
+        GJCompanion = {
+            version = "5.236",
+            Say = function(s) end,
+            OpenYouTube = function() end,
+            BuildYouTubeButton = function() end,
+            BuildHome404 = function() end,
+            TradeManager404Config = function() return { record = true, notify = true, limit = 50 } end,
+            ExtraSchemas = {
+                questAnnounce = {
+                    { key = "questSound", default = "oishii_high" },
+                    { key = "questTemplate", default = "[갓존슨] {퀘스트} 퀘스트 완료!" },
+                },
+            },
+            NotificationSoundNames = { oishii_high = "오이쉬" },
+            PlayNotificationSound = function(key) _lastPlayedSound = key end,
+            ExtraSettings = function(k)
+                if k == "merchantAutomation" then return { repair = false, sell = false } end
+                if k == "automation" then return { accept = false, complete = false } end
+                return {}
+            end,
+            FishingSettings = function() return { enabled = false, doubleClick = false } end,
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    assert bridge.get("status") == "ACTIVE"
+    assert bridge.get("UPSTREAM_PIN") == "5.236"
+    targets = bridge.get("targets")
+    for key in ("sayPrefix", "youtubeLink", "homeScreen", "tradeWhisper", "questSound"):
+        assert targets.get(key) == "APPLIED"
+    rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_high")')
+    assert rt.vm.G.get("_lastPlayedSound") == "dingdong"
 

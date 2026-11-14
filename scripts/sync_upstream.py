@@ -256,8 +256,11 @@ def _commit_sync_transaction(
         shutil.rmtree(backup_dir, ignore_errors=True)
 
 
+CLIENT_BUILD_RE = re.compile(r"\bForever\s+(1\.\d+\.\d+\.\d{5,6})\b")
+
+
 def _parse_version_from_zip_or_toc(extract_dest: pathlib.Path, zip_name: str, fallback: str) -> str:
-    m = re.search(r"GodJohnson-(\d+\.\d+\.\d+)\.zip", zip_name)
+    m = re.fullmatch(r"GodJohnson-(\d+(?:\.\d+)+)\.zip", zip_name)
     if m:
         return m.group(1)
     toc_path = extract_dest / "GodJohnsonGoldBorder" / "GodJohnsonGoldBorder.toc"
@@ -266,6 +269,19 @@ def _parse_version_from_zip_or_toc(extract_dest: pathlib.Path, zip_name: str, fa
         if m_toc:
             return m_toc.group(1)
     return fallback
+
+
+def _collect_client_builds(gb_dir: pathlib.Path) -> list[str]:
+    builds: list[str] = []
+    for lua_file in sorted(gb_dir.glob("*.lua")):
+        builds.extend(CLIENT_BUILD_RE.findall(lua_file.read_text(encoding="utf-8", errors="replace")))
+    return builds
+
+
+def _parse_target_client_build(extract_dest: pathlib.Path, fallback: str) -> str:
+    gb_dir = extract_dest / "GodJohnsonGoldBorder"
+    builds = _collect_client_builds(gb_dir) if gb_dir.is_dir() else []
+    return max(builds, key=lambda s: tuple(int(x) for x in s.split("."))) if builds else fallback
 
 
 def _parse_release_revision(extract_dest: pathlib.Path, fallback: int) -> int:
@@ -439,14 +455,16 @@ def _build_manifest_payload(
         raise ValueError(f"Invalid non-positive file_id: {file_id}")
     default_url = build_forgecdn_url(file_id, zip_path.name)
     download_url = validate_https_download_url(str(_pick_meta_value(meta, existing, "download_url", default_url)))
-    release_date = str(_pick_meta_value(meta, existing, "release_date", "2026-11-09"))
+    release_date = str(_pick_meta_value(meta, existing, "release_date", "2026-11-14"))
+    fallback_build = str(existing.get("target_client_build") or "1.60.1.70790")
+    client_build = str(meta.get("target_client_build") or _parse_target_client_build(staging_dir, fallback_build))
     manifest = {
         "upstream_name": "GodJohnson Integrated Addon",
         "curseforge_project_id": int(existing.get("curseforge_project_id", 1707376)),
         "version": version,
         "release_revision": revision,
         "release_date": release_date,
-        "target_client_build": str(existing.get("target_client_build", "1.60.1.70790")),
+        "target_client_build": client_build,
         "file_id": file_id,
         "file_name": zip_path.name,
         "download_url": download_url,

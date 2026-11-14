@@ -14,7 +14,7 @@ local string_match = string.match
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
 ns.VERSION = "0.3.0"
-ns.UPSTREAM_PIN = "5.0.213"
+ns.UPSTREAM_PIN = "5.236"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
