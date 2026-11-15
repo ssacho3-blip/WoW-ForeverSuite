@@ -101,7 +101,11 @@ def _verify_single_lua_file_compliance(lua_file: pathlib.Path) -> set[str]:
     parse_lua51(src, filename=lua_file.name)
 
     code_no_comments = _strip_comments(src)
-    code_without_c_namespaces = re.sub(r"\bC_[A-Za-z0-9_]+\.[A-Za-z0-9_]+\b", "", code_no_comments)
+    code_without_c_namespaces = re.sub(
+        r'\bC_[A-Za-z0-9_]+\.[A-Za-z0-9_]+\b|\b(?:_G\.)?C_[A-Za-z0-9_]+\s*,\s*"[A-Za-z0-9_]+"',
+        "",
+        code_no_comments,
+    )
     tokens = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code_without_c_namespaces))
 
     assert not (tokens & FORBIDDEN_LEGACY_APIS), f"{lua_file.name} uses removed legacy APIs"
@@ -114,7 +118,8 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     meta, files = rt.parse_toc_files()
 
-    assert "11701" in meta["Interface"]
+    assert "16001" in meta["Interface"]
+    assert "120105" in meta["Interface"]
     assert meta["SavedVariables"] == "ForeverSuiteDB"
     assert meta["SavedVariablesPerCharacter"] == "ForeverSuiteCharDB"
     assert meta["AddonCompartmentFunc"] == "ForeverSuite_OnAddonCompartmentClick"
@@ -136,7 +141,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.0"
+    assert ns["VERSION"] == "0.3.1"
 
     allowed_globals = {
         "ForeverSuite",
@@ -159,8 +164,8 @@ def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt.run_slash("FOREVERSUITE", "probe")
     probe = rt.vm.G["ForeverSuiteDB"]["lastProbe"]
     assert probe["version"] == "1.60.1"
-    assert probe["build"] == "70707"
-    assert probe["tocVersion"] == 11701
+    assert probe["build"] == "70938"
+    assert probe["tocVersion"] == 16001
     assert probe["namespaces"]["C_Container"]["present"] is True
 
 
@@ -831,7 +836,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.1 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1135,6 +1140,107 @@ def test_v030_codex_review_regressions_secret_throw_profession_classid_and_toolt
     rt._fire_widget_script(way_cb, "OnClick", "LeftButton")
     assert rt.vm.G["SlashCmdList"].get("FOREVERSUITEWAY") is not None
     assert rt.vm._invoke_callable(map_mod["SetWaypointFromSlash"], (map_mod, "20 30"))[0] is True
+
+
+# ---------------------------------------------------------------------------
+# 16. v0.3.1: C_AddOns Metadata Resolution & Bridge-Aware Economy Attribution
+# ---------------------------------------------------------------------------
+
+
+def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.vm.G["GetAddOnMetadata"] = None
+    ns = rt.boot_session()
+    assert ns["VERSION"] == "0.3.1"
+    assert ns["TARGET_TOC"] == 16001
+
+
+def test_v031_economy_external_repair_and_negative_purchase_isolation() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_money = 100_000
+    rt.can_merchant_repair = True
+    rt.repair_cost = 4_200
+    ns = rt.boot_session()
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("repair", True, "GodJohnsonGoldBorder"))
+    econ = ns["ModuleManager"]["modules"]["Economy"]["definition"]
+
+    rt.fire_event("MERCHANT_SHOW")
+    assert rt.repair_calls == []
+
+    # Vendor item purchase while repair_cost > 0 must NOT be misclassified as REPAIR
+    rt.player_money -= 999
+    rt.fire_event("PLAYER_MONEY")
+    assert econ["ledger"]["other"] == -999
+    assert econ["ledger"]["repair"] == 0
+
+    # External GJ guild repair does not deduct personal gold
+    rt.vm.G["RepairAllItems"](True)
+    assert econ["ledger"]["repair"] == 0
+
+    # External GJ personal repair via RepairAllItems(false) attributes exact cost to REPAIR
+    # (even if a stale >3.0s _fsRepairArmedAt flag was left behind by an earlier aborted call)
+    ns["_fsRepairArmedAt"] = -10.0
+    rt.repair_cost = 4_200
+    rt.fire_event("UPDATE_INVENTORY_DURABILITY")
+    rt.vm.G["RepairAllItems"](False)
+    assert econ["ledger"]["repair"] == -4_200
+    assert econ["ledger"]["other"] == -999
+
+    # Failed repair inside 2.0s window followed by -750 vendor purchase must stay in 'other' (-750 != -4200)
+    rt.vm._invoke_callable(ns["SetPendingMoneyReason"], ("REPAIR", 2.0, -1, -4_200))
+    rt.player_money -= 750
+    rt.fire_event("PLAYER_MONEY")
+    assert econ["ledger"]["repair"] == -4_200
+    assert econ["ledger"]["other"] == -1_749
+
+
+def test_v031_economy_external_vendor_sell_and_party_loot_isolation() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_money = 50_000
+    rt.item_db[7001] = ("Broken Fang", "|cff9d9d9d|Hitem:7001|h[Broken Fang]|h|r", 0, 1, 1, "Misc", "Junk", 20, "", 134400, 1_250)
+    rt.bags[0]["items"][1] = {"itemID": 7001, "quality": 0, "stackCount": 2, "isLocked": False, "hasNoValue": False}
+    ns = rt.boot_session()
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("sell", True, "GodJohnsonGoldBorder"))
+    econ = ns["ModuleManager"]["modules"]["Economy"]["definition"]
+
+    rt.fire_event("MERCHANT_SHOW")
+    assert rt.sold_bag_slots == []
+
+    # External GJ or manual right-click bag sale via C_Container.UseContainerItem
+    rt.vm.G["C_Container"]["UseContainerItem"](0, 1)
+    assert econ["ledger"]["vendorSell"] == 2_500
+    assert econ["ledger"]["other"] == 0
+
+    # Party gold loot or mail gold arriving while MerchantFrame is still open stays in 'other'
+    rt.player_money += 888
+    rt.fire_event("PLAYER_MONEY")
+    assert econ["ledger"]["vendorSell"] == 2_500
+    assert econ["ledger"]["other"] == 888
+
+
+def test_v031_economy_external_quest_reward_ttl_and_exact_delta_priority() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_money = 20_000
+    rt.quest_reward_money = 12_345
+    ns = rt.boot_session()
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("questAutoAccept", True, "GodJohnsonGoldBorder"))
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("questAutoTurnIn", True, "GodJohnsonGoldBorder"))
+    econ = ns["ModuleManager"]["modules"]["Economy"]["definition"]
+
+    # Leave an unconsumed wildcard VENDOR_SELL entry in queue, then complete quest via external GJ call
+    rt.vm._invoke_callable(ns["SetPendingMoneyReason"], ("VENDOR_SELL", 2.0, 1, None))
+    rt.fire_event("QUEST_COMPLETE")
+    rt.vm.G["GetQuestReward"](1)
+    assert econ["ledger"]["quest"] == 12_345
+    assert econ["ledger"]["vendorSell"] == 0
+
+    # Verify 3.0s quest TTL window survives >1.5s server latency
+    rt.vm._invoke_callable(ns["SetPendingMoneyReason"], ("QUEST", 3.0, 1, 5_000))
+    rt.advance_time(2.4)
+    rt.player_money += 5_000
+    rt.fire_event("PLAYER_MONEY")
+    assert econ["ledger"]["quest"] == 17_345
+
 
 
 

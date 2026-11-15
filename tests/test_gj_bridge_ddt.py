@@ -26,12 +26,14 @@ from sync_upstream import (
     _parse_version_from_zip_or_toc,
     _trusted_sha_for_file,
     build_forgecdn_url,
+    compute_folder_sha256,
     extract_zip_safely,
     sanitize_zip_filename,
     select_latest_cfwidget_file,
     sync_upstream_zip,
     validate_https_download_url,
     validate_zip_archive_safety,
+    verify_extracted_dir,
 )
 from wow_forever_mock import WoWForeverMockRuntime
 
@@ -104,10 +106,14 @@ def test_gj_bridge_toc_and_lua_static_compliance() -> None:
 
 def _verify_extracted_toc_hashes(folders: dict[str, Any]) -> None:
     for folder_name, meta in folders.items():
-        toc_file = GJ_EXTRACTED_ROOT / folder_name / f"{folder_name}.toc"
+        folder_dir = GJ_EXTRACTED_ROOT / folder_name
+        toc_file = folder_dir / f"{folder_name}.toc"
         assert toc_file.is_file(), f"Missing upstream TOC: {toc_file}"
         actual_sha256 = hashlib.sha256(toc_file.read_bytes()).hexdigest()
         assert actual_sha256 == meta["toc_sha256"], f"Upstream TOC mutated: {folder_name}"
+        assert compute_folder_sha256(folder_dir) == meta["folder_sha256"], (
+            f"Upstream folder tree mutated: {folder_name}"
+        )
 
 
 def test_pinned_upstream_manifest_and_21_folders_unmodified() -> None:
@@ -151,16 +157,11 @@ def test_bridge_branding_overrides_and_deferred_launcher_skin() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.boot_session()
 
-    # Install a mock GJCompanion matching GodJohnson 5.0.132 structure
+    # Install a mock GJCompanion matching GodJohnson v5.236 Home404 + TradeManager404 structure
     rt.vm.run_chunk(
         """
         GJCompanion = {
-            version = "5.0.132",
-            ExtraSchemas = {
-                vitalAlerts = {
-                    { key = "hpTemplate", default = "[갓존슨] {자원} {퍼센트}% 남았습니다!" },
-                },
-            },
+            version = "5.236",
         }
         function GJCompanion.Say(s)
             DEFAULT_CHAT_FRAME:AddMessage("|cffffd36a갓존슨:|r " .. tostring(s))
@@ -168,15 +169,22 @@ def test_bridge_branding_overrides_and_deferred_launcher_skin() -> None:
         function GJCompanion.OpenYouTube()
             DEFAULT_CHAT_FRAME:AddMessage("YOUTUBE_OPENED")
         end
-        function GJCompanion.BuildYouTubeButton(parent, heading, ButtonFn)
-            local b = CreateFrame("Button", "MockYTBtn", parent)
-            GJCompanion.YouTubeButton = b
-        end
         function GJCompanion.BuildHome404(p)
             local logo = CreateFrame("Button", nil, p)
+            local chLogo = logo:CreateTexture(nil, "ARTWORK")
+            chLogo:SetTexture("Interface\\AddOns\\GodJohnsonGoldBorder\\Media\\ChannelLogo.tga")
+            local reminder = p:CreateFontString(nil, "OVERLAY")
+            reminder:SetText("※ 원본 자동셋팅 안내 ※")
             local notice = p:CreateFontString(nil, "OVERLAY")
             notice:SetText("원본 스트리머 공지문")
-            GJCompanion.Home404 = { frame = p, logo = logo, notice = notice }
+            GJCompanion.Home404 = {
+                frame = p,
+                logo = logo,
+                _channelTex = chLogo,
+                setupReminder = reminder,
+                notice = notice,
+            }
+            return GJCompanion.Home404, "OK_TOKEN"
         end
         function GJCompanion.TradeManager404Config()
             if not GJCompanion._tradeCfg then
@@ -208,54 +216,48 @@ def test_bridge_branding_overrides_and_deferred_launcher_skin() -> None:
     # Launcher does not exist yet -> PENDING
     assert targets.get("launcherIcon") == "PENDING"
 
-    # 1. Verify C.Say prefix is replaced
+    # 1. Verify C.Say prefix is replaced and zero private keys pollute GJCompanion
+    assert not any(str(k).startswith("_fsgj") for k in rt.vm.G["GJCompanion"].keys())
     rt.chat_messages.clear()
     rt.vm.run_chunk('GJCompanion.Say("테스트 메시지")')
     joined_say = "\n".join(rt.chat_messages)
     assert "[포에버]:" in joined_say and "갓존슨:" not in joined_say
 
-    # 2. Verify OpenYouTube is neutralized & BuildYouTubeButton hides button
+    # 2. Verify OpenYouTube is neutralized
     rt.chat_messages.clear()
     rt.vm.run_chunk("GJCompanion.OpenYouTube()")
     joined_yt = "\n".join(rt.chat_messages)
     assert "YOUTUBE_OPENED" not in joined_yt
     assert "포에버 개인용 통합 환경" in joined_yt
 
-    rt.vm.run_chunk("GJCompanion.BuildYouTubeButton(UIParent, nil, nil)")
-    yt_btn = rt.vm.G["GJCompanion"].get("YouTubeButton")
-    assert yt_btn.get("_shown") is False
-
-    # 3. Verify BuildHome404 replaces streamer notice
-    rt.vm.run_chunk("GJCompanion.BuildHome404(UIParent)")
-    home_notice = rt.vm.G["GJCompanion"].get("Home404").get("notice").get("_text")
+    # 3. Verify BuildHome404 swaps ChannelLogo region, rewrites setupReminder & notice, and forwards returns
+    ret_home, ret_tok = rt.vm.run_chunk("return GJCompanion.BuildHome404(UIParent)")
+    home_tbl = rt.vm.G["GJCompanion"].get("Home404")
+    assert ret_home is home_tbl
+    assert ret_tok == "OK_TOKEN"
+    assert home_tbl.get("_channelTex").get("_tex") == 134063
+    assert "개인화 통합 환경" in home_tbl.get("setupReminder").get("_text")
+    home_notice = home_tbl.get("notice").get("_text")
     assert "포에버 개인용 통합 애드온" in home_notice
-    assert "원본 21개 폴더 무수정" in home_notice
+    assert "전체 파일 SHA-256 해시 고정" in home_notice
 
-    # 4. Verify TradeManager404Config notify defaults to false & vitalAlerts template cleaned
+    # 4. Verify TradeManager404Config notify defaults to false with zero _fsgj* keys in GJ SV
     cfg = rt.vm.run_chunk("return GJCompanion.TradeManager404Config()")[0]
     assert cfg.get("notify") is False
-    vital_tpl = (
-        rt.vm.G["GJCompanion"]
-        .get("ExtraSchemas")
-        .get("vitalAlerts")
-        .get(1)
-        .get("default")
-    )
-    assert vital_tpl.startswith("[알림]")
+    assert not any(str(k).startswith("_fsgj") for k in cfg.keys())
+    assert rt.vm.G["ForeverSuiteDB"].get("gjBridge").get("tradeNotifySeeded") is True
 
     # 5. Now simulate deferred creation of GodJohnsonGoldBorderLauncher on PLAYER_LOGIN
     rt.vm.run_chunk(
         """
         local l = CreateFrame("Button", "GodJohnsonGoldBorderLauncher", UIParent)
         local tex = l:CreateTexture(nil, "ARTWORK")
-        tex._texId = nil
-        function tex:SetTexture(id) self._texId = id end
         l.logo = tex
         """
     )
     rt.fire_event("PLAYER_LOGIN")
     assert targets.get("launcherIcon") == "APPLIED"
-    launcher_logo_tex = rt.vm.G["GodJohnsonGoldBorderLauncher"].get("logo").get("_texId")
+    launcher_logo_tex = rt.vm.G["GodJohnsonGoldBorderLauncher"].get("logo").get("_tex")
     assert launcher_logo_tex == 134063
 
 
@@ -266,7 +268,7 @@ def test_quest_sound_oishii_removed_and_replaced_with_clean_alarm() -> None:
     rt.vm.run_chunk(
         """
         GJCompanion = {
-            version = "5.0.132",
+            version = "5.236",
             NotificationSoundNames = {
                 oishii_high = "하이톤 오이쉬",
                 oishii_deep = "걸쭉 오이쉬",
@@ -281,22 +283,31 @@ def test_quest_sound_oishii_removed_and_replaced_with_clean_alarm() -> None:
                     { key = "objectiveTemplate", default = "[갓존슨] {퀘스트}: {목표} 완료!" },
                 },
             },
+            QuestAnnounce = {
+                Format = function(tpl, tokens)
+                    local out = tostring(tpl or "")
+                    if type(tokens) == "table" and tokens["퀘스트"] then
+                        out = string.gsub(out, "{퀘스트}", tostring(tokens["퀘스트"]))
+                    end
+                    return out
+                end,
+            },
             _questCfg = {
                 questSound = "oishii_high",
                 objectiveSound = "oishii_deep",
                 questTemplate = "[갓존슨] {퀘스트} 퀘스트 완료!",
                 objectiveTemplate = "[갓존슨] {퀘스트}: {목표} 완료!",
+                starterLoot = true,
             },
-            _bookCfg = {
-                acquisitionSound = "oishii_high",
-            },
+            _bookQueried = false,
             _playedSounds = {},
         }
         function GJCompanion.ExtraSettings(key)
             if key == "questAnnounce" then
                 return GJCompanion._questCfg
             elseif key == "libraryBooksAccess471" then
-                return GJCompanion._bookCfg
+                GJCompanion._bookQueried = true
+                return { acquisitionSound = "oishii_high" }
             end
             return {}
         end
@@ -310,23 +321,28 @@ def test_quest_sound_oishii_removed_and_replaced_with_clean_alarm() -> None:
     bridge = load_bridge(rt)
     assert bridge.get("targets").get("questSound") == "APPLIED"
 
-    # 1. Schema defaults must no longer be oishii_high / oishii_deep
+    # 1. Zero-SV-Mutation: ExtraSchemas & saved questTemplates/questSound remain untouched for clean ProfileShare exports
     qa_schema = rt.vm.G["GJCompanion"].get("ExtraSchemas").get("questAnnounce")
-    assert qa_schema.get(1).get("default") == "dingdong"
-    assert qa_schema.get(2).get("default") == "dingdong"
-    assert qa_schema.get(3).get("default").startswith("[포에버]")
+    assert qa_schema.get(1).get("default") == "oishii_high"
+    assert qa_schema.get(3).get("default") == "[갓존슨] {퀘스트} 퀘스트 완료!"
+    assert rt.vm.G["GJCompanion"].get("_bookQueried") is False
 
-    # 2. Existing saved profile settings must be sanitized from oishii -> dingdong
     q_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("questAnnounce")')[0]
-    assert q_cfg.get("questSound") == "dingdong"
-    assert q_cfg.get("objectiveSound") == "dingdong"
-    assert q_cfg.get("questTemplate").startswith("[포에버]")
-    assert q_cfg.get("objectiveTemplate").startswith("[포에버]")
+    assert q_cfg.get("questSound") == "oishii_high"
+    assert q_cfg.get("questTemplate") == "[갓존슨] {퀘스트} 퀘스트 완료!"
+    assert q_cfg.get("starterLoot") is False
+    assert rt.vm.G["ForeverSuiteDB"].get("gjBridge").get("starterLootSeeded") is True
 
-    b_cfg = rt.vm.run_chunk('return GJCompanion.ExtraSettings("libraryBooksAccess471")')[0]
-    assert b_cfg.get("acquisitionSound") == "dingdong"
+    # 2. NotificationSoundNames UI labels & QuestAnnounce.Format runtime render layer remap cleanly
+    snd_names = rt.vm.G["GJCompanion"].get("NotificationSoundNames")
+    assert snd_names.get("oishii_high") == "띵동 (오이쉬 대체 알람)"
+    assert snd_names.get("oishii_deep") == "띵동 (오이쉬 대체 알람)"
+    rendered = rt.vm.run_chunk(
+        'return GJCompanion.QuestAnnounce.Format("[갓존슨] {퀘스트} 퀘스트 완료! (%d%%)", { ["퀘스트"] = "여명" })'
+    )[0]
+    assert rendered == "[포에버] 여명 퀘스트 완료! (%d%%)"
 
-    # 3. Direct PlayNotificationSound("oishii_high" / "oishii_deep") must remap to "dingdong"
+    # 3. Direct PlayNotificationSound("oishii_high" / "oishii_deep") remaps to "dingdong"
     rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_high", 100, "quest", 2, "SFX")')
     rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_deep", 100, "quest", 2, "SFX")')
     played = rt.vm.G["GJCompanion"].get("_playedSounds")
@@ -546,7 +562,8 @@ def test_single_owner_arbitration_matrix_ddt(
     # Check ForeverSuite feature yield flags
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("repair")')[0] is (not expected_fs_repair)
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("sell")')[0] is (not expected_fs_sell)
-    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAuto")')[0] is (not expected_fs_quest)
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoAccept")')[0] is (not expected_fs_quest)
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoTurnIn")')[0] is (not expected_fs_quest)
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is (not expected_fs_fishing)
     # Condition #3: /way is NEVER yielded to GJ
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("way")')[0] is False
@@ -739,10 +756,20 @@ def test_partial_ownership_tables_idempotent_lifecycle_hooks_and_fishing_secure_
         """
     )
     bridge = load_bridge(rt)
-    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAuto")')[0] is True
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoAccept")')[0] is True
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoTurnIn")')[0] is False
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is False
     hooks_first = rt.vm.G.get("_hookCount")
     assert hooks_first > 0
+
+    # Verify independent questAutoAccept vs questAutoTurnIn runtime execution
+    rt.accepted_quests = 0
+    rt.completed_quests = 0
+    rt.quest_completable = True
+    rt.fire_event("QUEST_DETAIL")
+    rt.fire_event("QUEST_PROGRESS")
+    assert rt.accepted_quests == 0
+    assert rt.completed_quests == 1
 
     # Calling ApplyLifecycleHooks a second time must NOT register duplicate hooksecurefunc callbacks
     rt.vm._invoke_callable(bridge["ApplyLifecycleHooks"], ())
@@ -946,7 +973,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.3.0)" in ps1
+    assert "(v0.3.1)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1094,4 +1121,228 @@ def test_gj_v5236_two_segment_version_client_build_and_retired_vital_alerts(tmp_
         assert targets.get(key) == "APPLIED"
     rt.vm.run_chunk('GJCompanion.PlayNotificationSound("oishii_high")')
     assert rt.vm.G.get("_lastPlayedSound") == "dingdong"
+
+
+# ---------------------------------------------------------------------------
+# 6. v0.3.1 Opus x Fable Consensus Contract Tests
+# ---------------------------------------------------------------------------
+
+
+def test_v031_legacy_fsgj_flag_migration_preserves_user_notify_and_cleans_sv() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.236",
+            _tradeCfg = {
+                record = true,
+                notify = true,
+                limit = 50,
+                _fsgjUserInitialized = true,
+            },
+            TradeManager404Config = function() return GJCompanion._tradeCfg end,
+        }
+        """
+    )
+    load_bridge(rt)
+    cfg = rt.vm.run_chunk("return GJCompanion.TradeManager404Config()")[0]
+    assert cfg.get("notify") is True
+    assert "_fsgjUserInitialized" not in cfg.keys()
+    assert rt.vm.G["ForeverSuiteDB"].get("gjBridge").get("tradeNotifySeeded") is True
+
+
+def test_v031_apply_author_preset_snapshot_restore_and_abort_guard() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        _commitCalls = 0
+        _refreshQaCalls = 0
+        _abortMode = true
+        GJCompanion = {
+            version = "5.236",
+            _tradeCfg = { record = true, notify = true, limit = 50 },
+            _qaCfg = { starterLoot = true, questSound = "oishii_high" },
+            TradeManager404Config = function() return GJCompanion._tradeCfg end,
+            ExtraSettings = function(k)
+                if k == "questAnnounce" then return GJCompanion._qaCfg end
+                return {}
+            end,
+            CommitSettings = function() _commitCalls = _commitCalls + 1 end,
+            RefreshQuestAnnounce = function() _refreshQaCalls = _refreshQaCalls + 1 end,
+            ApplyAuthorPreset = function()
+                if _abortMode then
+                    return false, "전투 중에는 적용할 수 없습니다"
+                end
+                GJCompanion._tradeCfg.notify = true
+                GJCompanion._qaCfg.starterLoot = true
+                GJCompanion.CommitSettings()
+                GJCompanion.RefreshQuestAnnounce()
+                return true, "제작자 프리셋 적용 완료"
+            end,
+        }
+        """
+    )
+    load_bridge(rt)
+    assert rt.vm.G["GJCompanion"].get("_tradeCfg").get("notify") is False
+    assert rt.vm.G["GJCompanion"].get("_qaCfg").get("starterLoot") is False
+
+    # 1. Early abort (false, msg) forwards exact return tuple and skips Bridge post-commit
+    ok_abort, msg_abort = rt.vm.run_chunk("return GJCompanion.ApplyAuthorPreset()")
+    assert ok_abort is False
+    assert "전투 중" in msg_abort
+    assert rt.vm.G.get("_commitCalls") == 0
+
+    # 2. Successful preset apply (true, msg) restores user's notify=false & starterLoot=false
+    rt.vm.G["_abortMode"] = False
+    ok_done, msg_done = rt.vm.run_chunk("return GJCompanion.ApplyAuthorPreset()")
+    assert ok_done is True
+    assert "적용 완료" in msg_done
+    assert rt.vm.G["GJCompanion"].get("_tradeCfg").get("notify") is False
+    assert rt.vm.G["GJCompanion"].get("_qaCfg").get("starterLoot") is False
+    assert rt.vm.G.get("_commitCalls") == 2
+    assert rt.vm.G.get("_refreshQaCalls") == 2
+
+
+def test_v031_build_home404_error_propagation_and_folder_sha256_tamper_guard(tmp_path: pathlib.Path) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.236",
+            BuildHome404 = function()
+                error("SIMULATED_HOME404_ERROR")
+            end,
+        }
+        """
+    )
+    load_bridge(rt)
+    ok_call, err_msg = rt.vm.run_chunk("return pcall(GJCompanion.BuildHome404, UIParent)")
+    assert ok_call is False
+    assert "SIMULATED_HOME404_ERROR" in str(err_msg)
+
+    # Verify folder_sha256 catches 1-byte non-TOC .lua tamper
+    repo_dir = tmp_path / "repo_pin"
+    repo_dir.mkdir(parents=True)
+    ext_dir = tmp_path / "extracted"
+    f_dir = ext_dir / "GodJohnsonGoldBorder"
+    f_dir.mkdir(parents=True)
+    toc_p = f_dir / "GodJohnsonGoldBorder.toc"
+    lua_p = f_dir / "CompanionCore.lua"
+    toc_p.write_bytes(b"## Interface: 16001\n")
+    lua_p.write_bytes(b"C.version = '5.236'\n")
+    manifest = {
+        "folder_count": 1,
+        "folders": {
+            "GodJohnsonGoldBorder": {
+                "toc_sha256": hashlib.sha256(toc_p.read_bytes()).hexdigest(),
+                "folder_sha256": compute_folder_sha256(f_dir),
+            }
+        },
+    }
+    (repo_dir / "pinned_upstream.json").write_text(json.dumps(manifest), encoding="utf-8")
+    assert verify_extracted_dir(repo_dir, ext_dir) == 1
+    lua_p.write_bytes(b"C.version = '5.237'\n")
+    with pytest.raises(ValueError, match="Upstream folder SHA-256 mismatch"):
+        verify_extracted_dir(repo_dir, ext_dir)
+
+
+def test_v031_real_upstream_v5236_hook_symbol_contract() -> None:
+    gj_core_dir = GJ_EXTRACTED_ROOT / "GodJohnsonGoldBorder"
+    assert gj_core_dir.is_dir(), f"Missing extracted upstream GodJohnsonGoldBorder: {gj_core_dir}"
+    combined = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(gj_core_dir.glob("*.lua")))
+    required_patterns = (
+        "function C.Say(",
+        "function C.OpenYouTube(",
+        "function C.BuildHome404(",
+        "ChannelLogo",
+        "setupReminder",
+        "function C.TradeManager404Config(",
+        "function C.PlayNotificationSound(",
+        "C.QuestAnnounce",
+        "function A.Format(",
+        "function C.ApplyAuthorPreset(",
+        "function GJCompanion.RestoreLauncher(",
+        "function C.CommitSettings(",
+        "function C.RefreshFishingHelper(",
+        "function C.ExtraSettings(",
+        "function C.FishingSettings(",
+    )
+    for token in required_patterns:
+        assert token in combined, f"Upstream v5.236 contract symbol missing: {token}"
+
+
+def test_v031_bridge_readonly_future_schema_preserves_gj_user_settings_across_reloads(
+    tmp_path: pathlib.Path,
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 999,
+            "gjBridge": LuaTable({"tradeNotifySeeded": True, "starterLootSeeded": True}),
+        }
+    )
+    ns = rt.boot_session()
+    assert ns["ProfileManager"]["readOnly"] is True
+
+    gj_setup_lua = """
+        GJCompanion = {
+            version = "5.236",
+            _tradeCfg = { record = true, notify = true, limit = 50, _fsgjUserInitialized = true },
+            _qaCfg = { starterLoot = true, questSound = "oishii_high" },
+            TradeManager404Config = function() return GJCompanion._tradeCfg end,
+            ExtraSettings = function(k)
+                if k == "questAnnounce" then return GJCompanion._qaCfg end
+                if k == "merchantAutomation" then return { repair = false, sell = false } end
+                if k == "automation" then return { accept = false, complete = false } end
+                return {}
+            end,
+            FishingSettings = function() return { enabled = false, doubleClick = false } end,
+        }
+    """
+    rt.vm.run_chunk(gj_setup_lua)
+    load_bridge(rt)
+    cfg1 = rt.vm.run_chunk("return GJCompanion.TradeManager404Config()")[0]
+    qa1 = rt.vm.run_chunk('return GJCompanion.ExtraSettings("questAnnounce")')[0]
+    assert cfg1.get("notify") is True
+    assert qa1.get("starterLoot") is True
+    assert cfg1.get("_fsgjUserInitialized") is True
+
+    # Simulate second session /reload under read-only future schema: user notify/starterLoot stay True
+    rt.simulate_reload()
+    rt.vm.run_chunk(gj_setup_lua)
+    load_bridge(rt)
+    cfg2 = rt.vm.run_chunk("return GJCompanion.TradeManager404Config()")[0]
+    qa2 = rt.vm.run_chunk('return GJCompanion.ExtraSettings("questAnnounce")')[0]
+    assert cfg2.get("notify") is True
+    assert qa2.get("starterLoot") is True
+    assert rt.vm.G["ForeverSuiteDB"].get("schemaVersion") == 999
+
+    # Missing folder_sha256 in pinned_upstream.json must fail closed
+    repo_dir = tmp_path / "repo_missing_fsha"
+    repo_dir.mkdir(parents=True)
+    ext_dir = tmp_path / "ext_missing_fsha"
+    f_dir = ext_dir / "GodJohnsonGoldBorder"
+    f_dir.mkdir(parents=True)
+    toc_p = f_dir / "GodJohnsonGoldBorder.toc"
+    toc_p.write_bytes(b"## Interface: 16001\n")
+    (repo_dir / "pinned_upstream.json").write_text(
+        json.dumps(
+            {
+                "folder_count": 1,
+                "folders": {
+                    "GodJohnsonGoldBorder": {
+                        "toc_sha256": hashlib.sha256(toc_p.read_bytes()).hexdigest(),
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Missing upstream folder_sha256 in manifest"):
+        verify_extracted_dir(repo_dir, ext_dir)
+
+
 

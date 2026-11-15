@@ -1,6 +1,6 @@
 # Windows 원클릭 `.exe` 설치 및 macOS 듀얼 OS 운영 가이드 (`WoW Forever`)
 
-본 프로젝트(`ForeverSuite v0.2.0` + `ForeverSuite_GJBridge` + `GodJohnson v5.0.132` 21개 폴더)는 순수 WoW Lua 5.1 + TOC 표준(`LF` 줄바꿈, 포워드 슬래시 `/` 경로, UTF-8 무 BOM)으로 작성되어 **macOS 클라이언트와 Windows 클라이언트 양쪽에서 100% 동일하게 동작**합니다.
+본 프로젝트(`ForeverSuite v0.3.1` + `ForeverSuite_GJBridge v0.3.1` + `GodJohnson v5.236` 21개 폴더)는 순수 WoW Lua 5.1 + TOC 표준(`LF` 줄바꿈, 포워드 슬래시 `/` 경로, UTF-8 무 BOM, `## Interface: 16001, 120105`)으로 작성되어 **macOS 클라이언트와 Windows 클라이언트 양쪽에서 100% 동일하게 동작**합니다.
 
 ---
 
@@ -24,8 +24,8 @@
 2. **`ForeverSuite_Installer.exe`를 더블클릭**합니다.
 3. 설치기가 자동으로 수행하는 작업:
    - Windows 레지스트리 및 `C:\`, `D:\`, `E:\` 기본 경로를 탐색해 `World of Warcraft\_forever_\Interface\AddOns` 폴더를 자동 감지합니다 (커스텀 경로인 경우 폴더 선택 창이 자동으로 열립니다).
-   - CurseForge 공식 CDN에서 `GodJohnson-5.0.132.zip` (`273MB`)을 다운로드하고 **SHA-256 해시(`2cf3a504...d1efd`)를 검증**합니다 (이미 설치되어 있고 해시가 일치하면 재다운로드를 건너뜁니다).
-   - `.exe` 내부에 내장된 `ForeverSuite` 및 `ForeverSuite_GJBridge` 최신 버전을 추출해 총 **23개 폴더를 원자적(Atomic Swap)으로 설치**합니다.
+   - CurseForge 공식 CDN에서 `GodJohnson-5.236.zip`을 다운로드하고 **SHA-256 해시(`900d2c532396eec44ad21854e455326382cd88c46afc50e8bcc5fdb71c2f92ed`)를 검증**합니다 (이미 설치되어 있고 해시가 일치하면 재다운로드를 건너뜁니다).
+   - `.exe` 내부에 내장된 `ForeverSuite` 및 `ForeverSuite_GJBridge` 최신 버전을 추출해 총 **23개 폴더를 원자적(Atomic Swap)으로 설치**하고, Windows 작업 스케줄러(`ForeverSuite_AutoUpdate`) 자동 동기화 작업을 등록합니다.
    - 완료 안내 메시지 창이 뜨면 확인을 누르고 게임에 접속합니다(게임 실행 중이면 채팅창에 `/reload` 입력).
 
 ---
@@ -35,7 +35,7 @@
 ```bash
 ./scripts/deploy_mac.sh
 ```
-- 로컬에 캐시된 `GodJohnson v5.0.132` 21개 폴더의 `.toc` SHA-256 무결성을 먼저 검증한 뒤, `/Applications/World of Warcraft/_forever_/Interface/AddOns`에 23개 폴더 전체를 원자적으로 배포합니다.
+- 로컬에 캐시된 `GodJohnson v5.236` 21개 폴더의 `.toc` SHA-256 및 전체 파일 트리 `folder_sha256` 무결성을 먼저 검증한 뒤, `/Applications/World of Warcraft/_forever_/Interface/AddOns`에 23개 폴더 전체를 원자적으로 배포합니다.
 
 ---
 

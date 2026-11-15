@@ -129,12 +129,44 @@ def extract_zip_safely(zf: zipfile.ZipFile, dest_dir: pathlib.Path) -> None:
         _extract_single_zip_member(zf, info, dest_dir, root_real)
 
 
+IGNORED_TREE_NAMES = frozenset({".DS_Store", ".git"})
+
+
+def _is_ignored_tree_part(parts: tuple[str, ...]) -> bool:
+    return any(part in IGNORED_TREE_NAMES for part in parts)
+
+
+def _check_tree_entry(folder: pathlib.Path, child: pathlib.Path) -> tuple[str, pathlib.Path] | None:
+    rel = child.relative_to(folder)
+    if _is_ignored_tree_part(rel.parts):
+        return None
+    if child.is_symlink():
+        raise ValueError(f"Symlink rejected in upstream folder: {child}")
+    return (rel.as_posix(), child) if child.is_file() else None
+
+
+def _collect_folder_files(folder: pathlib.Path) -> list[tuple[str, pathlib.Path]]:
+    if folder.is_symlink():
+        raise ValueError(f"Symlink folder rejected: {folder}")
+    entries: list[tuple[str, pathlib.Path]] = []
+    for child in folder.rglob("*"):
+        pair = _check_tree_entry(folder, child)
+        if pair is not None:
+            entries.append(pair)
+    entries.sort(key=lambda item: item[0])
+    return entries
+
+
+def compute_folder_sha256(folder: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    for rel_posix, file_path in _collect_folder_files(folder):
+        file_sha = hashlib.sha256(file_path.read_bytes()).hexdigest()
+        digest.update(f"{rel_posix}\0{file_sha}\n".encode("utf-8"))
+    return digest.hexdigest()
+
+
 def _count_files_in_dir(item: pathlib.Path) -> int:
-    total = 0
-    for p in item.rglob("*"):
-        if p.is_file():
-            total += 1
-    return total
+    return len(_collect_folder_files(item))
 
 
 def _is_valid_addon_dir(item: pathlib.Path) -> bool:
@@ -150,6 +182,7 @@ def _scan_single_folder(folders: dict[str, dict], item: pathlib.Path) -> None:
     toc_sha256 = hashlib.sha256(toc_file.read_bytes()).hexdigest()
     folders[item.name] = {
         "toc_sha256": toc_sha256,
+        "folder_sha256": compute_folder_sha256(item),
         "file_count": _count_files_in_dir(item),
     }
 
@@ -393,18 +426,31 @@ def resolve_default_extract_dir(repo_root: pathlib.Path) -> pathlib.Path:
     return candidates[0]
 
 
+def _verify_folder_tree_sha256(folder_path: pathlib.Path, folder_name: str, expected_folder_sha: str | None) -> None:
+    if not expected_folder_sha:
+        raise ValueError(f"Missing upstream folder_sha256 in manifest [{folder_name}]")
+    if compute_folder_sha256(folder_path) != expected_folder_sha:
+        raise ValueError(f"Upstream folder SHA-256 mismatch [{folder_name}]")
+
+
+def _verify_single_extracted_folder(target_dir: pathlib.Path, folder_name: str, meta: dict) -> None:
+    folder_path = target_dir / folder_name
+    toc_file = folder_path / f"{folder_name}.toc"
+    if not toc_file.is_file():
+        raise ValueError(f"Missing upstream TOC: {toc_file}")
+    actual_sha = hashlib.sha256(toc_file.read_bytes()).hexdigest()
+    if actual_sha != meta["toc_sha256"]:
+        raise ValueError(f"Upstream TOC SHA-256 mismatch [{folder_name}]: {actual_sha} != {meta['toc_sha256']}")
+    _verify_folder_tree_sha256(folder_path, folder_name, meta.get("folder_sha256"))
+
+
 def verify_extracted_dir(repo_root: pathlib.Path, target_dir: pathlib.Path) -> int:
     manifest = _load_existing_manifest(repo_root / "pinned_upstream.json")
     folders = manifest.get("folders") or {}
     if not folders:
         raise ValueError("pinned_upstream.json contains no folder hashes")
     for folder_name, meta in folders.items():
-        toc_file = target_dir / folder_name / f"{folder_name}.toc"
-        if not toc_file.is_file():
-            raise ValueError(f"Missing upstream TOC: {toc_file}")
-        actual_sha = hashlib.sha256(toc_file.read_bytes()).hexdigest()
-        if actual_sha != meta["toc_sha256"]:
-            raise ValueError(f"Upstream TOC SHA-256 mismatch [{folder_name}]: {actual_sha} != {meta['toc_sha256']}")
+        _verify_single_extracted_folder(target_dir, folder_name, meta)
     return len(folders)
 
 

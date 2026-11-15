@@ -71,9 +71,19 @@ def _validate_manifest_security(manifest: dict) -> tuple[str, str, str, str]:
     return url, sha, ver, fname
 
 
-def build_embedded_ps1_script(manifest: dict, embedded_zip_b64: str) -> str:
+def read_suite_version(repo_root: pathlib.Path, default: str = "0.3.1") -> str:
+    toc_path = repo_root / "ForeverSuite" / "ForeverSuite.toc"
+    if toc_path.is_file():
+        m = re.search(r"^##\s*Version:\s*([\w.\-]+)", toc_path.read_text(encoding="utf-8"), re.MULTILINE)
+        if m:
+            return m.group(1)
+    return default
+
+
+def build_embedded_ps1_script(manifest: dict, embedded_zip_b64: str, suite_version: str = "0.3.1") -> str:
     """Generate the PowerShell one-click installer script embedded inside ForeverSuite_Installer.exe."""
     upstream_url, upstream_sha256, upstream_version, upstream_filename = _validate_manifest_security(manifest)
+    _assert_valid_ver_and_fname(suite_version, f"ForeverSuite-v{suite_version}.zip")
     embedded_patch_sha256 = hashlib.sha256(base64.b64decode(embedded_zip_b64)).hexdigest().lower()
 
     return f"""$ErrorActionPreference = "Stop"
@@ -185,7 +195,7 @@ function Expand-SafeZipArchive([string]$ZipPath, [string]$DestDir) {{
 }}
 
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "  WoW Forever 통합 애드온 원클릭 설치기 (v0.3.0)" -ForegroundColor Yellow
+Write-Host "  WoW Forever 통합 애드온 원클릭 설치기 (v{suite_version})" -ForegroundColor Yellow
 Write-Host "  구성: 갓존슨 통합 애드온 (v{upstream_version}, 21개 폴더) + ForeverSuite + GJBridge" -ForegroundColor Gray
 Write-Host "=================================================================" -ForegroundColor Cyan
 
@@ -801,16 +811,16 @@ def _build_embedded_zip_b64(repo_root: pathlib.Path) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _is_protected_dist_artifact(name: str) -> bool:
+    return name == "ForeverSuite_Installer.exe" or bool(re.fullmatch(r"ForeverSuite-v[\w.\-]+\.zip", name))
+
+
 def _verify_dist_targets_writable(cand: pathlib.Path) -> None:
-    for existing_name in (
-        "ForeverSuite-v0.3.0.zip",
-        "ForeverSuite-v0.2.0.zip",
-        "ForeverSuite-v0.1.0.zip",
-        "ForeverSuite_Installer.exe",
-    ):
-        existing_file = cand / existing_name
-        if existing_file.exists() and not os.access(existing_file, os.W_OK):
-            raise PermissionError(f"Cannot overwrite {existing_file}")
+    if not cand.is_dir():
+        return
+    for child in cand.iterdir():
+        if _is_protected_dist_artifact(child.name) and not os.access(child, os.W_OK):
+            raise PermissionError(f"Cannot overwrite {child}")
 
 
 def _resolve_writable_dist_dir(repo_root: pathlib.Path, out_dir: pathlib.Path | None = None) -> pathlib.Path:
@@ -832,9 +842,10 @@ def build_windows_installer_exe(repo_root: pathlib.Path, out_dir: pathlib.Path |
     """Build dist/ForeverSuite_Installer.exe with embedded ForeverSuite + ForeverSuite_GJBridge payload."""
     manifest_path = repo_root / "pinned_upstream.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    suite_version = read_suite_version(repo_root)
 
     embedded_zip_b64 = _build_embedded_zip_b64(repo_root)
-    ps1_script = build_embedded_ps1_script(manifest, embedded_zip_b64)
+    ps1_script = build_embedded_ps1_script(manifest, embedded_zip_b64, suite_version=suite_version)
     pe_stub = build_pe32plus_stub()
 
     payload = (

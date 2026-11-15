@@ -14,89 +14,110 @@
   "folders": {
     "GodJohnsonAtlasData": {
       "toc_sha256": "2ded525c03ffc9a3478d8f0f5b266b09080763432eac4d35773c96d39ef12ff8",
+      "folder_sha256": "b4fb390def877c2cf7172244b2476a1d253e57983c20639d494e263eb967c0c4",
       "file_count": 4
     },
     "GodJohnsonBiSData": {
       "toc_sha256": "5e0a233bdf6da7b4a7ce2e7f2d0ece9689eed40f5e7b4b59f2ba0d3d25c9b786",
+      "folder_sha256": "9bc23a90b883abc73383dbd009f5dfc80030b61b023ea8a52c87bd87d6f75f73",
       "file_count": 5
     },
     "GodJohnsonEngineStartup": {
       "toc_sha256": "6e5d0ab41840f748382043cc056c02edc8823d489fcf6fb9a2b8ac45bcf64162",
+      "folder_sha256": "b819c9f5f8d91987a6071333819ad9fbc4c6313ebc8a09a5185542cd7466ee75",
       "file_count": 3
     },
     "GodJohnsonFontChoice_damage_1": {
       "toc_sha256": "e889a9f8c4fcc576a3ab2c24fd5ce6a5f1885827936bf6f3b65d26a438512202",
+      "folder_sha256": "1063e12bfe9c65da1423a2730b765756c83ac736f19806941bd9f20539cc312f",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_2": {
       "toc_sha256": "89e2d54f2ad6ce8b83cc4daac862de78505dd9c1ad57b6330db37aafa40fb50b",
+      "folder_sha256": "20ad04ddd3cb3eaafa3a46336e20ca07cd12f37dcdca1a9da1c16fc3dd9614f2",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_3": {
       "toc_sha256": "2cd73ee2da4a2152ac6c8c685047e37a227c03f0417c3a0cdfba47918c2c89a3",
+      "folder_sha256": "1bf94618eeb52b20fcd3618bf8480e0ae052d8618591d26faaa728aa0e170146",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_4": {
       "toc_sha256": "afc4bdd34ef7c8f69d1b4059e3d4d0d9d85a8df4354da48565010ce25d0fd923",
+      "folder_sha256": "0774ce28b066cb518122785cb8b202105876fa3fc7e018ee1aafd0639ca7b75b",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_5": {
       "toc_sha256": "20660ec45c8ffe538f286ac1e833e60e8c4dda190f0a752ab83d10af465dc812",
+      "folder_sha256": "41c097876ab8a2095cf805a3f53c8f0859753a92966b4dd088244fb2ce1e8da1",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_6": {
       "toc_sha256": "4dde153d6ae2d88f03fa720354d93129b00b1ee69eb21399b5631c8f380322f1",
+      "folder_sha256": "b165f6646068ffbdfac311e16673da97fe8d3536fc08eabdfda2b0fd3862acbe",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_7": {
       "toc_sha256": "bf307efc14c80ce570fb434e209c9bfd50f066c8fa1a4666d219d10e90d9cb15",
+      "folder_sha256": "790af4e6a00db4a542fb7c76fc728f62e22203a3e82a774234f905cb4f0f4638",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_1": {
       "toc_sha256": "d0eb039339e6f7fa5183afc6078a100a7f4ea3be7202fc8c52db988b502d8240",
+      "folder_sha256": "a4ba49dfd54596fdebbcd21ddf1adb193e6039bb65e33921810d7667ed93ca82",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_2": {
       "toc_sha256": "8ee5bb344991a03a53574c0d9fe1c83b812eb6259c502d9dded99e1b6836347b",
+      "folder_sha256": "084d84dfc367bd218348dda4e634aebfb74f8edd7a3c2e546f834620df78c760",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_3": {
       "toc_sha256": "b63a639a6eccc20614812d1cff84400dad206d9f2ad87556c2c1d9d8a0fc4eb6",
+      "folder_sha256": "13136c9d79f15e0c52a6c9e57a32dae03337f66481ada421892a8d552fce25ff",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_4": {
       "toc_sha256": "433b76308f3b99c47a411e5bb70f8413c48478ad7fe79fad9e7d742f5a7a1aa1",
+      "folder_sha256": "22f5cbb4226ad94857360d77ae59f54a26ad6f9c466b3ed6cd6d031168d1613f",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_5": {
       "toc_sha256": "c709bc1992006e881dddc42948205be873f1df1b85deb64a15b21d1481746455",
+      "folder_sha256": "7d5c8b9fe9135465b9f0f3be380d51914bd4772f542fb42492d0dd39dd2e39ba",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_6": {
       "toc_sha256": "2b3872105bb9b6a2347cebcc973e4aa2eb1470b02b005116543a7720f618341a",
+      "folder_sha256": "0531c3dc16dbce686150cd2d83233d075afec610009c9514bbf0cad86b2d311a",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_7": {
       "toc_sha256": "1b2154d946a7cb3d12c3fa12cf253329d365743de41c340c7aed98ca460e701b",
+      "folder_sha256": "b2ed6f9762840b79e2aca3bc84a1dd837a6e44c4bbfe1ad37d3733b0d7632ac2",
       "file_count": 2
     },
     "GodJohnsonGoldBorder": {
       "toc_sha256": "c32b1ecd1db670ceb4b4b2308396623673ca0da798ba0a8eb2abbe1881b9b884",
+      "folder_sha256": "e0c2dacbc42d56471aed5f03724e7997dfbcc56754d9cdb6bb6cd717c14d9692",
       "file_count": 1142
     },
     "GodJohnsonHunterPetData": {
       "toc_sha256": "7bb7108f2dfd473eef41043ec0183c66e07b6baf2429c8beb2a7db94ef3944a5",
+      "folder_sha256": "b2c1b0cb2e11611771331154800715ab9eea81c6e806a629b2f6b7d4f7381ffc",
       "file_count": 4
     },
     "GodJohnsonProfessionData": {
       "toc_sha256": "5aecebcd2bd7dae29df1e781b0f7073e261003fe911528c34fa6afe1bcae002c",
+      "folder_sha256": "536442a3843406047e44c0bc4298ca72121695416b90495eadf4e4d3cb4615cd",
       "file_count": 11
     },
     "GodJohnsonRewardData": {
       "toc_sha256": "0464fe5c29e5ff7bdada163c0575ef5ddbe46ff88e0fef4076c520fa16001cd4",
+      "folder_sha256": "723ec59d365aea316498fd0d52cb6812f0b3ce152d1da2bf8ced203d9b0bbd01",
       "file_count": 8
     }
   },
-  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.3.0.zip",
-  "patch_zip_sha256": "b4bbbdb08af7129bf9a6ef182bdeb71c0e08612b28534b563c79b2807d34a03b"
+  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.3.1.zip",
+  "patch_zip_sha256": "08cb18a4f54b17c2f4baa4d7f5f4da73215653f21b3d2c51047264bdbd1bea46"
 }

@@ -19,11 +19,14 @@ python3 - "${REPO_ROOT}" "${WOW_ADDONS_DIR}" "${GJ_EXTRACTED_DIR}" <<'PY'
 import hashlib
 import json
 import os
+import pathlib
 import shutil
 import sys
 import tempfile
 
 repo_root, addons_dir, gj_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, os.path.join(repo_root, "scripts"))
+from sync_upstream import compute_folder_sha256
 
 manifest_path = os.path.join(repo_root, "pinned_upstream.json")
 with open(manifest_path, "r", encoding="utf-8") as f:
@@ -64,6 +67,14 @@ if os.path.isdir(gj_dir):
         if actual_hash != meta["toc_sha256"]:
             raise RuntimeError(
                 f"업스트림 TOC 해시 불일치 차단 [{gj_folder}]: expected={meta['toc_sha256']} actual={actual_hash}"
+            )
+        expected_folder_sha = meta.get("folder_sha256")
+        if not expected_folder_sha:
+            raise RuntimeError(f"매니페스트 folder_sha256 누락 차단 [{gj_folder}]")
+        actual_folder_sha = compute_folder_sha256(pathlib.Path(src_folder))
+        if actual_folder_sha != expected_folder_sha:
+            raise RuntimeError(
+                f"업스트림 폴더 전체 해시 불일치 차단 [{gj_folder}]: expected={expected_folder_sha} actual={actual_folder_sha}"
             )
         sources_to_deploy[gj_folder] = src_folder
 

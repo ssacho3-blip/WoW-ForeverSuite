@@ -1,4 +1,4 @@
-"""Ground-truth WoW Forever 1.60.1.70707 (TOC 11701) binary API symbol verifier."""
+"""Ground-truth WoW Forever 1.60.1.70938 (TOC 16001, 120105) binary API symbol verifier."""
 
 from __future__ import annotations
 
@@ -9,10 +9,11 @@ DEFAULT_MAC_BINARY = pathlib.Path(
     "/Applications/World of Warcraft/_forever_/World of Warcraft.app/Contents/MacOS/World of Warcraft"
 )
 
-# Verified baseline extracted directly from WoW Forever 1.60.1.70707 (wowf) binary
+# Verified baseline extracted directly from WoW Forever 1.60.1.70938 (wowf) binary
 VERIFIED_WOWF_16001_C_APIS: frozenset[str] = frozenset(
     {
         "C_AddOns.DoesAddOnExist",
+        "C_AddOns.GetAddOnMetadata",
         "C_AddOns.IsAddOnLoaded",
         "C_AddOns.LoadAddOn",
         "C_AddOnProfiler.GetAddOnMetric",

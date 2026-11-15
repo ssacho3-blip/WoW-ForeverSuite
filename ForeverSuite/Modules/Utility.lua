@@ -192,8 +192,10 @@ function Utility:TryAutoRepair()
 
     local myMoney = _G.GetMoney and _G.GetMoney() or 0
     if type(myMoney) == "number" and not ns.IsSecret(myMoney) and myMoney >= repairCost then
+        ns._fsRepairArmedAt = ns.GetNow()
         ns.SetPendingMoneyReason("REPAIR", 1.5, -1, -repairCost)
         _G.RepairAllItems(false)
+        ns._fsRepairArmedAt = nil
         ns.Print("개인 골드로 장비 수리 완료 (" .. ns.FormatMoney(repairCost) .. ")")
     else
         ns.Warn("골드가 부족하여 자동 수리를 건너뜁니다 (필요: " .. ns.FormatMoney(repairCost) .. ")")
@@ -268,8 +270,10 @@ function Utility:SellJunkBatch(isManual)
             and not ns.IsSecret(liveInfo.quality)
             and liveInfo.quality == POOR_QUALITY
         then
+            ns._fsSellArmedAt = ns.GetNow()
             ns.SetPendingMoneyReason("VENDOR_SELL", 1.5, 1, entry.expected)
             C_Container.UseContainerItem(entry.bag, entry.slot)
+            ns._fsSellArmedAt = nil
             soldCount = soldCount + 1
             expectedCopper = expectedCopper + entry.expected
         end

@@ -1,12 +1,12 @@
-# ForeverSuite — 통합 애드온 아키텍처 & 품질 계약서 (`FS-V030-FULL-UPGRADE`)
+# ForeverSuite — 통합 애드온 아키텍처 & 품질 계약서 (`FS-V031-OPUS-FABLE-CONSENSUS`)
 
 ## 1. 시스템 계층 구조 (Modular Fault-Isolated Architecture, 18 Lua Modules)
 
 ```text
-ForeverSuite v0.3.0 (TOC Interface: 11701, 16001, 120105 | Product: wowf 1.60.1.70938)
+ForeverSuite v0.3.1 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.70938)
 ├── Core Layer (P0)
-│   ├── Init.lua              : 단일 네임스페이스(ns), TOC/GetBuildInfo 메타 파싱, Secret 가드(IsSecret), CombatQueue, /fs probe
-│   ├── MoneyLedgerQueue.lua  : 상점·수리·퀘스트 골드 변동 사유 FIFO 큐 (Init.lua에서 순수 도메인 분리)
+│   ├── Init.lua              : 단일 네임스페이스(ns), C_AddOns.GetAddOnMetadata 우선 파싱, Secret 가드(IsSecret), CombatQueue, /fs probe
+│   ├── MoneyLedgerQueue.lua  : 상점·수리·퀘스트 골드 변동 사유 FIFO 큐 (최대 TTL 3.0s, 정확 델타 우선 매칭)
 │   ├── EventBus.lua          : 단일 WoW Frame 기반 중앙 이벤트 디스패처, 사전 캐시 xpcall 클로저, 버킷 쓰로틀(0.2s/0.5s)
 │   ├── ProfileManager.lua    : 계층형 설정(캐릭터 > 직업 > 계정 > 기본값), 미래 스키마 Read-Only 가드(CanWrite), 보호 아이템 ID 집합
 │   └── ModuleManager.lua     : 상태 머신(REGISTERED → INITIALIZED → ENABLED ⇄ DISABLED / YIELDED / FAULTED) 및 ctx 리소스 회수
@@ -16,14 +16,14 @@ ForeverSuite v0.3.0 (TOC Interface: 11701, 16001, 120105 | Product: wowf 1.60.1.
 │   ├── QuestLogCollector.lua : C_QuestLog + GetQuestLogSpecialItemInfo 실시간 스냅샷 수집기 (순수 ViewModel과 I/O 분리)
 │   ├── DefaultTrackerSync.lua: 내장 ObjectiveTrackerFrame / QuestWatchFrame 비전투 가시성 동기화
 │   ├── QuestTracker.lua      : 온스크린 퀘스트 추적창 View, Ctrl/Alt/Shift 클릭, [잠금], UIParent 직계 Secure 아이템 버튼 풀(1..6)
-│   └── SettingsPanel.lua     : 멱등 UISpecialFrames(ESC), 3탭 제어판(모듈 세부설정 서랍 · GJ 브리지 · 골드 원장), 슬래시 라우터
+│   └── SettingsPanel.lua     : 멱등 UISpecialFrames(ESC), 3탭 제어판(모듈 세부설정 서랍 · 6-Key GJ 브리지 · 골드 원장), 슬래시 라우터
 └── Functional Modules (P1 ~ P2)
     ├── Utility.lua           : [P1] 자동 수리(길드→개인 폴백), 회색템 배치 판매(12개 한도·잔여 안내·/fs sell·/fs protect), 고속 전리품
     ├── Inventory.lua         : [P1] Baganator/Bagnon 공존 + 여유 슬롯 HUD(/fs move 드래그·골드 원장 호버 툴팁), 묶음 상점가(xN)·보호 배지
     ├── Map.lua               : [P1] 월드맵 열림 시 전용 0.15s 플레이어 + 커서 좌표 Ticker, /way <x> <y> → C_Map.SetUserWaypoint
-    ├── Quest.lua             : [P1] Questie 공존 + 안전 자동 수락·완료(복수 보상 정지, Shift 우회), /fs quest 슬래시 라우팅
+    ├── Quest.lua             : [P1] Questie 공존 + questAutoAccept/questAutoTurnIn 독립 양보 안전 수락·완료, /fs quest 슬래시 라우팅
     ├── Profession.lua        : [P1] 비전투 Secure 더블우클릭 낚시(2중 해제), 효과음 부스트, classID==7 채집물/일반 전리품 분리 집계
-    ├── Economy.lua           : [P2] Auctionator 시세 브리지 + PLAYER_MONEY 세션 골드 원장 + 가방 HUD 호버 실시간 갱신 콜백
+    ├── Economy.lua           : [P2] Auctionator 공존 + RepairAllItems/UseContainerItem/GetQuestReward 후크 기반 PLAYER_MONEY 세션 골드 원장
     └── Combat.lua            : [P2] 9개 클래식 전 직업 버프 패밀리·무기 마법부여 체크 + issecretvalue 안전 저체력 알림(/fs move 연동)
 ```
 

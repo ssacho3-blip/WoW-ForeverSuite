@@ -27,7 +27,7 @@ local function IsShiftHeld()
 end
 
 function Quest:OnQuestDetail()
-    if ns.IsFeatureYielded("questAuto") then
+    if ns.IsFeatureYielded("questAutoAccept") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoAccept") or IsShiftHeld() then
@@ -42,7 +42,7 @@ function Quest:OnQuestDetail()
 end
 
 function Quest:OnQuestProgress()
-    if ns.IsFeatureYielded("questAuto") then
+    if ns.IsFeatureYielded("questAutoTurnIn") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
@@ -54,7 +54,7 @@ function Quest:OnQuestProgress()
 end
 
 function Quest:OnQuestComplete()
-    if ns.IsFeatureYielded("questAuto") then
+    if ns.IsFeatureYielded("questAutoTurnIn") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
@@ -82,14 +82,16 @@ function Quest:OnQuestComplete()
             shouldQueueMoney = false
         end
     end
+    ns._fsQuestArmedAt = ns.GetNow()
     if shouldQueueMoney then
-        ns.SetPendingMoneyReason("QUEST", 1.5, 1, expectedReward)
+        ns.SetPendingMoneyReason("QUEST", 3.0, 1, expectedReward)
     end
     if numChoices == 1 then
         _G.GetQuestReward(1)
     else
         _G.GetQuestReward()
     end
+    ns._fsQuestArmedAt = nil
 end
 
 local function SafeQuestID(val)

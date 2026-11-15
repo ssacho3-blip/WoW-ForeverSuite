@@ -884,6 +884,14 @@ class Lua51VM:
                 tbl._data.clear()
             return tbl
 
+        def lua_setmetatable(tbl: LuaTable, mt: LuaTable | None) -> LuaTable:
+            if isinstance(tbl, LuaTable):
+                tbl._metatable = mt  # type: ignore[attr-defined]
+            return tbl
+
+        def lua_getmetatable(tbl: Any) -> Any:
+            return getattr(tbl, "_metatable", None) if isinstance(tbl, LuaTable) else None
+
         G["type"] = lua_type
         G["tostring"] = lambda v=None: lua_to_string(v)
         G["tonumber"] = lua_tonumber
@@ -896,6 +904,8 @@ class Lua51VM:
         G["xpcall"] = lua_xpcall
         G["error"] = lua_error
         G["wipe"] = lua_wipe
+        G["setmetatable"] = lua_setmetatable
+        G["getmetatable"] = lua_getmetatable
 
         math_tbl = LuaTable(
             {

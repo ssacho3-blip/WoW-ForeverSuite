@@ -154,6 +154,7 @@ class WoWForeverMockRuntime:
         # Quest & Loot state
         self.quest_completable: bool = True
         self.quest_num_choices: int = 0
+        self.quest_reward_money: int = 0
         self.accepted_quests: int = 0
         self.completed_quests: int = 0
         self.rewarded_choices: list[Any] = []
@@ -185,6 +186,8 @@ class WoWForeverMockRuntime:
         self.scheduled_timers: list[tuple[float, Callable[..., Any]]] = []
         self.active_tickers: list[LuaTable] = []
         self.tooltip_post_calls: list[Callable[..., Any]] = []
+        self._hook_depth: int = 0
+        self._deferred_server_events: list[tuple[str, tuple[Any, ...]]] = []
         self._toc_meta, _ = self.parse_toc_files()
 
         self._install_wow_globals()
@@ -197,8 +200,9 @@ class WoWForeverMockRuntime:
         f["_parent"] = parent
         f["_template"] = template
         f["_shown"] = frame_type != "Frame" or name in ("UIParent", "WorldFrame", "ObjectiveTrackerFrame")
-        if name in ("WorldMapFrame",):
+        if name in ("WorldMapFrame", "MerchantFrame"):
             f["_shown"] = False
+        f["_regions"] = []
         f["_events"] = set()
         f["_scripts"] = {}
         f["_hooks"] = {}
@@ -255,9 +259,10 @@ class WoWForeverMockRuntime:
                 return
             self_f["_attrs"][k] = v
 
-        def create_texture(self_f: LuaTable, *_a: Any) -> LuaTable:
+        def create_texture(self_f: LuaTable, _name: Any = None, layer: Any = "ARTWORK", *_a: Any) -> LuaTable:
             tex = LuaTable()
             tex["_tex"] = None
+            tex["_layer"] = str(layer or "ARTWORK")
             tex["_shown"] = True
             tex["_color_rgba"] = None
             tex["_width"] = 0
@@ -270,10 +275,13 @@ class WoWForeverMockRuntime:
             tex["SetWidth"] = lambda s, w: s.set("_width", w)
             tex["SetHeight"] = lambda s, h: s.set("_height", h)
             tex["SetColorTexture"] = lambda s, r, g, b, a=1.0: s.set("_color_rgba", (r, g, b, a))
-            tex["SetTexture"] = lambda s, val: s.set("_tex", val)
+            tex["SetTexture"] = lambda s, val, *_r: s.set("_tex", val)
+            tex["GetTexture"] = lambda s: s.get("_tex")
+            tex["GetDrawLayer"] = lambda s: s.get("_layer")
             tex["Show"] = lambda s: s.set("_shown", True)
             tex["Hide"] = lambda s: s.set("_shown", False)
             tex["IsShown"] = lambda s: bool(s.get("_shown"))
+            self_f["_regions"].append(tex)
             return tex
 
         def create_font_string(self_f: LuaTable, _name: Any = None, _layer: Any = None, font_obj: Any = None, *_a: Any) -> LuaTable:
@@ -352,6 +360,7 @@ class WoWForeverMockRuntime:
         f["SetAttribute"] = set_attribute
         f["CreateTexture"] = create_texture
         f["CreateFontString"] = create_font_string
+        f["GetRegions"] = lambda self_f: MultiReturn(tuple(self_f["_regions"]))
 
         if name:
             self.vm.G[name] = f
@@ -370,11 +379,25 @@ class WoWForeverMockRuntime:
         self.addon_action_blocked_count += 1
         self.fire_event("ADDON_ACTION_BLOCKED", "ForeverSuite", action_desc)
 
+    def _emit_server_event(self, event: str, *args: Any) -> None:
+        if self._hook_depth > 0:
+            self._deferred_server_events.append((event, args))
+            return
+        self.fire_event(event, *args)
+
+    def _flush_deferred_server_events(self) -> None:
+        if self._hook_depth > 0:
+            return
+        while self._deferred_server_events:
+            ev, ev_args = self._deferred_server_events.pop(0)
+            self.fire_event(ev, *ev_args)
+
     def _install_wow_globals(self) -> None:
         G = self.vm.G
 
         G["UIParent"] = self._make_frame("Frame", "UIParent")
         G["WorldFrame"] = self._make_frame("Frame", "WorldFrame")
+        G["MerchantFrame"] = self._make_frame("Frame", "MerchantFrame", G["UIParent"])
         G["ObjectiveTrackerFrame"] = self._make_frame("Frame", "ObjectiveTrackerFrame", G["UIParent"], "SecureFrameTemplate")
         wmf = self._make_frame("Frame", "WorldMapFrame")
         wmf["GetMapID"] = lambda _s: self.current_map_id
@@ -408,8 +431,13 @@ class WoWForeverMockRuntime:
                 return
 
             def _wrapped(*call_args: Any) -> Any:
-                res = self.vm._invoke_callable(orig_fn, call_args)
-                self.vm._invoke_callable(hook_fn, call_args)
+                self._hook_depth += 1
+                try:
+                    res = self.vm._invoke_callable(orig_fn, call_args)
+                    self.vm._invoke_callable(hook_fn, call_args)
+                finally:
+                    self._hook_depth -= 1
+                    self._flush_deferred_server_events()
                 return MultiReturn(res) if len(res) != 1 else res[0]
 
             target_tbl[fn_name] = _wrapped
@@ -458,7 +486,7 @@ class WoWForeverMockRuntime:
         G["GetAddOnMetadata"] = lambda name, field: (
             self._toc_meta.get(str(field)) if str(name) == "ForeverSuite" else None
         )
-        G["GetBuildInfo"] = lambda: MultiReturn(("1.60.1", "70707", "Oct 28 2026", 11701))
+        G["GetBuildInfo"] = lambda: MultiReturn(("1.60.1", "70938", "Nov 14 2026", 16001))
         G["GetTime"] = lambda: self.now
         G["InCombatLockdown"] = lambda: self.combat_lockdown
         G["issecretvalue"] = lambda v: isinstance(v, SecretValue)
@@ -494,11 +522,12 @@ class WoWForeverMockRuntime:
 
         def repair_all(use_guild: bool = False) -> None:
             flag = bool(use_guild)
+            cost = self.repair_cost
             self.repair_calls.append(flag)
-            if not flag:
-                self.player_money -= self.repair_cost
-                self.fire_event("PLAYER_MONEY")
             self.repair_cost = 0
+            if not flag and cost > 0:
+                self.player_money -= cost
+                self._emit_server_event("PLAYER_MONEY")
 
         G["RepairAllItems"] = repair_all
         G["GetNumLootItems"] = lambda: len(self.loot_slots)
@@ -509,9 +538,13 @@ class WoWForeverMockRuntime:
         G["IsQuestCompletable"] = lambda: self.quest_completable
         G["CompleteQuest"] = lambda: setattr(self, "completed_quests", self.completed_quests + 1)
         G["GetNumQuestChoices"] = lambda: self.quest_num_choices
+        G["GetRewardMoney"] = lambda: self.quest_reward_money
 
         def get_quest_reward(choice: Any = None) -> None:
             self.rewarded_choices.append(choice)
+            if self.quest_reward_money > 0:
+                self.player_money += self.quest_reward_money
+                self._emit_server_event("PLAYER_MONEY")
 
         def get_quest_special_item_info(log_idx: Any) -> Any:
             idx = int(log_idx)
@@ -569,6 +602,7 @@ class WoWForeverMockRuntime:
                 "IsAddOnLoaded": lambda name: str(name) in self.loaded_external_addons,
                 "DoesAddOnExist": lambda name: str(name) in self.loaded_external_addons,
                 "LoadAddOn": lambda name: MultiReturn((str(name) in self.loaded_external_addons, None)),
+                "GetAddOnMetadata": G["GetAddOnMetadata"],
             },
         )
         G["C_AddOnProfiler"] = StrictCNamespaceTable(
@@ -600,7 +634,7 @@ class WoWForeverMockRuntime:
                 info = self.item_db.get(item["itemID"])
                 sell_price = info[10] if info else 0
                 self.player_money += sell_price * item.get("stackCount", 1)
-                self.fire_event("PLAYER_MONEY")
+                self._emit_server_event("PLAYER_MONEY")
 
         G["C_Container"] = StrictCNamespaceTable(
             "C_Container",
@@ -863,6 +897,8 @@ class WoWForeverMockRuntime:
         self.scheduled_timers.clear()
         self.active_tickers.clear()
         self.tooltip_post_calls.clear()
+        self._hook_depth = 0
+        self._deferred_server_events.clear()
         self._install_wow_globals()
         self.baseline_global_keys = set(self.vm.G.keys())
 
@@ -873,7 +909,17 @@ class WoWForeverMockRuntime:
 
         return self.boot_session()
 
+    def _sync_builtin_frame_visibility(self, event: str) -> None:
+        mf = self.vm.G.get("MerchantFrame")
+        if not isinstance(mf, LuaTable):
+            return
+        if event == "MERCHANT_SHOW":
+            mf["_shown"] = True
+        elif event == "MERCHANT_CLOSED":
+            mf["_shown"] = False
+
     def fire_event(self, event: str, *args: Any) -> None:
+        self._sync_builtin_frame_visibility(event)
         for frame in list(self.frames):
             if event in frame["_events"]:
                 on_event = frame["_scripts"].get("OnEvent")

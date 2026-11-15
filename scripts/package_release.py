@@ -20,6 +20,7 @@ from build_win_exe import (  # noqa: E402
     _resolve_writable_dist_dir,
     _write_addon_folder_to_zip,
     build_windows_installer_exe,
+    read_suite_version,
 )
 
 DEFAULT_PATCH_URL = "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v{version}.zip"
@@ -64,13 +65,14 @@ def _cleanup_stale_release_zips(dist_dir: pathlib.Path, keep_name: str) -> list[
 
 
 def build_release_zip(
-    repo_root: pathlib.Path, version: str = "0.3.0", out_dir: pathlib.Path | None = None
+    repo_root: pathlib.Path, version: str | None = None, out_dir: pathlib.Path | None = None
 ) -> pathlib.Path:
+    resolved_ver = version or read_suite_version(repo_root)
     addon_folders = ("ForeverSuite", "ForeverSuite_GJBridge")
     dist_dir = _resolve_writable_dist_dir(repo_root, out_dir)
 
-    final_zip = dist_dir / f"ForeverSuite-v{version}.zip"
-    staging_zip = dist_dir / f".ForeverSuite-v{version}.staging.zip"
+    final_zip = dist_dir / f"ForeverSuite-v{resolved_ver}.zip"
+    staging_zip = dist_dir / f".ForeverSuite-v{resolved_ver}.staging.zip"
 
     with zipfile.ZipFile(staging_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for folder in addon_folders:
@@ -79,7 +81,7 @@ def build_release_zip(
     os.replace(staging_zip, final_zip)
     if out_dir is None:
         patch_sha = hashlib.sha256(final_zip.read_bytes()).hexdigest().lower()
-        _sync_manifest_patch_metadata(repo_root, version, patch_sha)
+        _sync_manifest_patch_metadata(repo_root, resolved_ver, patch_sha)
     exe_out = build_windows_installer_exe(repo_root, out_dir=dist_dir)
     if out_dir is None and final_zip.is_file() and final_zip.stat().st_size > 0 and exe_out.is_file():
         _cleanup_stale_release_zips(dist_dir, final_zip.name)

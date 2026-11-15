@@ -2,6 +2,26 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.1] - 2026-11-15
+
+### Upgraded (`FS-V031-OPUS-FABLE-CONSENSUS` — `Claude Opus 5.5` × `Claude Fable 5.2` Synthesis)
+- **Client `1.60.1.70938` TOC & `C_AddOns` Metadata Alignment (`ForeverSuite.toc`, `ForeverSuite_GJBridge.toc`, `Core/Init.lua`)**:
+  - Aligned `## Interface: 16001, 120105` with upstream `GodJohnson v5.236`, eliminating retired `11701` header drift.
+  - Preferred `C_AddOns.GetAddOnMetadata` with safe `_G.GetAddOnMetadata` fallback in `Core/Init.lua` and synced `tests/binary_api_manifest.py` + `tests/wow_forever_mock.py` to build `1.60.1.70938` (`TOC 16001`).
+- **Zero-SV-Mutation `ForeverSuite_GJBridge` & `ProfileShare` Purity (`ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Replaced all `_fsgj*` flags on `GJCompanion`, frames, and `GodJohnsonCompanionDB` with private weak-key tables (`__mode = "k"`) and `_G.ForeverSuiteDB.gjBridge` (`tradeNotifySeeded`, `starterLootSeeded`), guaranteeing 100% clean `ProfileShare.lua:282` validation.
+  - Added lossless one-time migration of legacy `tradeManager404._fsgjUserInitialized` preserving existing user `notify` preferences while scrubbing `GodJohnsonCompanionDB`.
+  - Wrapped `C.ApplyAuthorPreset` with pre/post snapshots (`notify`, `starterLoot`) that restore personal overrides and re-run `C.CommitSettings()` + `C.RefreshQuestAnnounce()` + `ns.SyncOwnership()` strictly when `ApplyAuthorPreset` returns `true`.
+  - Switched `questAnnounce` personalization to pure render/playback interception (`C.QuestAnnounce.Format` plain prefix check `"[갓존슨]"` → `"[포에버]"`, `NotificationSoundNames` label remap, `PlayNotificationSound` remap to `"dingdong"`) without mutating `ExtraSchemas` or saved templates, and removed unintended `libraryBooksAccess471` initialization.
+  - Updated `C.BuildHome404` wrapper for `v5.236` (`Home404.lua:12-37`): swaps child `ChannelLogo` region via `GetRegions()`, rewrites `setupReminder` & `notice`, forwards return tuples, and re-propagates upstream errors via `error(err, 0)`. Removed dead `BuildYouTubeButton`, `vitalAlerts`, `BorderApply`, and `RefreshUtilities` hooks.
+- **Granular 6-Key Single-Owner Arbitration (`Modules/Quest.lua`, `UI/SettingsPanel.lua`, `ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Split monolithic `"questAuto"` into independent `"questAutoAccept"` (`GJ automation.accept`) and `"questAutoTurnIn"` (`GJ automation.complete`) ownership keys across `Quest.lua`, `Bridge.lua`, and `SettingsPanel.lua`.
+- **Bridge-Aware Economy Gold Ledger (`Modules/Economy.lua`, `Core/MoneyLedgerQueue.lua`, `Modules/Utility.lua`, `Modules/Quest.lua`)**:
+  - Installed `hooksecurefunc` attribution hooks on `RepairAllItems`, `C_Container.UseContainerItem` (guarded by `IsMerchantContextOpen()` and `target == nil`), and `GetQuestReward` with `_fs*ArmedAt` deduplication and `3.0s` max TTL so `Economy` accurately classifies `REPAIR`, `VENDOR_SELL`, and `QUEST` deltas even when `ForeverSuite` yields automation to `GodJohnsonGoldBorder` or when the player clicks manually, without misclassifying negative vendor purchases or party loot gold.
+- **Full-Tree `folder_sha256` Upstream Pin Verification & Dynamic Release Versioning (`scripts/sync_upstream.py`, `scripts/deploy_mac.sh`, `scripts/build_win_exe.py`, `scripts/package_release.py`, `pinned_upstream.json`)**:
+  - Added deterministic Merkle-style `folder_sha256` across every file in all 21 `GodJohnson*` folders, enforced fail-closed in `sync_upstream.py --verify-dir` and `deploy_mac.sh`.
+  - Eliminated hardcoded version strings in `package_release.py` and `build_win_exe.py` by reading `0.3.1` dynamically from `ForeverSuite/ForeverSuite.toc`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Synced (`FS-UPSTREAM-GJ-5236` — 2026-11-14)

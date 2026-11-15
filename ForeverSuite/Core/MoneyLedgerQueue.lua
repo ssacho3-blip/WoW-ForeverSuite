@@ -29,7 +29,7 @@ function ns.SetPendingMoneyReason(reason, ttlSec, expectedSign, expectedDelta)
     end
     local now = ns.GetNow()
     local rawTtl = tonumber(ttlSec) or 1.5
-    local ttl = (rawTtl > 0 and rawTtl <= 1.5) and rawTtl or 1.5
+    local ttl = (rawTtl > 0 and rawTtl <= 3.0) and rawTtl or 1.5
     local sign = expectedSign or REASON_EXPECTED_SIGN[reason] or 0
     local expDelta = (type(expectedDelta) == "number" and not ns.IsSecret(expectedDelta)) and expectedDelta or nil
     if expDelta == 0 then

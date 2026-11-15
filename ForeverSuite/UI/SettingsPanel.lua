@@ -217,10 +217,10 @@ local function BuildBridgeStatusText()
     for _, k in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound" }) do
         out = out .. string_format("\n • %-14s : %s", k, tostring(targets[k] or "—"))
     end
-    out = out .. "\n\n|cffffd23f[단일 소유자 중재 (Single-Owner Arbitration) 5종]|r"
+    out = out .. "\n\n|cffffd23f[단일 소유자 중재 (Single-Owner Arbitration) 6종]|r"
     local own = type(bridge.ownership) == "table" and bridge.ownership or {}
-    for _, k in ipairs({ "repair", "sell", "questAuto", "fishing", "way" }) do
-        out = out .. string_format("\n • %-14s : %s", k, tostring(own[k] or "—"))
+    for _, k in ipairs({ "repair", "sell", "questAutoAccept", "questAutoTurnIn", "fishing", "way" }) do
+        out = out .. string_format("\n • %-15s : %s", k, tostring(own[k] or "—"))
     end
     return out
 end

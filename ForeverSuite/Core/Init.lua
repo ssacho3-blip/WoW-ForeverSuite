@@ -22,21 +22,35 @@ local string_match = string.match
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite"
 
+local function SafeGetAddOnMetadata(addonName, field)
+    if C_AddOns and type(C_AddOns.GetAddOnMetadata) == "function" then
+        local ok, val = pcall(C_AddOns.GetAddOnMetadata, addonName, field)
+        if ok and type(val) == "string" and val ~= "" then
+            return val
+        end
+    end
+    if type(_G.GetAddOnMetadata) == "function" then
+        local ok, val = pcall(_G.GetAddOnMetadata, addonName, field)
+        if ok and type(val) == "string" and val ~= "" then
+            return val
+        end
+    end
+    return nil
+end
+
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.3.0"
+    local ver = "0.3.1"
     local clientVer = "1.60.1"
     local targetToc = 16001
-    if type(_G.GetAddOnMetadata) == "function" then
-        local okV, rawV = pcall(_G.GetAddOnMetadata, addonName, "Version")
-        if okV and type(rawV) == "string" and rawV ~= "" then
-            ver = rawV
-        end
-        local okI, rawI = pcall(_G.GetAddOnMetadata, addonName, "Interface")
-        if okI and type(rawI) == "string" and rawI ~= "" then
-            local tok = string_match(rawI, "(160%d%d)") or string_match(rawI, "(%d+)")
-            if tok then
-                targetToc = tonumber(tok) or targetToc
-            end
+    local rawV = SafeGetAddOnMetadata(addonName, "Version")
+    if rawV then
+        ver = rawV
+    end
+    local rawI = SafeGetAddOnMetadata(addonName, "Interface")
+    if rawI then
+        local tok = string_match(rawI, "(160%d%d)") or string_match(rawI, "(%d+)")
+        if tok then
+            targetToc = tonumber(tok) or targetToc
         end
     end
     if type(_G.GetBuildInfo) == "function" then
