@@ -120,7 +120,7 @@ function ns._GetBridgeStore(allowStandaloneCreate)
             return nil
         end
         _G.ForeverSuiteDB = {
-            schemaVersion = MAX_SUPPORTED_FS_SCHEMA,
+            schemaVersion = ResolveSupportedFsSchema(),
             account = {},
             gjBridge = {},
         }
