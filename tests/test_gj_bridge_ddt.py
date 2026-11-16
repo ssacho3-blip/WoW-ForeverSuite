@@ -56,10 +56,22 @@ def _resolve_gj_extracted_root() -> pathlib.Path:
 GJ_EXTRACTED_ROOT = _resolve_gj_extracted_root()
 
 
+def _parse_bridge_toc_files() -> list[pathlib.Path]:
+    toc_path = BRIDGE_ROOT / "ForeverSuite_GJBridge.toc"
+    files: list[pathlib.Path] = []
+    for raw_line in toc_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        files.append(BRIDGE_ROOT / line.replace("\\", "/"))
+    return files
+
+
 def load_bridge(rt: WoWForeverMockRuntime) -> LuaTable:
     bridge_ns = LuaTable()
-    bridge_lua = (BRIDGE_ROOT / "Bridge.lua").read_text(encoding="utf-8")
-    rt.vm.run_chunk(bridge_lua, filename="Bridge.lua", chunk_args=("ForeverSuite_GJBridge", bridge_ns))
+    for lua_path in _parse_bridge_toc_files():
+        lua_src = lua_path.read_text(encoding="utf-8")
+        rt.vm.run_chunk(lua_src, filename=lua_path.name, chunk_args=("ForeverSuite_GJBridge", bridge_ns))
     return bridge_ns
 
 
@@ -86,22 +98,30 @@ def test_gj_bridge_toc_and_lua_static_compliance() -> None:
     raw_toc = toc_path.read_text(encoding="utf-8")
     assert "## Dependencies: GodJohnsonGoldBorder, ForeverSuite" in raw_toc
     assert "16001" in raw_toc
+    assert "State.lua" in raw_toc
+    assert "Branding.lua" in raw_toc
     assert "Bridge.lua" in raw_toc
 
-    lua_path = BRIDGE_ROOT / "Bridge.lua"
-    raw_bytes = lua_path.read_bytes()
-    assert not raw_bytes.startswith(b"\xef\xbb\xbf")
-    assert b"\r\n" not in raw_bytes
+    toc_files = _parse_bridge_toc_files()
+    assert [p.name for p in toc_files] == ["State.lua", "Branding.lua", "Bridge.lua"]
 
-    src = raw_bytes.decode("utf-8")
-    first_code_line = _extract_first_code_line(src)
-    assert re.match(r"^local\s+[A-Za-z0-9_]+\s*,\s*ns\s*=\s*\.\.\.$", first_code_line)
-    parse_lua51(src, filename="Bridge.lua")
+    for lua_path in toc_files:
+        assert lua_path.is_file(), f"Missing bridge file: {lua_path}"
+        raw_bytes = lua_path.read_bytes()
+        assert not raw_bytes.startswith(b"\xef\xbb\xbf")
+        assert b"\r\n" not in raw_bytes
 
-    code_no_comments = _strip_lua_comments(src)
-    tokens = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code_no_comments))
-    assert not (tokens & FORBIDDEN_LEGACY_APIS)
-    assert not (tokens & FORBIDDEN_COMBAT_AUTOMATION_APIS)
+        src = raw_bytes.decode("utf-8")
+        lines = src.splitlines()
+        assert len(lines) < 700, f"{lua_path.name} exceeds 700-line budget ({len(lines)} lines)"
+        first_code_line = _extract_first_code_line(src)
+        assert re.match(r"^local\s+[A-Za-z0-9_]+\s*,\s*ns\s*=\s*\.\.\.$", first_code_line)
+        parse_lua51(src, filename=lua_path.name)
+
+        code_no_comments = _strip_lua_comments(src)
+        tokens = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", code_no_comments))
+        assert not (tokens & FORBIDDEN_LEGACY_APIS)
+        assert not (tokens & FORBIDDEN_COMBAT_AUTOMATION_APIS)
 
 
 def _verify_extracted_toc_hashes(folders: dict[str, Any]) -> None:
@@ -116,6 +136,7 @@ def _verify_extracted_toc_hashes(folders: dict[str, Any]) -> None:
         )
 
 
+@pytest.mark.upstream_local
 def test_pinned_upstream_manifest_and_21_folders_unmodified() -> None:
     manifest_path = REPO_ROOT / "pinned_upstream.json"
     assert manifest_path.is_file()
@@ -1249,6 +1270,7 @@ def test_v031_build_home404_error_propagation_and_folder_sha256_tamper_guard(tmp
         verify_extracted_dir(repo_dir, ext_dir)
 
 
+@pytest.mark.upstream_local
 def test_v031_real_upstream_v5236_hook_symbol_contract() -> None:
     gj_core_dir = GJ_EXTRACTED_ROOT / "GodJohnsonGoldBorder"
     assert gj_core_dir.is_dir(), f"Missing extracted upstream GodJohnsonGoldBorder: {gj_core_dir}"

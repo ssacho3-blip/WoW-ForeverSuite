@@ -7,3 +7,6 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 cache_dir = "/tmp/pytest_cache_wow_forever_suite"
+markers = [
+    "upstream_local: requires local extracted 21 GodJohnson upstream folders on disk",
+]

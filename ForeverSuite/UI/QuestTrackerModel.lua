@@ -1,7 +1,7 @@
 -- Module: UI/QuestTrackerModel.lua
 -- Responsibility: Pure MVVM ViewModel transforming raw quest records into zone/level groups, difficulty bands, progress summaries, and flat HUD rows.
 -- Dependencies: Core/Init.lua (ns.IsSecret).
--- Public API: ns.QuestTrackerModel (ComputeGreenRange, ComputeDifficulty, FormatQuestTagBadge, ParseObjectiveProgress, BuildSnapshot).
+-- Public API: ns.QuestTrackerModel (ComputeGreenRange, ComputeDifficulty, FormatQuestTagBadge, ParseObjectiveProgress, BuildSnapshot, FormatHeaderTitle, FormatScrollHint).
 -- Combat/Secret Safety: 100% pure computation (zero WoW Frame/C_* calls); strips secret fields cleanly without math/comparison traps.
 local _, ns = ...
 
@@ -606,4 +606,57 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
         groups = groups,
         rows = rows,
     }
+end
+
+function QuestTrackerModel.FormatHeaderTitle(snapshot)
+    if type(snapshot) ~= "table" then
+        return "퀘스트"
+    end
+    local totalSuffix = (snapshot.hiddenByFilter and snapshot.hiddenByFilter > 0)
+        and string_format("|cff94a3b8 (%d)|r", snapshot.totalQuests or 0) or ""
+    if snapshot.questLogUnavailable then
+        return "퀘스트 |cff94a3b8—|r"
+    elseif snapshot.visibleQuests == 0 then
+        return "퀘스트 |cff94a3b80|r" .. totalSuffix
+    elseif snapshot.visibleCompleted > 0 then
+        return string_format(
+            "퀘스트 |cff4ade80%d|r/|cfff8fafc%d|r%s",
+            snapshot.visibleCompleted,
+            snapshot.visibleQuests,
+            totalSuffix
+        )
+    end
+    return string_format("퀘스트 |cfff8fafc%d|r%s", snapshot.visibleQuests or 0, totalSuffix)
+end
+
+function QuestTrackerModel.FormatScrollHint(snapshot, scrollOffset, shownCount, totalRows, maxVisibleRows)
+    if type(snapshot) ~= "table" then
+        return "", 0
+    end
+    local hw, hz = snapshot.hiddenByWatch or 0, snapshot.hiddenByZone or 0
+    if totalRows > maxVisibleRows then
+        if (snapshot.hiddenByFilter or 0) > 0 then
+            return string_format(
+                "|cff94a3b8휠 스크롤 (%d~%d / %d줄) · %d개 숨김|r",
+                scrollOffset + 1,
+                scrollOffset + shownCount,
+                totalRows,
+                snapshot.hiddenByFilter
+            ), 15
+        end
+        return string_format(
+            "|cff94a3b8휠 스크롤 (%d~%d / %d줄)|r",
+            scrollOffset + 1,
+            scrollOffset + shownCount,
+            totalRows
+        ), 15
+    elseif (snapshot.hiddenByFilter or 0) > 0 and (snapshot.visibleQuests or 0) > 0 then
+        if hw > 0 and hz > 0 then
+            return string_format("|cff94a3b8미추적 %d · 타 지역 미완료 %d개 숨김|r", hw, hz), 15
+        elseif hw > 0 then
+            return string_format("|cff94a3b8미추적 퀘스트 %d개 숨김 (/fs quest all)|r", hw), 15
+        end
+        return string_format("|cff94a3b8타 지역 미완료 %d개 숨김|r", hz), 15
+    end
+    return "", 0
 end

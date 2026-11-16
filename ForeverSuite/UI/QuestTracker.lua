@@ -585,17 +585,7 @@ function QuestTracker:RenderSnapshot(snapshot)
     if self.minBtn and self.minBtn._fsLabel then self.minBtn._fsLabel:SetText(minimized and "+" or "-") end
 
     if self.headerTitle then
-        local totalSuffix = (snapshot.hiddenByFilter and snapshot.hiddenByFilter > 0)
-            and string_format("|cff94a3b8 (%d)|r", snapshot.totalQuests or 0) or ""
-        if snapshot.questLogUnavailable then
-            self.headerTitle:SetText("퀘스트 |cff94a3b8—|r")
-        elseif snapshot.visibleQuests == 0 then
-            self.headerTitle:SetText("퀘스트 |cff94a3b80|r" .. totalSuffix)
-        elseif snapshot.visibleCompleted > 0 then
-            self.headerTitle:SetText(string_format("퀘스트 |cff4ade80%d|r/|cfff8fafc%d|r%s", snapshot.visibleCompleted, snapshot.visibleQuests, totalSuffix))
-        else
-            self.headerTitle:SetText(string_format("퀘스트 |cfff8fafc%d|r%s", snapshot.visibleQuests, totalSuffix))
-        end
+        self.headerTitle:SetText(ns.QuestTrackerModel.FormatHeaderTitle(snapshot))
     end
 
     if minimized then
@@ -628,26 +618,11 @@ function QuestTracker:RenderSnapshot(snapshot)
 
     local footerExtra = 0
     if self.scrollHint then
-        local hw, hz = snapshot.hiddenByWatch or 0, snapshot.hiddenByZone or 0
-        if totalRows > MAX_VISIBLE_ROWS then
-            footerExtra = 15
-            if snapshot.hiddenByFilter > 0 then
-                self.scrollHint:SetText(string_format("|cff94a3b8휠 스크롤 (%d~%d / %d줄) · %d개 숨김|r", self.scrollOffset + 1, self.scrollOffset + shownCount, totalRows, snapshot.hiddenByFilter))
-            else
-                self.scrollHint:SetText(string_format("|cff94a3b8휠 스크롤 (%d~%d / %d줄)|r", self.scrollOffset + 1, self.scrollOffset + shownCount, totalRows))
-            end
-        elseif snapshot.hiddenByFilter > 0 and snapshot.visibleQuests > 0 then
-            footerExtra = 15
-            if hw > 0 and hz > 0 then
-                self.scrollHint:SetText(string_format("|cff94a3b8미추적 %d · 타 지역 미완료 %d개 숨김|r", hw, hz))
-            elseif hw > 0 then
-                self.scrollHint:SetText(string_format("|cff94a3b8미추적 퀘스트 %d개 숨김 (/fs quest all)|r", hw))
-            else
-                self.scrollHint:SetText(string_format("|cff94a3b8타 지역 미완료 %d개 숨김|r", hz))
-            end
-        else
-            self.scrollHint:SetText("")
-        end
+        local hintText, extra = ns.QuestTrackerModel.FormatScrollHint(
+            snapshot, self.scrollOffset, shownCount, totalRows, MAX_VISIBLE_ROWS
+        )
+        self.scrollHint:SetText(hintText)
+        footerExtra = extra
     end
 
     local totalHeight = HEADER_HEIGHT + BODY_TOP_PAD + math_max(1, shownCount) * ROW_HEIGHT + PADDING_BOTTOM + footerExtra

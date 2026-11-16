@@ -10,4 +10,6 @@
 ## Group: GodJohnsonGoldBorder
 ## Dependencies: GodJohnsonGoldBorder, ForeverSuite
 
+State.lua
+Branding.lua
 Bridge.lua

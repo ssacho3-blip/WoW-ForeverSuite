@@ -1007,5 +1007,38 @@ def test_hud_v2_combat_fade_and_progress_flash_ddt() -> None:
     assert row_201["_bg"]["_color_rgba"][3] == pytest.approx(0.52)
 
 
+def test_viewmodel_header_and_scroll_hint_formatting_ddt() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.load_addon("ForeverSuite")
+    model = ns["QuestTrackerModel"]
+
+    header_unavail = rt.vm._invoke_callable(
+        model["FormatHeaderTitle"], (LuaTable({"questLogUnavailable": True}),)
+    )[0]
+    assert "—" in header_unavail
+
+    header_done = rt.vm._invoke_callable(
+        model["FormatHeaderTitle"],
+        (LuaTable({"visibleCompleted": 2, "visibleQuests": 5, "totalQuests": 7, "hiddenByFilter": 2}),),
+    )[0]
+    assert "2" in header_done
+    assert "5" in header_done
+    assert "(7)" in header_done
+
+    hint_scroll, extra_scroll = rt.vm._invoke_callable(
+        model["FormatScrollHint"], (LuaTable({"hiddenByFilter": 1, "visibleQuests": 4}), 2, 18, 25, 18)
+    )
+    assert "3~20 / 25줄" in hint_scroll
+    assert "1개 숨김" in hint_scroll
+    assert extra_scroll == 15
+
+    hint_none, extra_none = rt.vm._invoke_callable(
+        model["FormatScrollHint"], (LuaTable({"hiddenByFilter": 0, "visibleQuests": 3}), 0, 3, 5, 18)
+    )
+    assert hint_none == ""
+    assert extra_none == 0
+
+
+
 
 
