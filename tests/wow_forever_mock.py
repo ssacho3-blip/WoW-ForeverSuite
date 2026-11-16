@@ -122,7 +122,15 @@ class WoWForeverMockRuntime:
             "countdownForCooldowns": "0",
             "Sound_SFXVolume": "0.5",
             "Sound_MusicVolume": "0.6",
+            "nameplateShowEnemies": "0",
+            "nameplateShowEnemyMinions": "0",
+            "nameplateShowAll": "0",
+            "nameplateMotion": "0",
+            "nameplateMaxDistance": "20",
+            "nameplateSelectedScale": "1.0",
         }
+        self.unit_guids: dict[str, Any] = {}
+        self.instance_info: tuple[Any, ...] = ("아제로스", "none")
         self.profiler_enabled: bool = False
         self.profiler_avg_ms: float = 0.018
         self.addon_mem_kb: float = 640.0
@@ -162,6 +170,7 @@ class WoWForeverMockRuntime:
         self.quest_num_shown_entries: int | None = None
         self.quest_objectives: dict[int, list[dict[str, Any]]] = {}
         self.quest_tags: dict[int, dict[str, Any]] = {}
+        self.quest_expansions: dict[int, int] = {}
         self.quest_special_items: dict[int, tuple[str, Any]] = {}
         self.watched_quest_ids: list[int] | None = None
         self.selected_quest_id: int | None = None
@@ -511,6 +520,8 @@ class WoWForeverMockRuntime:
         G["UnitHealth"] = lambda _u: self.player_hp
         G["UnitHealthMax"] = lambda _u: self.player_max_hp
         G["UnitIsDeadOrGhost"] = lambda _u: self.player_dead
+        G["UnitGUID"] = lambda u: self.unit_guids.get(str(u))
+        G["GetInstanceInfo"] = lambda: MultiReturn(self.instance_info)
         G["GetInventoryItemID"] = lambda _u, slot: self.equipped_items.get(int(slot))
 
         G["GetMoney"] = lambda: self.player_money
@@ -840,6 +851,7 @@ class WoWForeverMockRuntime:
             "AddQuestWatch": lambda qid: self._toggle_quest_watch(int(qid), True),
             "RemoveQuestWatch": lambda qid: self._toggle_quest_watch(int(qid), False),
             "GetQuestDifficultyLevel": lambda qid: (self._find_quest_entry(int(qid))[1] or {}).get("difficultyLevel"),
+            "GetQuestExpansion": lambda qid: self.quest_expansions.get(int(qid)),
             "GetQuestObjectives": lambda qid: LuaTable(
                 [LuaTable(o) for o in self.quest_objectives.get(int(qid), [])]
             ),

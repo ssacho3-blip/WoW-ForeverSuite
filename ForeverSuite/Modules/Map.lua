@@ -1,12 +1,13 @@
 -- Module: Modules/Map.lua
 -- Responsibility: WorldMap open-only 0.15s player & cursor coordinate display and /way native SuperTrack pin integration.
 -- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/Framework.lua.
--- Public API: Map (QueryPlayerCoords, QueryCursorCoords, FormatPlayerCoordinateText, RefreshCoords, SetWaypointFromSlash).
+-- Public API: Map (QueryPlayerCoords, QueryCursorCoords, FormatPlayerCoordinateText, RefreshCoords, SetWaypointFromSlash, ExtractZoneLayerFromGUID, PrintLayerInfo).
 -- Combat/Secret Safety: Cancels ticker immediately when WorldMapFrame hides (0 idle tickers); guards secret map/cursor coords.
 local _, ns = ...
 
 local type = type
 local pcall = pcall
+local ipairs = ipairs
 local tonumber = tonumber
 local tostring = tostring
 local string_format = string.format
@@ -304,6 +305,66 @@ function Map:OnDisable()
     end
     self.coordHolder = nil
     self.coordLabel = nil
+end
+
+function Map.ExtractZoneLayerFromGUID(guid)
+    if ns.IsSecret(guid) or type(guid) ~= "string" or guid == "" then
+        return nil, nil, nil
+    end
+    local unitKind, _, serverID, instanceID, zoneUID = string_match(
+        guid,
+        "^([A-Za-z]+)%-(%d+)%-(%d+)%-(%d+)%-(%d+)%-%d+%-[0-9A-Fa-f]+$"
+    )
+    if not zoneUID then
+        return nil, nil, nil
+    end
+    if unitKind ~= "Creature" and unitKind ~= "Vehicle" and unitKind ~= "GameObject" and unitKind ~= "Pet" then
+        return nil, nil, nil
+    end
+    return zoneUID, instanceID, serverID
+end
+
+function Map:PrintLayerInfo()
+    local zoneName = (_G.GetRealZoneText and _G.GetRealZoneText()) or (_G.GetZoneText and _G.GetZoneText()) or "알 수 없음"
+    if ns.IsSecret(zoneName) then
+        zoneName = "비밀 값(전투 중)"
+    end
+    local instName, instType = "야외", "none"
+    if type(_G.GetInstanceInfo) == "function" then
+        local okInst, iName, iType = pcall(_G.GetInstanceInfo)
+        if okInst and not ns.IsSecret(iName) and type(iName) == "string" and iName ~= "" then
+            instName = iName
+        end
+        if okInst and not ns.IsSecret(iType) and type(iType) == "string" and iType ~= "" then
+            instType = iType
+        end
+    end
+    local zoneUID, instID, srvID, sourceUnit = nil, nil, nil, nil
+    if type(_G.UnitGUID) == "function" then
+        for _, unit in ipairs({ "target", "mouseover", "npc" }) do
+            local okG, guid = pcall(_G.UnitGUID, unit)
+            if okG then
+                local z, i, s = Map.ExtractZoneLayerFromGUID(guid)
+                if z then
+                    zoneUID, instID, srvID, sourceUnit = z, i, s, unit
+                    break
+                end
+            end
+        end
+    end
+    if zoneUID then
+        ns.Print(string_format(
+            "현재 위상/존 진단: 지역=%s (%s:%s) | ZoneUID=%s · Instance=%s · Server=%s (기준: %s)",
+            tostring(zoneName), tostring(instName), tostring(instType),
+            tostring(zoneUID), tostring(instID), tostring(srvID), tostring(sourceUnit)
+        ))
+    else
+        ns.Print(string_format(
+            "현재 위상/존 진단: 지역=%s (%s:%s) | NPC/몬스터에 마우스를 올리거나 대상으로 잡은 뒤 /fs layer 를 실행하면 ZoneUID(위상)를 표시합니다.",
+            tostring(zoneName), tostring(instName), tostring(instType)
+        ))
+    end
+    return zoneUID
 end
 
 ns.ModuleManager:Register("Map", Map)

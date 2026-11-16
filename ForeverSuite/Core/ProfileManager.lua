@@ -70,6 +70,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
     combat = {
         remindMissingClassBuff = true,
         lowHealthAlert = true,
+        enhanceNameplates = true,
         lowHealthThreshold = 0.30,
     },
     ui = {

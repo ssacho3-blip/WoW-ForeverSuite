@@ -3,7 +3,7 @@
 ## 1. 시스템 계층 구조 (Modular Fault-Isolated Architecture, 18 Lua Modules)
 
 ```text
-ForeverSuite v0.3.1 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.70938)
+ForeverSuite v0.3.2 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.70938)
 ├── Core Layer (P0)
 │   ├── Init.lua              : 단일 네임스페이스(ns), C_AddOns.GetAddOnMetadata 우선 파싱, Secret 가드(IsSecret), CombatQueue, /fs probe
 │   ├── MoneyLedgerQueue.lua  : 상점·수리·퀘스트 골드 변동 사유 FIFO 큐 (최대 TTL 3.0s, 정확 델타 우선 매칭)

@@ -53,6 +53,7 @@ local MODULE_OPTION_SPECS = {
     Combat = {
         { section = "combat", key = "remindMissingClassBuff", label = "9직업 비전투 버프 체크" },
         { section = "combat", key = "lowHealthAlert", label = "생명력 위험 경고 배너" },
+        { section = "combat", key = "enhanceNameplates", label = "이름표 가독성·겹침방지" },
         { section = "ui", key = "hudUnlocked", label = "HUD 이동 잠금해제" },
     },
 }
@@ -75,6 +76,10 @@ local SLASH_MODULE_DISPATCH = {
     quest = { "Quest", "HandleSlash", true },
     quests = { "Quest", "HandleSlash", true },
     q = { "Quest", "HandleSlash", true },
+    nameplate = { "Combat", "HandleNameplateSlash", true },
+    nameplates = { "Combat", "HandleNameplateSlash", true },
+    np = { "Combat", "HandleNameplateSlash", true },
+    layer = { "Map", "PrintLayerInfo", false },
 }
 
 local SettingsPanel = {
@@ -159,6 +164,8 @@ local function ApplyPostToggleSideEffects(section, key)
                 else
                     comb.definition.lastBuffMissing = false
                 end
+            elseif key == "enhanceNameplates" then
+                if comb.definition.SyncNameplatePreset then comb.definition:SyncNameplatePreset() end
             end
         end
     elseif section == "map" then
@@ -536,7 +543,7 @@ function ns.HandleSlashCommand(rawMsg)
     elseif route then
         DispatchModuleMethod(route[1], route[2], route[3] and rest or nil)
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | quest | gold | gather | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
     end
 end
 

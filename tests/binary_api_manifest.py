@@ -44,6 +44,7 @@ VERIFIED_WOWF_16001_C_APIS: frozenset[str] = frozenset(
         "C_QuestLog.GetNumQuestLogEntries",
         "C_QuestLog.GetNumQuestWatches",
         "C_QuestLog.GetQuestDifficultyLevel",
+        "C_QuestLog.GetQuestExpansion",
         "C_QuestLog.GetQuestIDForQuestWatchIndex",
         "C_QuestLog.GetQuestObjectives",
         "C_QuestLog.GetQuestTagInfo",

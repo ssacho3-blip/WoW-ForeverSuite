@@ -2,6 +2,17 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.2] - 2026-11-16
+
+### Added (`FS-INTEGRATE-2026-ADDONS-V032`)
+- **Zero-Taint Nameplate Readability & Stacking Preset (`Modules/Combat.lua`, `Core/ProfileManager.lua`, `UI/SettingsPanel.lua`)**:
+  - Added `combat.enhanceNameplates` (`ApplyTemporaryCVar` / `RestoreTemporaryCVar` backed up in `pendingCVarRestores` and deferred safely via `CombatQueue:RunOrDefer`) configuring verified `1.60.1` CVars (`nameplateShowEnemies=1`, `nameplateShowEnemyMinions=1`, `nameplateShowAll=1`, `nameplateMotion=1`, `nameplateMaxDistance=41`, `nameplateSelectedScale=1.2`).
+  - Automatically yields and restores original CVars if external nameplate addons (`Platynator`, `Plater`, `Kui_Nameplates`, `TidyPlates_ThreatPlates`) are loaded, plus `/fs nameplate [on|off|status]`.
+- **Forever Expansion Quest Badge (`UI/QuestLogCollector.lua`, `UI/QuestTrackerModel.lua`)**:
+  - Queries `C_QuestLog.GetQuestExpansion(qid)` (with `info.expansionID` fallback) and displays `|cff2dd4bf[∞ 포에버]|r` in `QuestTracker` for non-vanilla Forever expansion quests (`expansionID >= 1`).
+- **Layer & Instance Diagnostic (`Modules/Map.lua`, `UI/SettingsPanel.lua`)**:
+  - Added `Map.ExtractZoneLayerFromGUID` (with `ns.IsSecret` guard) and `/fs layer` to inspect current `ZoneUID`, `InstanceID`, `ServerID`, and instance state from `target`/`mouseover`/`npc` GUIDs.
+
 ## [0.3.1] - 2026-11-15
 
 ### Upgraded (`FS-V031-OPUS-FABLE-CONSENSUS` — `Claude Opus 5.5` × `Claude Fable 5.2` Synthesis)

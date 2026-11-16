@@ -11,7 +11,7 @@ local select = select
 local setmetatable = setmetatable
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.3.1"
+ns.VERSION = "0.3.2"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"

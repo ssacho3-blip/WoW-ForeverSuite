@@ -141,7 +141,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.1"
+    assert ns["VERSION"] == "0.3.2"
 
     allowed_globals = {
         "ForeverSuite",
@@ -836,7 +836,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.1 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.2 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1151,7 +1151,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.1"
+    assert ns["VERSION"] == "0.3.2"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -1240,6 +1240,82 @@ def test_v031_economy_external_quest_reward_ttl_and_exact_delta_priority() -> No
     rt.player_money += 5_000
     rt.fire_event("PLAYER_MONEY")
     assert econ["ledger"]["quest"] == 17_345
+
+
+# ---------------------------------------------------------------------------
+# 17. v0.3.2: Nameplate CVar Preset, External Yield, and /fs layer Diagnostic
+# ---------------------------------------------------------------------------
+
+
+def test_v032_nameplate_cvar_preset_combat_deferral_and_restore() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+
+    assert rt.cvars["nameplateShowEnemies"] == "1"
+    assert rt.cvars["nameplateMotion"] == "1"
+    assert rt.cvars["nameplateMaxDistance"] == "41"
+    assert rt.cvars["nameplateSelectedScale"] == "1.2"
+    pending = rt.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]
+    assert pending["nameplateMotion"] == "0"
+    assert pending["nameplateMaxDistance"] == "20"
+
+    # Toggle off during combat must defer restore via CombatQueue until PLAYER_REGEN_ENABLED
+    rt.combat_lockdown = True
+    rt.run_slash("FOREVERSUITE", "nameplate off")
+    assert rt.cvars["nameplateMotion"] == "1"
+
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.cvars["nameplateMotion"] == "0"
+    assert rt.cvars["nameplateMaxDistance"] == "20"
+    assert rt.cvars["nameplateSelectedScale"] == "1.0"
+
+
+def test_v032_nameplate_preset_auto_yields_to_external_addon() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons.add("Platynator")
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+
+    assert combat["nameplateOwner"] == "Platynator"
+    assert combat["nameplatesApplied"] is False
+    assert rt.cvars["nameplateMotion"] == "0"
+    assert rt.cvars["nameplateMaxDistance"] == "20"
+
+    # Late-loaded external addon that already modified nameplateMotion must not be clobbered
+    rt2 = WoWForeverMockRuntime(ADDON_ROOT)
+    ns2 = rt2.boot_session()
+    combat2 = ns2["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert rt2.cvars["nameplateMotion"] == "1"
+    rt2.loaded_external_addons.add("Plater")
+    rt2.cvars["nameplateMotion"] = "2"
+    rt2.fire_event("ADDON_LOADED", "Plater")
+    assert combat2["nameplateOwner"] == "Plater"
+    assert rt2.cvars["nameplateMotion"] == "2"
+    assert rt2.cvars["nameplateMaxDistance"] == "20"
+
+
+def test_v032_map_layer_guid_extraction_and_secret_safety() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.unit_guids["target"] = "Creature-0-4521-0-1429-68-000012ABCD"
+    rt.unit_guids["player"] = "Player-6784-000D24E7"
+    rt.instance_info = ("엘윈 숲", "none")
+    ns = rt.boot_session()
+    map_mod = ns["ModuleManager"]["modules"]["Map"]["definition"]
+
+    z_npc, i_npc, s_npc = rt.vm._invoke_callable(
+        map_mod["ExtractZoneLayerFromGUID"], ("Creature-0-4521-0-1429-68-000012ABCD",)
+    )
+    assert (z_npc, i_npc, s_npc) == ("1429", "0", "4521")
+    z_pl = rt.vm._invoke_callable(map_mod["ExtractZoneLayerFromGUID"], ("Player-6784-000D24E7",))[0]
+    assert z_pl is None
+    z_sec = rt.vm._invoke_callable(map_mod["ExtractZoneLayerFromGUID"], (SecretValue("Creature-0-1-0-2-3"),))[0]
+    assert z_sec is None
+
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "layer")
+    assert any("ZoneUID=1429" in m and "Server=4521" in m for m in rt.chat_messages)
+
 
 
 

@@ -120,7 +120,12 @@ function QuestTrackerModel.FormatQuestTagBadge(quest)
     local tagName = SafeString(quest.tagName)
     local isElite = SafeBool(quest.isElite)
     local groupSize = SafeNumber(quest.suggestedGroup) or 0
+    local expID = SafeNumber(quest.expansionID)
     local parts = {}
+
+    if expID and expID >= 1 then
+        parts[#parts + 1] = "|cff2dd4bf[∞ 포에버]|r"
+    end
 
     if tagName then
         local color = "|cffcbd5e1"

@@ -1,4 +1,4 @@
-# ForeverSuite v0.3.1 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.236+` 3-Tier Bridge Edition)
+# ForeverSuite v0.3.2 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.236+` 3-Tier Bridge Edition)
 
 - **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.70938`, TOC `16001, 120105`)
 - **지원 OS**: **macOS & Windows 양방향 100% 호환** (Windows 원클릭 `.exe` 설치기 포함)
@@ -20,15 +20,17 @@
 | **Utility (`repair`, `sell`)** | **P1** | 자동 수리(길드 금고 우선 → 개인 골드 폴백), 회색 잡템 배치 판매(1회 12개 되사기 한도·잔여 수량 안내·`/fs sell` 수동 판매·`/fs protect` 보호목록·`Shift` 정지) | `GJCompanion.ExtraSettings("merchantAutomation")` 활성 시 자동 양보 |
 | **Quest (`questAutoAccept`, `questAutoTurnIn` + 추적창)** | **P1~P2** | **지역별(현재 지역 최상단)·레벨별 온스크린 퀘스트 추적창 HUD**, `Ctrl+클릭` 상세열기, `Alt+클릭` 채팅 링크, 말줄임 목표 전체 툴팁, `[잠금]` 토글, **`UIParent` 직계 `SecureActionButtonTemplate` 퀘스트 특수 아이템 버튼 풀(6개)** | `Questie` 로드 시 전체 양보, `GJCompanion.ExtraSettings("automation")`의 `accept`/`complete` 개별 키 단위 독립 양보 |
 | **Profession (`fishing`, 채집)** | **P1** | 비전투 안전 더블 우클릭 낚시(`CombatQueue` + 시전 직후 & 전투 진입 2중 해제), 크래시 안전 효과음 부스트, `classID==7` 채집물 vs 일반 전리품 분리 집계(비동기 캐시 무손실 보정) | `GJCompanion.FishingSettings()` 활성 시 자동 양보 |
-| **Map (`/way`, 좌표)** | **P1** | 월드맵 열림 시 전용 `0.15s` **플레이어 + 마우스 커서 좌표**, `/way <X> <Y> [메모]` → 내장 `C_Map.SetUserWaypoint` + `C_SuperTrack` 연동 | 실제 외부 `/way` 슬래시 명령(`TomTom` 등) 존재 시에만 양보 (`GJ`에는 양보 안 함) |
-| **Inventory / Economy / Combat** | **P1~P2** | 가방 여유 슬롯 HUD(호버 시 실시간 골드 원장 툴팁)·묶음 상점가(`xN`)·보호 배지, 외부 애드온(`GJ`)/수동 상점·수리·퀘스트 보상을 모두 포착하는 `PLAYER_MONEY` 세션 골드 원장, **9개 클래식 전 직업 버프 패밀리·무기 마법부여 체크**, `/fs move` 통합 HUD 잠금 해제·위치 저장 | `Baganator`, `Bagnon`, `Auctionator` |
+| **Map (`/way`, 좌표, `/fs layer`)** | **P1** | 월드맵 열림 시 전용 `0.15s` **플레이어 + 마우스 커서 좌표**, `/way <X> <Y> [메모]` → 내장 `C_Map.SetUserWaypoint` + `C_SuperTrack` 연동, `/fs layer` 위상(`ZoneUID`)·인스턴스 진단 | 실제 외부 `/way` 슬래시 명령(`TomTom` 등) 존재 시에만 양보 (`GJ`에는 양보 안 함) |
+| **Inventory / Economy / Combat** | **P1~P2** | 가방 여유 슬롯 HUD·묶음 상점가(`xN`)·보호 배지, `PLAYER_MONEY` 세션 골드 원장, **9클래스 버프·무기 마법부여 체크**, **이름표 가독성·겹침방지 CVar 프리셋(`/fs nameplate`)**, `/fs move` HUD 위치 저장 | `Baganator`, `Bagnon`, `Auctionator`, `Platynator`/`Plater` |
 
 ---
 
 ## 2. 게임 내 명령어
 
 - `/fs` 또는 `/forever` : ForeverSuite 3탭 통합 제어판(`[모듈 · 세부설정]`, `[GJ 브리지 상태]`, `[골드 원장]`) 열기·닫기 (`ESC` 지원)
-- `/fs quest [zone | level | here | lock | toggle | default | reset]` : **온스크린 퀘스트 추적창 지역별/레벨별 전환, 현재 지역 필터, 드래그 잠금(`[잠금]`), 기본 추적기 동시 표시, 위치 초기화**
+- `/fs quest [zone | level | here | lock | toggle | default | reset]` : **온스크린 퀘스트 추적창 지역별/레벨별 전환, 현재 지역 필터, 드래그 잠금(`[잠금]`), 기본 추적기 동시 표시, 위치 초기화** (`[∞ 포에버]` 확장 퀘스트 배지 포함)
+- `/fs nameplate [on | off | status]` : **이름표 가독성·겹침방지(`motion=1`, `41yd`, `1.2x`) CVar 최적화 토글 (`Platynator`/`Plater` 공존 시 자동 양보)**
+- `/fs layer` : **현재 대상/마우스오버 NPC 기준 서버 위상(`ZoneUID`) 및 인스턴스 진단**
 - `/fs protect <아이템링크 | itemID | list>` : 상점 자동 판매 제외 보호 아이템 등록/해제 및 목록 조회
 - `/fs sell` : 상점 창이 열려 있을 때 회색 잡템 최대 12개 수동 안전 배치 판매
 - `/fs move [reset]` : 가방 HUD 및 저체력 경고 프레임 드래그 잠금/해제 토글 (`reset` 시 기본 위치 복원)
@@ -49,7 +51,7 @@
 chmod +x scripts/deploy_mac.sh
 ./scripts/deploy_mac.sh
 
-# 3. Windows 원클릭 설치 파일(dist/ForeverSuite_Installer.exe) 및 포터블 ZIP(dist/ForeverSuite-v0.3.1.zip) 빌드
+# 3. Windows 원클릭 설치 파일(dist/ForeverSuite_Installer.exe) 및 포터블 ZIP(dist/ForeverSuite-v0.3.2.zip) 빌드
 python3 scripts/package_release.py
 
 # 4. 갓존슨 업스트림 신규 버전 출시 시 해시 고정 및 호환성 검증

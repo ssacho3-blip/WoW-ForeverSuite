@@ -1,8 +1,8 @@
 -- Module: Modules/Combat.lua
 -- Responsibility: 9-class out-of-combat spell-family/weapon-enchant buff reminder and C_Secrets-safe low-health alert HUD.
 -- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/Framework.lua.
--- Public API: Combat (CLASS_BUFF_FAMILIES, EvaluatePlayerHealth, CheckOutOfCombatBuffs, ApplyAlertAnchor, SyncAlertLockState).
--- Combat/Secret Safety: Zero combat automation; strict ns.IsSecret guards on health/auras/enchants; click-through when HUD locked.
+-- Public API: Combat (CLASS_BUFF_FAMILIES, EvaluatePlayerHealth, CheckOutOfCombatBuffs, ApplyAlertAnchor, SyncAlertLockState, SyncNameplatePreset, HandleNameplateSlash).
+-- Combat/Secret Safety: Zero combat automation; strict ns.IsSecret guards on health/auras/enchants; defers nameplate CVar writes via CombatQueue.
 local _, ns = ...
 
 local type = type
@@ -11,6 +11,8 @@ local ipairs = ipairs
 local tonumber = tonumber
 local math_floor = math.floor
 local string_format = string.format
+local string_lower = string.lower
+local string_match = string.match
 
 local CLASS_BUFF_FAMILIES = {
     MAGE = { spells = { 1459, 23028 }, label = "신비한 지능" },
@@ -27,7 +29,7 @@ local CLASS_BUFF_FAMILIES = {
 local Combat = {
     title = "전투 정보 및 생존 보조 (Combat)",
     priority = "P2",
-    description = "9직업 비전투 버프·무기강화 누락 체크, Secret 안전 저체력 알림 배너",
+    description = "9직업 비전투 버프·무기강화 체크, Secret 안전 저체력 배너, 이름표 CVar 최적화",
     yieldTo = {},
     CLASS_BUFF_FAMILIES = CLASS_BUFF_FAMILIES,
     alertFrame = nil,
@@ -35,7 +37,118 @@ local Combat = {
     lastHealthStatus = "NORMAL",
     lastShownPct = nil,
     lastBuffMissing = false,
+    nameplatesApplied = false,
+    nameplateOwner = nil,
 }
+
+local EXTERNAL_NAMEPLATE_ADDONS = {
+    "Platynator",
+    "Plater",
+    "Kui_Nameplates",
+    "TidyPlates_ThreatPlates",
+}
+
+local NAMEPLATE_CVAR_PRESET = {
+    { "nameplateShowEnemies", "1" },
+    { "nameplateShowEnemyMinions", "1" },
+    { "nameplateShowAll", "1" },
+    { "nameplateMotion", "1" },
+    { "nameplateMaxDistance", "41" },
+    { "nameplateSelectedScale", "1.2" },
+}
+
+local function DetectExternalNameplateAddon()
+    for _, addonName in ipairs(EXTERNAL_NAMEPLATE_ADDONS) do
+        if ns.IsExternalAddonLoaded(addonName) then
+            return addonName
+        end
+    end
+    return nil
+end
+
+function Combat:ApplyNameplatePreset()
+    local extOwner = DetectExternalNameplateAddon()
+    if extOwner then
+        self.nameplateOwner = extOwner
+        if self.nameplatesApplied then
+            self:RestoreNameplatePreset(true)
+        end
+        return false, extOwner
+    end
+    self.nameplateOwner = nil
+    ns.CombatQueue:RunOrDefer("combat:nameplatePreset", function()
+        if DetectExternalNameplateAddon() or not ns.ProfileManager:Get("combat", "enhanceNameplates") then
+            return
+        end
+        for _, kv in ipairs(NAMEPLATE_CVAR_PRESET) do
+            if not ns.ProfileManager:ApplyTemporaryCVar(kv[1], kv[2]) then
+                ns.SafeSetCVar(kv[1], kv[2])
+            end
+        end
+        self.nameplatesApplied = true
+    end)
+    return true, nil
+end
+
+function Combat:RestoreNameplatePreset(preserveExternalChanges)
+    ns.CombatQueue:RunOrDefer("combat:nameplatePreset", function()
+        local keepExternal = preserveExternalChanges == true or (DetectExternalNameplateAddon() ~= nil)
+        for _, kv in ipairs(NAMEPLATE_CVAR_PRESET) do
+            if keepExternal and ns.SafeGetCVar(kv[1]) ~= kv[2] then
+                if ns.ProfileManager and ns.ProfileManager:CanWrite()
+                    and ns.ProfileManager.accountDB
+                    and type(ns.ProfileManager.accountDB.pendingCVarRestores) == "table" then
+                    ns.ProfileManager.accountDB.pendingCVarRestores[kv[1]] = nil
+                end
+            else
+                ns.ProfileManager:RestoreTemporaryCVar(kv[1])
+            end
+        end
+        self.nameplatesApplied = false
+    end)
+    return true
+end
+
+function Combat:SyncNameplatePreset()
+    local extOwner = DetectExternalNameplateAddon()
+    if extOwner then
+        self.nameplateOwner = extOwner
+        self:RestoreNameplatePreset(true)
+        return false, extOwner
+    end
+    self.nameplateOwner = nil
+    if ns.ProfileManager:Get("combat", "enhanceNameplates") then
+        return self:ApplyNameplatePreset()
+    end
+    return self:RestoreNameplatePreset()
+end
+
+function Combat:HandleNameplateSlash(rawArg)
+    local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
+    local sub = string_lower(string_match(clean, "^%s*(%S*)") or "")
+    if sub == "on" or sub == "off" then
+        if not ns.ProfileManager:CanWrite() then
+            ns.Warn("읽기 전용 프로필(미래 스키마)에서는 이름표 설정을 변경할 수 없습니다.")
+            return false
+        end
+        local wantOn = (sub == "on")
+        ns.ProfileManager:Set("combat", "enhanceNameplates", wantOn, "account")
+        self:SyncNameplatePreset()
+        ns.Print("이름표 가독성·겹침방지 최적화: " .. (wantOn and "활성 (CVar 적용)" or "비활성 (기존 CVar 복원)"))
+        return true
+    end
+    local extOwner = DetectExternalNameplateAddon()
+    local enabled = ns.ProfileManager:Get("combat", "enhanceNameplates") and true or false
+    local stateText = extOwner and ("외부 양보(" .. extOwner .. ")") or (enabled and "활성" or "비활성")
+    ns.Print(string_format(
+        "이름표 최적화 상태: %s | 겹침방지(motion)=%s, 거리=%s, 선택배율=%s (/fs nameplate on|off)",
+        stateText,
+        tostring(ns.SafeGetCVar("nameplateMotion") or "—"),
+        tostring(ns.SafeGetCVar("nameplateMaxDistance") or "—"),
+        tostring(ns.SafeGetCVar("nameplateSelectedScale") or "—")
+    ))
+    return true
+end
 
 local function ShowUnlockedPlaceholderOrHide(self)
     if not self.alertFrame then
@@ -273,17 +386,33 @@ function Combat:OnEnable(ctx)
     ctx:RegisterUnitEvent("UNIT_HEALTH", "player", Combat.EvaluatePlayerHealth)
     ctx:RegisterBucketEvent("UNIT_AURA", 0.50, Combat.CheckOutOfCombatBuffs, "player")
     ctx:RegisterEvent("PLAYER_REGEN_ENABLED", Combat.CheckOutOfCombatBuffs)
+    ctx:RegisterEvent("ADDON_LOADED", Combat.OnAddonLoaded)
 
     self:EvaluatePlayerHealth()
     self:CheckOutOfCombatBuffs()
+    self:SyncNameplatePreset()
+end
+
+function Combat:OnAddonLoaded(_, loadedAddonName)
+    if type(loadedAddonName) ~= "string" then
+        return
+    end
+    for _, extName in ipairs(EXTERNAL_NAMEPLATE_ADDONS) do
+        if extName == loadedAddonName then
+            self:SyncNameplatePreset()
+            break
+        end
+    end
 end
 
 function Combat:OnDisable()
+    self:RestoreNameplatePreset()
     self.alertFrame = nil
     self.alertLabel = nil
     self.lastShownPct = nil
     self.lastHealthStatus = "NORMAL"
     self.lastBuffMissing = false
+    self.nameplateOwner = nil
 end
 
 ns.ModuleManager:Register("Combat", Combat)

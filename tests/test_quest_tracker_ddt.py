@@ -1039,6 +1039,30 @@ def test_viewmodel_header_and_scroll_hint_formatting_ddt() -> None:
     assert extra_none == 0
 
 
+def test_v032_forever_expansion_quest_badge_and_collector_ddt() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_level = 24
+    rt.real_zone_text = "엘윈 숲"
+    rt.zone_text = "엘윈 숲"
+    rt.quest_log_entries = [
+        {"title": "엘윈 숲", "isHeader": True},
+        {"questID": 101, "title": "코볼트 양초", "level": 24, "isOnMap": True},
+        {"questID": 90001, "title": "포에버의 메아리", "level": 24, "isOnMap": True},
+    ]
+    rt.quest_expansions[101] = 0
+    rt.quest_expansions[90001] = 1
+
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+    snap = tracker["lastSnapshot"]
+    quest_rows = [r for r in _lua_list_items(snap["rows"]) if r.get("kind") == "quest"]
+    badges = {r.get("questID"): str(r.get("text")) for r in quest_rows}
+
+    assert "[∞ 포에버]" not in badges[101]
+    assert "[∞ 포에버]" in badges[90001]
+
+
+
 
 
 

@@ -184,6 +184,14 @@ local function BuildQuestRecordFromInfo(tracker, info, logIndex, fallbackHeader,
         end
     end
 
+    local expansionID = SafeNumber(info.expansionID)
+    if expansionID == nil and C_QuestLog and C_QuestLog.GetQuestExpansion then
+        local okExp, rawExp = pcall(C_QuestLog.GetQuestExpansion, qid)
+        if okExp then
+            expansionID = SafeNumber(rawExp)
+        end
+    end
+
     local isOnMap = SafeBool(info.isOnMap)
     if not isOnMap and C_QuestLog and C_QuestLog.IsOnMap then
         local okOnMap, onMapVal = pcall(C_QuestLog.IsOnMap, qid)
@@ -248,6 +256,7 @@ local function BuildQuestRecordFromInfo(tracker, info, logIndex, fallbackHeader,
         suggestedGroup = SafeNumber(info.suggestedGroup),
         frequency = SafeNumber(info.frequency),
         tagName = tagName,
+        expansionID = expansionID,
         isElite = isElite,
         isComplete = isComplete,
         isFailed = SafeBool(info.isFailed),
