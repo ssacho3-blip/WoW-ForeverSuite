@@ -77,7 +77,12 @@ function ns.SyncOwnership()
             FS.SetFeatureYield(key, false, nil)
             ns.ownership[key] = "OWNED_BY_FS"
         end
-        ns.ownership.way = FS.IsFeatureYielded("way") and ("YIELDED_TO_" .. tostring(FS.GetFeatureYieldOwner("way"))) or "OWNED_BY_FS"
+        if type(FS.IsFeatureYielded) == "function" and FS.IsFeatureYielded("way") then
+            local owner = (type(FS.GetFeatureYieldOwner) == "function") and FS.GetFeatureYieldOwner("way") or nil
+            ns.ownership.way = "YIELDED_TO_" .. tostring(owner)
+        else
+            ns.ownership.way = "OWNED_BY_FS"
+        end
         return true
     end
 
@@ -124,8 +129,9 @@ function ns.SyncOwnership()
     FS.SetFeatureYield("fishing", yieldFishing, reasonFishing)
     ns.ownership.fishing = yieldFishing and ("YIELDED (" .. tostring(reasonFishing) .. ")") or "OWNED_BY_FS"
 
-    if FS.IsFeatureYielded and FS.IsFeatureYielded("way") then
-        ns.ownership.way = "YIELDED (" .. tostring(FS.GetFeatureYieldOwner("way")) .. ")"
+    if type(FS.IsFeatureYielded) == "function" and FS.IsFeatureYielded("way") then
+        local owner = (type(FS.GetFeatureYieldOwner) == "function") and FS.GetFeatureYieldOwner("way") or nil
+        ns.ownership.way = "YIELDED (" .. tostring(owner) .. ")"
     else
         ns.ownership.way = "OWNED_BY_FS"
     end

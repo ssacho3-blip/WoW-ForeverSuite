@@ -519,11 +519,14 @@ end
 
 -- Crash-Safe Temporary CVar Override Ledger (Contract Taint/CVar Rule #3)
 function ProfileManager:ApplyTemporaryCVar(cvarName, tempValue)
+    if not self:CanWrite() then
+        return false
+    end
     local current = ns.SafeGetCVar(cvarName)
     if current == nil then
         return false
     end
-    if not self.readOnly and self.accountDB and type(self.accountDB.pendingCVarRestores) == "table" then
+    if self.accountDB and type(self.accountDB.pendingCVarRestores) == "table" then
         if self.accountDB.pendingCVarRestores[cvarName] == nil then
             self.accountDB.pendingCVarRestores[cvarName] = tostring(current)
         end

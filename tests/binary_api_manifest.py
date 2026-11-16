@@ -66,6 +66,17 @@ VERIFIED_WOWF_16001_C_APIS: frozenset[str] = frozenset(
     }
 )
 
+# Non-C_* global WoW APIs verified present in local wowf 1.60.1.70938 binary
+VERIFIED_WOWF_16001_GLOBAL_APIS: frozenset[str] = frozenset(
+    {
+        "GetBuildInfo",
+        "GetInstanceInfo",
+        "GetRealZoneText",
+        "GetZoneText",
+        "UnitGUID",
+    }
+)
+
 FORBIDDEN_LEGACY_APIS: frozenset[str] = frozenset(
     {
         "GetContainerNumSlots",

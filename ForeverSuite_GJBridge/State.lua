@@ -11,14 +11,25 @@ local select = select
 local setmetatable = setmetatable
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.3.2"
+ns.VERSION = "0.3.3"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
 ns.GJ_PREFIX_TAG = "[갓존슨]"
 ns.FS_PREFIX_TAG = "[포에버]"
 
-local MAX_SUPPORTED_FS_SCHEMA = 2
+local FALLBACK_MAX_SUPPORTED_FS_SCHEMA = 2
+
+local function ResolveSupportedFsSchema()
+    local FS = _G.ForeverSuite
+    if type(FS) == "table" and type(FS.ProfileManager) == "table" then
+        local schema = tonumber(FS.ProfileManager.SCHEMA_VERSION)
+        if schema ~= nil then
+            return schema
+        end
+    end
+    return FALLBACK_MAX_SUPPORTED_FS_SCHEMA
+end
 
 local function NewWeakKeyTable()
     if type(setmetatable) == "function" then
@@ -84,7 +95,7 @@ function ns._IsForeverSuiteReadOnly()
     end
     if type(fsdb) == "table" then
         local ver = tonumber(fsdb.schemaVersion)
-        if ver ~= nil and ver > MAX_SUPPORTED_FS_SCHEMA then
+        if ver ~= nil and ver > ResolveSupportedFsSchema() then
             return true
         end
     end

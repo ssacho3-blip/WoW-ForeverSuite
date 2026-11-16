@@ -48,14 +48,28 @@ local EXTERNAL_NAMEPLATE_ADDONS = {
     "TidyPlates_ThreatPlates",
 }
 
+-- Keep user V/Shift-V toggles (nameplateShowEnemies/nameplateShowAll) untouched across reloads;
+-- preset focuses strictly on readability, stacking, range, and target highlight scaling.
 local NAMEPLATE_CVAR_PRESET = {
-    { "nameplateShowEnemies", "1" },
     { "nameplateShowEnemyMinions", "1" },
-    { "nameplateShowAll", "1" },
     { "nameplateMotion", "1" },
     { "nameplateMaxDistance", "41" },
     { "nameplateSelectedScale", "1.2" },
 }
+
+local LEGACY_NAMEPLATE_CVARS = {
+    "nameplateShowEnemies",
+    "nameplateShowAll",
+}
+
+local function IsCombatModuleActive()
+    if not ns.ModuleManager or type(ns.ModuleManager.GetModule) ~= "function" then
+        return false
+    end
+    local rec = ns.ModuleManager:GetModule("Combat")
+    local enabledState = (ns.ModuleManager.STATES and ns.ModuleManager.STATES.ENABLED) or "ENABLED"
+    return rec ~= nil and rec.state == enabledState
+end
 
 local function DetectExternalNameplateAddon()
     for _, addonName in ipairs(EXTERNAL_NAMEPLATE_ADDONS) do
@@ -76,32 +90,48 @@ function Combat:ApplyNameplatePreset()
         return false, extOwner
     end
     self.nameplateOwner = nil
-    ns.CombatQueue:RunOrDefer("combat:nameplatePreset", function()
-        if DetectExternalNameplateAddon() or not ns.ProfileManager:Get("combat", "enhanceNameplates") then
+    local executedNow = ns.CombatQueue:RunOrDefer("combat:nameplatePreset", function()
+        if DetectExternalNameplateAddon()
+            or not IsCombatModuleActive()
+            or not ns.ProfileManager:CanWrite()
+            or not ns.ProfileManager:Get("combat", "enhanceNameplates") then
             return
         end
+        local appliedAny = false
         for _, kv in ipairs(NAMEPLATE_CVAR_PRESET) do
-            if not ns.ProfileManager:ApplyTemporaryCVar(kv[1], kv[2]) then
-                ns.SafeSetCVar(kv[1], kv[2])
+            if ns.ProfileManager:ApplyTemporaryCVar(kv[1], kv[2]) then
+                appliedAny = true
             end
         end
-        self.nameplatesApplied = true
+        self.nameplatesApplied = appliedAny
     end)
-    return true, nil
+    if executedNow then
+        return self.nameplatesApplied == true, nil
+    end
+    return false, nil
 end
 
 function Combat:RestoreNameplatePreset(preserveExternalChanges)
     ns.CombatQueue:RunOrDefer("combat:nameplatePreset", function()
         local keepExternal = preserveExternalChanges == true or (DetectExternalNameplateAddon() ~= nil)
+        local pending = (ns.ProfileManager and ns.ProfileManager:CanWrite()
+            and ns.ProfileManager.accountDB
+            and type(ns.ProfileManager.accountDB.pendingCVarRestores) == "table")
+            and ns.ProfileManager.accountDB.pendingCVarRestores
+            or nil
         for _, kv in ipairs(NAMEPLATE_CVAR_PRESET) do
-            if keepExternal and ns.SafeGetCVar(kv[1]) ~= kv[2] then
-                if ns.ProfileManager and ns.ProfileManager:CanWrite()
-                    and ns.ProfileManager.accountDB
-                    and type(ns.ProfileManager.accountDB.pendingCVarRestores) == "table" then
-                    ns.ProfileManager.accountDB.pendingCVarRestores[kv[1]] = nil
+            if keepExternal then
+                -- External nameplate addon is in control; drop our restore snapshot without touching its CVars
+                if pending then
+                    pending[kv[1]] = nil
                 end
             else
                 ns.ProfileManager:RestoreTemporaryCVar(kv[1])
+            end
+        end
+        if keepExternal and pending then
+            for _, legacyCvar in ipairs(LEGACY_NAMEPLATE_CVARS) do
+                pending[legacyCvar] = nil
             end
         end
         self.nameplatesApplied = false
@@ -127,14 +157,28 @@ function Combat:HandleNameplateSlash(rawArg)
     local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
     local sub = string_lower(string_match(clean, "^%s*(%S*)") or "")
     if sub == "on" or sub == "off" then
+        if not IsCombatModuleActive() then
+            ns.Warn("Combat 모듈이 비활성화(또는 양보) 상태에서는 이름표 설정을 변경할 수 없습니다.")
+            return false
+        end
         if not ns.ProfileManager:CanWrite() then
             ns.Warn("읽기 전용 프로필(미래 스키마)에서는 이름표 설정을 변경할 수 없습니다.")
             return false
         end
         local wantOn = (sub == "on")
         ns.ProfileManager:Set("combat", "enhanceNameplates", wantOn, "account")
-        self:SyncNameplatePreset()
-        ns.Print("이름표 가독성·겹침방지 최적화: " .. (wantOn and "활성 (CVar 적용)" or "비활성 (기존 CVar 복원)"))
+        local ok, extOwner = self:SyncNameplatePreset()
+        if extOwner then
+            ns.Print("외부 이름표 애드온(" .. tostring(extOwner) .. ") 감지로 프리셋 적용을 양보했습니다.")
+        elseif ns.InCombat() then
+            ns.Print("이름표 가독성·겹침방지 최적화: " .. (wantOn and "전투 종료 후 적용 예약" or "전투 종료 후 복원 예약"))
+        elseif wantOn and ok then
+            ns.Print("이름표 가독성·겹침방지 최적화: 활성 (CVar 적용)")
+        elseif wantOn then
+            ns.Warn("이름표 가독성·겹침방지 최적화: CVar 적용 실패 (지원되지 않는 CVar)")
+        else
+            ns.Print("이름표 가독성·겹침방지 최적화: 비활성 (기존 CVar 복원)")
+        end
         return true
     end
     local extOwner = DetectExternalNameplateAddon()

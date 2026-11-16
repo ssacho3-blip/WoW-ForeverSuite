@@ -25,6 +25,9 @@ end
 local QuestTrackerModel = {}
 ns.QuestTrackerModel = QuestTrackerModel
 
+-- WoW Classic Forever (1.60.1): expansionID >= 1 flags non-Era Forever expansion quests (verify via /fs probe in-client)
+local FOREVER_EXPANSION_MIN_ID = 1
+
 local DIFFICULTY_STYLES = {
     trivial    = { tier = "trivial",    band = "low",     bandOrder = 1, hex = "|cff94a3b8", rgb = { 0.58, 0.64, 0.72 } },
     easy       = { tier = "easy",       band = "low",     bandOrder = 1, hex = "|cff4ade80", rgb = { 0.29, 0.87, 0.50 } },
@@ -123,7 +126,7 @@ function QuestTrackerModel.FormatQuestTagBadge(quest)
     local expID = SafeNumber(quest.expansionID)
     local parts = {}
 
-    if expID and expID >= 1 then
+    if expID and expID >= FOREVER_EXPANSION_MIN_ID then
         parts[#parts + 1] = "|cff2dd4bf[∞ 포에버]|r"
     end
 

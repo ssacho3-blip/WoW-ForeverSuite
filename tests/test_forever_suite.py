@@ -141,7 +141,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.2"
+    assert ns["VERSION"] == "0.3.3"
 
     allowed_globals = {
         "ForeverSuite",
@@ -836,7 +836,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.2 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.3 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1151,7 +1151,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.2"
+    assert ns["VERSION"] == "0.3.3"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -1251,7 +1251,10 @@ def test_v032_nameplate_cvar_preset_combat_deferral_and_restore() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.boot_session()
 
-    assert rt.cvars["nameplateShowEnemies"] == "1"
+    # M3: Player V/Shift-V nameplateShowEnemies & nameplateShowAll toggles must remain untouched
+    assert rt.cvars["nameplateShowEnemies"] == "0"
+    assert rt.cvars["nameplateShowAll"] == "0"
+    assert rt.cvars["nameplateShowEnemyMinions"] == "1"
     assert rt.cvars["nameplateMotion"] == "1"
     assert rt.cvars["nameplateMaxDistance"] == "41"
     assert rt.cvars["nameplateSelectedScale"] == "1.2"
@@ -1259,16 +1262,79 @@ def test_v032_nameplate_cvar_preset_combat_deferral_and_restore() -> None:
     assert pending["nameplateMotion"] == "0"
     assert pending["nameplateMaxDistance"] == "20"
 
-    # Toggle off during combat must defer restore via CombatQueue until PLAYER_REGEN_ENABLED
+    # Toggle off during combat must defer restore via CombatQueue and report deferred status accurately (M4)
+    rt.chat_messages.clear()
     rt.combat_lockdown = True
     rt.run_slash("FOREVERSUITE", "nameplate off")
     assert rt.cvars["nameplateMotion"] == "1"
+    assert any("전투 종료 후 복원 예약" in m for m in rt.chat_messages)
 
     rt.combat_lockdown = False
     rt.fire_event("PLAYER_REGEN_ENABLED")
     assert rt.cvars["nameplateMotion"] == "0"
     assert rt.cvars["nameplateMaxDistance"] == "20"
     assert rt.cvars["nameplateSelectedScale"] == "1.0"
+
+
+def test_v033_nameplate_readonly_disabled_and_external_yield_safety() -> None:
+    # 1. M1/L1: Read-only (future schema) must fail closed without touching client CVars
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 99,
+            "account": LuaTable({"combat": LuaTable({"enhanceNameplates": True})}),
+        }
+    )
+    ns_ro = rt_ro.boot_session()
+    assert ns_ro["ProfileManager"]["readOnly"] is True
+    assert rt_ro.cvars["nameplateMotion"] == "0"
+    assert rt_ro.cvars["nameplateMaxDistance"] == "20"
+
+    # 2. M2: /fs nameplate on while Combat module is DISABLED must warn and not mutate CVars
+    rt_dis = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_dis.boot_session()
+    rt_dis.run_slash("FOREVERSUITE", "disable Combat")
+    assert rt_dis.cvars["nameplateMotion"] == "0"
+    rt_dis.chat_messages.clear()
+    rt_dis.run_slash("FOREVERSUITE", "nameplate on")
+    assert rt_dis.cvars["nameplateMotion"] == "0"
+    assert any("비활성화" in m for m in rt_dis.chat_messages)
+
+    # 3. M4/L2: External addon yield prints yield notice and preserves matching-value external CVars
+    rt_ext = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ext.boot_session()
+    assert rt_ext.cvars["nameplateMaxDistance"] == "41"
+    rt_ext.loaded_external_addons.add("Plater")
+    rt_ext.fire_event("ADDON_LOADED", "Plater")
+    # Even when Plater leaves nameplateMaxDistance="41" matching preset value, must not revert to "20"
+    assert rt_ext.cvars["nameplateMaxDistance"] == "41"
+    pending_ext = rt_ext.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]
+    assert pending_ext.get("nameplateMaxDistance") is None
+
+    rt_ext.chat_messages.clear()
+    rt_ext.run_slash("FOREVERSUITE", "nameplate on")
+    assert any("양보" in m for m in rt_ext.chat_messages)
+    assert not any("활성 (CVar 적용)" in m for m in rt_ext.chat_messages)
+
+    # 4. External yield must also drop legacy v0.3.2 nameplateShowEnemies snapshot without reverting
+    rt_leg = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_leg.boot_session()
+    rt_leg.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["nameplateShowEnemies"] = "0"
+    rt_leg.cvars["nameplateShowEnemies"] = "1"
+    rt_leg.loaded_external_addons.add("Plater")
+    rt_leg.fire_event("ADDON_LOADED", "Plater")
+    assert rt_leg.cvars["nameplateShowEnemies"] == "1"
+    assert rt_leg.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("nameplateShowEnemies") is None
+
+    # 5. If all preset CVars fail to apply out-of-combat, /fs nameplate on must NOT fabricate "CVar 적용"
+    rt_fail = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_fail.boot_session()
+    for key in ("nameplateShowEnemyMinions", "nameplateMotion", "nameplateMaxDistance", "nameplateSelectedScale"):
+        rt_fail.cvars.pop(key, None)
+    rt_fail.chat_messages.clear()
+    rt_fail.run_slash("FOREVERSUITE", "nameplate on")
+    assert not any("활성 (CVar 적용)" in m for m in rt_fail.chat_messages)
+    assert any("적용 실패" in m for m in rt_fail.chat_messages)
 
 
 def test_v032_nameplate_preset_auto_yields_to_external_addon() -> None:
@@ -1282,7 +1348,7 @@ def test_v032_nameplate_preset_auto_yields_to_external_addon() -> None:
     assert rt.cvars["nameplateMotion"] == "0"
     assert rt.cvars["nameplateMaxDistance"] == "20"
 
-    # Late-loaded external addon that already modified nameplateMotion must not be clobbered
+    # Late-loaded external addon must yield cleanly and preserve all external/current CVars (L2)
     rt2 = WoWForeverMockRuntime(ADDON_ROOT)
     ns2 = rt2.boot_session()
     combat2 = ns2["ModuleManager"]["modules"]["Combat"]["definition"]
@@ -1292,7 +1358,8 @@ def test_v032_nameplate_preset_auto_yields_to_external_addon() -> None:
     rt2.fire_event("ADDON_LOADED", "Plater")
     assert combat2["nameplateOwner"] == "Plater"
     assert rt2.cvars["nameplateMotion"] == "2"
-    assert rt2.cvars["nameplateMaxDistance"] == "20"
+    assert rt2.cvars["nameplateMaxDistance"] == "41"
+    assert rt2.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("nameplateMaxDistance") is None
 
 
 def test_v032_map_layer_guid_extraction_and_secret_safety() -> None:
