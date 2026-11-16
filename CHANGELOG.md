@@ -2,6 +2,18 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.3] - 2026-11-17
+
+### Hardened (`FS-V033-AUDIT-FIX` — `Claude Opus 5.5` Audit & `DeepSeek` Review)
+- **Fail-Closed Nameplate CVar & Module State Safety (`Core/ProfileManager.lua`, `Modules/Combat.lua`)**:
+  - Enforced `ProfileManager:CanWrite()` at `ApplyTemporaryCVar` entry and inside the deferred `CombatQueue` preset closure, removing unrecorded `SafeSetCVar` fallbacks.
+  - Guarded `/fs nameplate on|off` against disabled/yielded `Combat` module state and aligned status output with actual runtime outcomes (external addon yield, combat deferral, or unsupported CVar failure).
+  - Removed user-toggleable `nameplateShowEnemies` / `nameplateShowAll` from `NAMEPLATE_CVAR_PRESET` so player `V` / `Shift-V` toggles persist across reloads, and cleaned legacy snapshots (`LEGACY_NAMEPLATE_CVARS`) on external yield.
+- **GJBridge Schema & Guard Parity (`ForeverSuite_GJBridge/State.lua`, `ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Replaced duplicated schema cap constant with dynamic `ResolveSupportedFsSchema()` referencing `FS.ProfileManager.SCHEMA_VERSION` and harmonized `FS.IsFeatureYielded` / `FS.GetFeatureYieldOwner` function guards.
+- **Automated Release & Mailing Pipeline (`scripts/release.py`, `scripts/notify_release.py`, `.github/workflows/release.yml`)**:
+  - Added version-parity bumper, verified HTTP 200 + SHA-256 download gate, idempotent sent ledger, and Gmail OAuth / SMTP release mailing automation with PII-free test coverage.
+
 ## [0.3.2] - 2026-11-16
 
 ### Added (`FS-INTEGRATE-2026-ADDONS-V032`)
