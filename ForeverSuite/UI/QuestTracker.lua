@@ -8,7 +8,7 @@ local _, ns = ...
 local type, ipairs, pairs = type, ipairs, pairs
 local tostring, tonumber, pcall = tostring, tonumber, pcall
 local math_max, math_min, math_floor = math.max, math.min, math.floor
-local string_find, string_format = string.find, string.format
+local string_find = string.find
 
 local TRACKER_WIDTH, HEADER_HEIGHT, BODY_TOP_PAD, ROW_HEIGHT = 340, 32, 6, 22
 local MAX_VISIBLE_ROWS, MAX_ITEM_BUTTONS = 18, 6

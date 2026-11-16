@@ -9,7 +9,6 @@ ignore = {
 
 read_globals = {
     -- WoW 1.60.1 / Classic-Modern Unified C_* & Global APIs
-    "_G",
     "AcceptQuest",
     "AddonCompartmentFrame",
     "C_AddOnProfiler",
@@ -100,7 +99,6 @@ read_globals = {
     "SetCVar",
     "SetOverrideBindingClick",
     "Settings",
-    "SlashCmdList",
     "SOUNDKIT",
     "StaticPopupDialogs",
     "StaticPopup_Show",
@@ -112,7 +110,6 @@ read_globals = {
     "tremove",
     "UiMapPoint",
     "UIParent",
-    "UISpecialFrames",
     "UnitAffectingCombat",
     "UnitClass",
     "UnitHealth",
@@ -148,6 +145,8 @@ globals = {
     "ForeverSuiteDB",
     "ForeverSuiteCharDB",
     "ForeverSuite_GJBridge",
+    "SlashCmdList",
+    "UISpecialFrames",
     "SLASH_FOREVERSUITE1",
     "SLASH_FOREVERSUITE2",
     "SLASH_FOREVERSUITEQUEST1",

@@ -5,7 +5,7 @@
 -- Combat/Secret Safety: 100% pure computation (zero WoW Frame/C_* calls); strips secret fields cleanly without math/comparison traps.
 local _, ns = ...
 
-local type, ipairs, pairs = type, ipairs, pairs
+local type, ipairs = type, ipairs
 local tostring, tonumber = tostring, tonumber
 local math_floor = math.floor
 local string_format, string_gsub, string_match = string.format, string.gsub, string.match

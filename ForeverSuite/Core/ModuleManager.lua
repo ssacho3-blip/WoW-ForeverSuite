@@ -7,7 +7,6 @@ local _, ns = ...
 
 local type = type
 local ipairs = ipairs
-local pairs = pairs
 local tostring = tostring
 local xpcall = xpcall
 
@@ -86,14 +85,14 @@ local function BuildModuleContext(rec)
         if C_Timer and C_Timer.NewTicker then
             handle.ticker = C_Timer.NewTicker(intervalSec, safeTick)
         end
-        function handle:Cancel()
-            self.cancelled = true
-            if self.ticker and self.ticker.Cancel then
-                self.ticker:Cancel()
+        handle.Cancel = function(h)
+            h.cancelled = true
+            if h.ticker and h.ticker.Cancel then
+                h.ticker:Cancel()
             end
         end
-        function handle:IsActive()
-            return (not self.cancelled) and (rec.state == STATE_ENABLED)
+        handle.IsActive = function(h)
+            return (not h.cancelled) and (rec.state == STATE_ENABLED)
         end
         self.tickers[#self.tickers + 1] = handle
         return handle
