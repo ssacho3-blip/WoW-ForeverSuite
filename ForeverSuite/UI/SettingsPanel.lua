@@ -217,11 +217,11 @@ local function BuildBridgeStatusText()
         return "|cff94a3b8ForeverSuite_GJBridge 미로드 상태입니다.|r\n\n단독(Standalone) 모드로 ForeverSuite 전체 기능이 직접 동작합니다."
     end
     local out = string_format(
-        "브리지 상태: |cff4ade80%s|r  (Upstream Pin: v%s · Bridge v%s)\n\n|cffffd23f[개인화 브랜딩 오버라이드 6종]|r",
+        "브리지 상태: |cff4ade80%s|r  (Upstream Pin: v%s · Bridge v%s)\n\n|cffffd23f[개인화 브랜딩 오버라이드 7종]|r",
         tostring(bridge.status or "—"), tostring(bridge.UPSTREAM_PIN or "—"), tostring(bridge.VERSION or "—")
     )
     local targets = type(bridge.targets) == "table" and bridge.targets or {}
-    for _, k in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound" }) do
+    for _, k in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "navRangeLayout" }) do
         out = out .. string_format("\n • %-14s : %s", k, tostring(targets[k] or "—"))
     end
     out = out .. "\n\n|cffffd23f[단일 소유자 중재 (Single-Owner Arbitration) 6종]|r"

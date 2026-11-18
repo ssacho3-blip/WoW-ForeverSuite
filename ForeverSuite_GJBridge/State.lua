@@ -9,14 +9,27 @@ local tostring = tostring
 local pcall = pcall
 local select = select
 local setmetatable = setmetatable
+local math_abs = math.abs
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.3.3"
+ns.VERSION = "0.3.4"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
 ns.GJ_PREFIX_TAG = "[갓존슨]"
 ns.FS_PREFIX_TAG = "[포에버]"
+ns.NAV_ARROW_DEFAULT_X = 0.5
+ns.NAV_ARROW_DEFAULT_Y = 0.74
+ns.RANGE_DEFAULT_X = 0.5
+ns.RANGE_DEFAULT_Y = 0.36
+
+local GJ_FACTORY_NAV_X = 0.5
+local GJ_FACTORY_NAV_Y = 0.417
+local GJ_FACTORY_RANGE_X = 0.5
+local GJ_FACTORY_RANGE_Y = 0.42
+local OVERLAP_X_THRESHOLD = 0.16
+local OVERLAP_Y_THRESHOLD = 0.14
+local NAV_HIGH_Y_MIN = 0.58
 
 local FALLBACK_MAX_SUPPORTED_FS_SCHEMA = 2
 
@@ -43,6 +56,7 @@ local ephemeralTradeSeeded = NewWeakKeyTable()
 local ephemeralStarterSeeded = NewWeakKeyTable()
 local pendingTradePromote = false
 local pendingStarterPromote = false
+local pendingLayoutPromote = false
 
 ns._wrappedTargets = wrappedTargets
 
@@ -54,6 +68,7 @@ ns.targets = {
     launcherIcon = "MISSING",
     tradeWhisper = "MISSING",
     questSound = "MISSING",
+    navRangeLayout = "PENDING",
 }
 ns.ownership = {
     repair = "OWNED_BY_FS",
@@ -143,6 +158,10 @@ function ns._GetBridgeStore(allowStandaloneCreate)
         store.starterLootSeeded = true
         pendingStarterPromote = false
     end
+    if pendingLayoutPromote and not store.navRangeLayoutSeeded then
+        store.navRangeLayoutSeeded = true
+        pendingLayoutPromote = false
+    end
     return store
 end
 
@@ -217,4 +236,103 @@ function ns._ReconcileStarterLootDefault(C, store)
         pendingStarterPromote = true
         qa.starterLoot = false
     end
+end
+
+function ns._AreNavAndRangeOverlapping(navPos, rangePos)
+    local navX = (type(navPos) == "table" and tonumber(navPos.x)) or GJ_FACTORY_NAV_X
+    local navY = (type(navPos) == "table" and tonumber(navPos.y)) or GJ_FACTORY_NAV_Y
+    local rngX = (type(rangePos) == "table" and tonumber(rangePos.x)) or GJ_FACTORY_RANGE_X
+    local rngY = (type(rangePos) == "table" and tonumber(rangePos.y)) or GJ_FACTORY_RANGE_Y
+    return math_abs(navX - rngX) < OVERLAP_X_THRESHOLD and math_abs(navY - rngY) < OVERLAP_Y_THRESHOLD
+end
+
+local function ApplyLiveNavRangeRefresh(C, forceCommit)
+    local guide = _G.GodJohnsonFrontGuide
+    if type(guide) == "table" and type(guide.RestorePosition) == "function" then
+        pcall(guide.RestorePosition, guide)
+    end
+    if type(C.RefreshRangeDisplay) == "function" then
+        pcall(C.RefreshRangeDisplay)
+    end
+    if forceCommit and type(C.CommitSettings) == "function" then
+        pcall(C.CommitSettings)
+    end
+end
+
+function ns._ResetNavRangeLayoutSeed(store)
+    pendingLayoutPromote = false
+    ns.targets.navRangeLayout = "PENDING"
+    if type(store) == "table" then
+        store.navRangeLayoutSeeded = false
+    end
+end
+
+function ns._ReconcileNavRangeLayout(C, store, forceReset)
+    if type(C) ~= "table" or ns._IsForeverSuiteReadOnly() then
+        return false
+    end
+    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true then
+        return false
+    end
+    local fsdb = _G.ForeverSuiteDB
+    local savedSeeded = type(fsdb) == "table" and type(fsdb.gjBridge) == "table" and fsdb.gjBridge.navRangeLayoutSeeded == true
+    if not forceReset and (savedSeeded or (store and store.navRangeLayoutSeeded) or pendingLayoutPromote) then
+        ns.targets.navRangeLayout = "APPLIED"
+        return false
+    end
+
+    local nav = nil
+    if type(C.NavigationSettings) == "function" then
+        local okNav, navTbl = pcall(C.NavigationSettings)
+        if okNav and type(navTbl) == "table" then
+            nav = navTbl
+        end
+    end
+    local rd = nil
+    if type(C.ExtraSettings) == "function" then
+        local okRd, rdTbl = pcall(C.ExtraSettings, "rangeDisplay")
+        if okRd and type(rdTbl) == "table" and (rdTbl.x ~= nil or rdTbl.y ~= nil or rdTbl.enabled ~= nil) then
+            rd = rdTbl
+        end
+    end
+    if type(nav) ~= "table" and type(rd) ~= "table" then
+        return false
+    end
+
+    local changed = false
+    if forceReset then
+        if type(nav) == "table" then
+            nav.arrowPosition = { x = ns.NAV_ARROW_DEFAULT_X, y = ns.NAV_ARROW_DEFAULT_Y }
+            changed = true
+        end
+        if type(rd) == "table" then
+            rd.x = ns.RANGE_DEFAULT_X
+            rd.y = ns.RANGE_DEFAULT_Y
+            changed = true
+        end
+    else
+        local navPos = type(nav) == "table" and nav.arrowPosition or nil
+        local overlapping = ns._AreNavAndRangeOverlapping(navPos, rd)
+        if type(nav) == "table" and (navPos == nil or (overlapping and ((tonumber(navPos.y) or GJ_FACTORY_NAV_Y) < NAV_HIGH_Y_MIN))) then
+            nav.arrowPosition = { x = ns.NAV_ARROW_DEFAULT_X, y = ns.NAV_ARROW_DEFAULT_Y }
+            changed = true
+        end
+        local postNavPos = type(nav) == "table" and nav.arrowPosition or nil
+        if type(rd) == "table" and ns._AreNavAndRangeOverlapping(postNavPos, rd) then
+            rd.x = tonumber(rd.x) or ns.RANGE_DEFAULT_X
+            rd.y = ns.RANGE_DEFAULT_Y
+            changed = true
+        end
+    end
+
+    if store then
+        store.navRangeLayoutSeeded = true
+    else
+        pendingLayoutPromote = true
+    end
+    ns.targets.navRangeLayout = "APPLIED"
+    if changed then
+        ApplyLiveNavRangeRefresh(C, forceReset == true)
+    end
+    return changed
 end

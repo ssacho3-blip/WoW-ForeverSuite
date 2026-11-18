@@ -8,7 +8,7 @@ local pcall = pcall
 local string_lower = string.lower
 local string_match = string.match
 
-ns.UPSTREAM_PIN = "5.236"
+ns.UPSTREAM_PIN = "5.278"
 
 local OWNERSHIP_KEYS_GJ = {
     "repair",
@@ -175,6 +175,7 @@ function ns.SanitizeLiveGJSettings(allowStandaloneStoreCreate)
         pcall(C.TradeManager404Config)
     end
     ns._ReconcileStarterLootDefault(C, store)
+    ns._ReconcileNavRangeLayout(C, store, false)
 
     local ct = nil
     if type(C.DB) == "function" then
@@ -201,7 +202,7 @@ end
 
 function ns.PrintStatus()
     ns.Print("상태: " .. tostring(ns.status) .. " (Upstream Pin: v" .. tostring(ns.UPSTREAM_PIN) .. " · Bridge v" .. tostring(ns.VERSION) .. ")")
-    for _, key in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound" }) do
+    for _, key in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "navRangeLayout" }) do
         ns.Print("  오버라이드 [" .. key .. "] = " .. tostring(ns.targets[key]))
     end
     for _, key in ipairs(OWNERSHIP_KEYS_ALL) do
@@ -222,6 +223,7 @@ function ns.Initialize()
 
     ns.status = "ACTIVE"
     ns._ApplyBrandingOverrides(C)
+    ns._ReconcileNavRangeLayout(C, ns._GetBridgeStore(false), false)
     ns.SyncOwnership()
     return true
 end
@@ -235,6 +237,14 @@ if type(_G.SlashCmdList) == "table" then
             ns.SyncOwnership()
             ns.TrySkinLauncher()
             ns.Print("단일 소유권 및 런처 상태 재동기화 완료.")
+        elseif cmd == "layout" or cmd == "fixlayout" then
+            local C = _G.GJCompanion
+            local store = ns._GetBridgeStore(true)
+            if ns._ReconcileNavRangeLayout(C, store, true) then
+                ns.Print("네비 화살표(상단 " .. tostring(ns.NAV_ARROW_DEFAULT_Y) .. ")와 대상 거리(하단 " .. tostring(ns.RANGE_DEFAULT_Y) .. ") 위치를 분리했습니다.")
+            else
+                ns.Print("전투 중이거나 읽기 전용 또는 설정을 읽을 수 없어 레이아웃 분리를 적용하지 못했습니다.")
+            end
         end
         ns.PrintStatus()
     end
@@ -247,8 +257,14 @@ if _G.CreateFrame then
     if evFrame and evFrame.RegisterEvent and evFrame.SetScript then
         evFrame:RegisterEvent("PLAYER_LOGIN")
         evFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        evFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
         evFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
-            if event == "PLAYER_LOGIN" then
+            if event == "PLAYER_REGEN_ENABLED" then
+                if ns.targets.navRangeLayout == "PENDING" then
+                    ns._ReconcileNavRangeLayout(_G.GJCompanion, ns._GetBridgeStore(false), false)
+                end
+                return
+            elseif event == "PLAYER_LOGIN" then
                 if evFrame.UnregisterEvent then
                     evFrame:UnregisterEvent("PLAYER_LOGIN")
                 end

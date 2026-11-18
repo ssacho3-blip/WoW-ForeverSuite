@@ -2,6 +2,16 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.4] - 2026-11-18
+
+### Synced & Improved (`FS-UPSTREAM-GJ-5278` & `navRangeLayout`)
+- **GodJohnson Upstream `v5.278` (`rev 630`, Client `1.60.1.70938`, File ID `9663720`)**:
+  - Updated `pinned_upstream.json` and `ForeverSuite_GJBridge/Bridge.lua` (`ns.UPSTREAM_PIN = "5.278"`) across all 21 upstream folders with full `folder_sha256` verification, incorporating upstream quest 3D navigation arrow handoff and world map pin combat-safety fixes.
+- **GJBridge Navigation Arrow & Target Range Separation (`ForeverSuite_GJBridge/State.lua`, `ForeverSuite_GJBridge/Branding.lua`, `ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Added one-time non-destructive overlap separation (`navRangeLayout`: nav arrow `y=0.74`, range display `y=0.36`), `/fsgj layout` manual reset, and automatic re-separation on `ApplyAuthorPreset` while respecting user drags and combat lockdown.
+- **Settings Panel Bridge Tab Parity (`ForeverSuite/UI/SettingsPanel.lua`)**:
+  - Updated `BuildBridgeStatusText()` to display all 7 personalization overrides including `navRangeLayout`.
+
 ## [0.3.3] - 2026-11-17
 
 ### Hardened (`FS-V033-AUDIT-FIX` — `Claude Opus 5.5` Audit & `DeepSeek` Review)

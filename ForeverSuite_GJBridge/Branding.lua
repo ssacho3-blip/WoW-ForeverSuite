@@ -187,6 +187,8 @@ local function WrapAuthorPresetIfPresent(C)
                     ns._RecordStarterSeeded(qa, postStore)
                 end
             end
+            ns._ResetNavRangeLayoutSeed(postStore)
+            ns._ReconcileNavRangeLayout(C, postStore, false)
             if type(C.CommitSettings) == "function" then
                 pcall(C.CommitSettings)
             end

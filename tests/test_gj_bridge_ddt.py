@@ -141,9 +141,9 @@ def test_pinned_upstream_manifest_and_21_folders_unmodified() -> None:
     manifest_path = REPO_ROOT / "pinned_upstream.json"
     assert manifest_path.is_file()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "5.236"
-    assert manifest["file_id"] == 9609539
-    assert manifest["release_revision"] == 588
+    assert manifest["version"] == "5.278"
+    assert manifest["file_id"] == 9663720
+    assert manifest["release_revision"] == 630
     assert manifest["target_client_build"] == "1.60.1.70938"
     assert manifest["folder_count"] == 21
     assert len(manifest["folders"]) == 21
@@ -664,8 +664,8 @@ def test_windows_one_click_exe_pe32plus_and_payload_integrity(tmp_path: pathlib.
     assert start_marker in raw and end_marker in raw
     ps1_bytes = raw.rsplit(start_marker, 1)[1].split(end_marker, 1)[0]
     ps1_text = ps1_bytes.decode("utf-8")
-    assert "900d2c532396eec44ad21854e455326382cd88c46afc50e8bcc5fdb71c2f92ed" in ps1_text
-    assert "GodJohnson-5.236.zip" in ps1_text
+    assert "70ff575b98d7fc9c7dc0f6e79eb0e33631276db156517ef790fdc7eae6159f39" in ps1_text
+    assert "GodJohnson-5.278.zip" in ps1_text
     assert "ForeverSuite_AutoUpdate" in ps1_text
     assert "Register-ScheduledTask" in ps1_text
     assert "Security hash mismatch blocked" in ps1_text
@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.3.3)" in ps1
+    assert "(v0.3.4)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1136,7 +1136,7 @@ def test_gj_v5236_two_segment_version_client_build_and_retired_vital_alerts(tmp_
     )
     bridge = load_bridge(rt)
     assert bridge.get("status") == "ACTIVE"
-    assert bridge.get("UPSTREAM_PIN") == "5.236"
+    assert bridge.get("UPSTREAM_PIN") == "5.278"
     targets = bridge.get("targets")
     for key in ("sayPrefix", "youtubeLink", "homeScreen", "tradeWhisper", "questSound"):
         assert targets.get(key) == "APPLIED"
@@ -1365,6 +1365,146 @@ def test_v031_bridge_readonly_future_schema_preserves_gj_user_settings_across_re
     )
     with pytest.raises(ValueError, match="Missing upstream folder_sha256 in manifest"):
         verify_extracted_dir(repo_dir, ext_dir)
+
+
+@pytest.mark.parametrize(
+    "case_id,init_arrow,init_range,expected_arrow_y,expected_range_y",
+    [
+        ("fresh_defaults_overlap", "nil", "{ x = 0.5, y = 0.42 }", 0.74, 0.42),
+        ("macbook_saved_overlap", "{ x = 0.497, y = 0.388 }", "{ x = 0.497, y = 0.327 }", 0.74, 0.327),
+        ("nil_rngx_offset_arrow_overlap", "{ x = 0.60, y = 0.42 }", "{ y = 0.42 }", 0.74, 0.42),
+        ("already_separated_kept", "{ x = 0.20, y = 0.80 }", "{ x = 0.50, y = 0.35 }", 0.80, 0.35),
+        ("arrow_high_range_overlaps_moves_range", "{ x = 0.50, y = 0.72 }", "{ x = 0.50, y = 0.70 }", 0.72, 0.36),
+    ],
+)
+def test_nav_range_layout_separation_ddt(
+    case_id: str,
+    init_arrow: str,
+    init_range: str,
+    expected_arrow_y: float,
+    expected_range_y: float,
+) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        f"""
+        _G._restoreCalls = 0
+        _G._refreshRangeCalls = 0
+        GodJohnsonFrontGuide = {{
+            RestorePosition = function(self) _G._restoreCalls = _G._restoreCalls + 1 end,
+        }}
+        GJCompanion = {{
+            version = "5.236",
+            _nav = {{ arrowPosition = {init_arrow} }},
+            _rd = {init_range},
+            NavigationSettings = function() return GJCompanion._nav end,
+            ExtraSettings = function(k)
+                if k == "rangeDisplay" then return GJCompanion._rd end
+                return {{}}
+            end,
+            RefreshRangeDisplay = function() _G._refreshRangeCalls = _G._refreshRangeCalls + 1 end,
+            CommitSettings = function() end,
+        }}
+        """
+    )
+    bridge = load_bridge(rt)
+    assert bridge.get("targets").get("navRangeLayout") == "APPLIED", case_id
+    pos_y = rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0]
+    rng_y = rt.vm.run_chunk("return GJCompanion._rd.y")[0]
+    assert abs(pos_y - expected_arrow_y) < 1e-4, case_id
+    assert abs(rng_y - expected_range_y) < 1e-4, case_id
+    seeded = rt.vm.run_chunk("return ForeverSuiteDB and ForeverSuiteDB.gjBridge and ForeverSuiteDB.gjBridge.navRangeLayoutSeeded")[0]
+    assert seeded is True, case_id
+
+
+def test_nav_range_layout_respects_manual_drag_slash_reset_combat_and_preset() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    setup_lua = """
+        _G._inCombat = false
+        InCombatLockdown = function() return _G._inCombat end
+        GodJohnsonFrontGuide = { RestorePosition = function() end }
+        GJCompanion = {
+            version = "5.236",
+            _nav = { arrowPosition = nil },
+            _rd = { x = 0.5, y = 0.42 },
+            NavigationSettings = function() return GJCompanion._nav end,
+            ExtraSettings = function(k)
+                if k == "rangeDisplay" then return GJCompanion._rd end
+                return {}
+            end,
+            RefreshRangeDisplay = function() end,
+            CommitSettings = function() end,
+            ApplyAuthorPreset = function()
+                GJCompanion._nav.arrowPosition = nil
+                GJCompanion._rd.x = 0.5
+                GJCompanion._rd.y = 0.42
+                return true
+            end,
+        }
+    """
+    rt.vm.run_chunk(setup_lua)
+    load_bridge(rt)
+
+    # User manually drags arrow near center after initial seeding: must NOT be overridden on login/reload
+    rt.simulate_reload()
+    rt.vm.run_chunk(setup_lua)
+    rt.vm.run_chunk("GJCompanion._nav.arrowPosition = { x = 0.45, y = 0.45 }")
+    load_bridge(rt)
+    assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.45) < 1e-4
+
+    # /fsgj layout blocked during combat, succeeds out of combat
+    rt.vm.run_chunk('_G._inCombat = true; SlashCmdList["FOREVERSUITEGJ"]("layout")')
+    assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.45) < 1e-4
+
+    rt.vm.run_chunk('_G._inCombat = false; SlashCmdList["FOREVERSUITEGJ"]("layout")')
+    assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.74) < 1e-4
+    assert abs(rt.vm.run_chunk("return GJCompanion._rd.y")[0] - 0.36) < 1e-4
+
+    # ApplyAuthorPreset reset into overlap -> Bridge wrapper automatically re-separates
+    assert rt.vm.run_chunk("return GJCompanion.ApplyAuthorPreset()")[0] is True
+    assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.74) < 1e-4
+    assert abs(rt.vm.run_chunk("return GJCompanion._rd.y")[0] - 0.42) < 1e-4
+
+    # SettingsPanel [GJ 브리지 상태] tab includes navRangeLayout among the 7 overrides
+    rt.run_slash("FOREVERSUITE", "ui")
+    summary_text = rt.vm.G.get("ForeverSuite")["SettingsPanel"]["bridgeSummaryLabel"]["_text"]
+    assert "개인화 브랜딩 오버라이드 7종" in summary_text
+    assert "navRangeLayout" in summary_text
+
+
+def test_nav_range_layout_combat_init_defers_to_player_regen_enabled() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        _G._inCombat = true
+        InCombatLockdown = function() return _G._inCombat end
+        GJCompanion = {
+            version = "5.278",
+            _nav = { arrowPosition = nil },
+            _rd = { x = 0.5, y = 0.42 },
+            NavigationSettings = function() return GJCompanion._nav end,
+            ExtraSettings = function(k)
+                if k == "rangeDisplay" then return GJCompanion._rd end
+                return {}
+            end,
+            RefreshRangeDisplay = function() end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    assert bridge.get("targets").get("navRangeLayout") == "PENDING"
+    assert rt.vm.run_chunk("return GJCompanion._nav.arrowPosition")[0] is None
+
+    rt.vm.run_chunk("_G._inCombat = false")
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert bridge.get("targets").get("navRangeLayout") == "APPLIED"
+    assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.74) < 1e-4
+
+
+
 
 
 
