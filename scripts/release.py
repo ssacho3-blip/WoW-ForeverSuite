@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import shutil
@@ -99,6 +100,26 @@ def _gh_release_exists(tag: str, repo_slug: str) -> bool:
     return proc.returncode == 0
 
 
+def read_pinned_upstream_version(repo_root: pathlib.Path) -> str | None:
+    """Read and validate upstream GodJohnson version from pinned_upstream.json if present."""
+    pin_path = repo_root / "pinned_upstream.json"
+    if not pin_path.is_file():
+        return None
+    data = json.loads(pin_path.read_text(encoding="utf-8"))
+    raw_ver = data.get("version")
+    if not isinstance(raw_ver, str) or not raw_ver.strip():
+        raise ValueError(f"Invalid upstream version in {pin_path}: {raw_ver!r}")
+    return raw_ver.strip()
+
+
+def format_release_title(repo_root: pathlib.Path, tag: str, *, include_auto_suffix: bool = False) -> str:
+    """Build consistent GitHub Release title from tag and pinned upstream version."""
+    gj_ver = read_pinned_upstream_version(repo_root)
+    upstream_label = f" + 갓존슨 v{gj_ver}" if gj_ver else ""
+    suffix = " — 자동 릴리스 패키지" if include_auto_suffix else ""
+    return f"ForeverSuite {tag}{upstream_label}{suffix}"
+
+
 def run_release_pipeline(args: argparse.Namespace) -> int:
     current_ver = read_suite_version(REPO_ROOT)
     target_ver = compute_next_version(current_ver, args.bump)
@@ -142,6 +163,7 @@ def run_release_pipeline(args: argparse.Namespace) -> int:
     zip_path = REPO_ROOT / "dist" / f"ForeverSuite-{tag}.zip"
 
     if not args.skip_gh_release:
+        title = format_release_title(REPO_ROOT, tag, include_auto_suffix=True)
         if _gh_release_exists(tag, args.repo_slug):
             _run(
                 [
@@ -156,10 +178,9 @@ def run_release_pipeline(args: argparse.Namespace) -> int:
                     "--clobber",
                 ]
             )
-            _run(["gh", "release", "edit", tag, "--repo", args.repo_slug, "--draft=false", "--latest"])
+            _run(["gh", "release", "edit", tag, "--repo", args.repo_slug, "--title", title, "--draft=false", "--latest"])
         else:
             # Draft first -> attach & verify -> publish atomically (prevents partial-asset publish race)
-            title = f"ForeverSuite {tag} + 갓존슨 v5.236 — 자동 릴리스 패키지"
             _run(
                 [
                     "gh",

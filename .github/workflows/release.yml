@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
           fetch-depth: 0
 
       - name: Resolve target release tag & verify TOC version parity
@@ -95,14 +95,37 @@ jobs:
           set -euo pipefail
           EXE_PATH="dist/ForeverSuite_Installer.exe"
           ZIP_PATH="dist/ForeverSuite-${TAG}.zip"
+          RELEASE_TITLE=$(python3 -c '
+          import json, os, pathlib
+          tag = os.environ["TAG"]
+          rel = None
+          try:
+              import scripts.release as rel
+          except ModuleNotFoundError as exc:
+              if exc.name != "scripts.release":
+                  raise
+          if rel is not None and hasattr(rel, "format_release_title"):
+              print(rel.format_release_title(pathlib.Path("."), tag))
+          else:
+              pin = pathlib.Path("pinned_upstream.json")
+              label = ""
+              if pin.is_file():
+                  ver = json.loads(pin.read_text(encoding="utf-8")).get("version")
+                  if not isinstance(ver, str) or not ver.strip():
+                      raise SystemExit(f"Invalid upstream version: {ver!r}")
+                  label = f" + 갓존슨 v{ver.strip()}"
+              print(f"ForeverSuite {tag}{label}")
+          ')
+          TARGET_SHA=$(git rev-parse HEAD)
           if gh release view "$TAG" --repo "$REPO_SLUG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$EXE_PATH" "$ZIP_PATH" --repo "$REPO_SLUG" --clobber
-            gh release edit "$TAG" --repo "$REPO_SLUG" --draft=false --latest
+            gh release edit "$TAG" --repo "$REPO_SLUG" --title "$RELEASE_TITLE" --draft=false --latest
           else
             gh release create "$TAG" "$EXE_PATH" "$ZIP_PATH" \
               --repo "$REPO_SLUG" \
-              --target "$TAG" \
-              --title "ForeverSuite ${TAG} + 갓존슨 v5.236" \
+              --target "$TARGET_SHA" \
+              --verify-tag \
+              --title "$RELEASE_TITLE" \
               --generate-notes \
               --draft
             gh release edit "$TAG" --repo "$REPO_SLUG" --draft=false --latest

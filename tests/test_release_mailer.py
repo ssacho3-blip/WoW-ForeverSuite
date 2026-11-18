@@ -27,7 +27,7 @@ from notify_release import (  # noqa: E402
     render_release_email,
     sha256_bytes,
 )
-from release import compute_next_version, sync_version_strings  # noqa: E402
+from release import compute_next_version, format_release_title, sync_version_strings  # noqa: E402
 
 
 def _make_dist_repo(tmp_path: pathlib.Path, version: str = "0.3.3") -> pathlib.Path:
@@ -181,6 +181,15 @@ def test_version_bump_and_6point_sync_helper(tmp_path: pathlib.Path) -> None:
     assert 'ns.VERSION = "0.3.4"' in (repo / "ForeverSuite_GJBridge" / "State.lua").read_text(encoding="utf-8")
     assert 'default: str = "0.3.4"' in (repo / "scripts" / "build_win_exe.py").read_text(encoding="utf-8")
 
+    # Shared release title formatting & fail-closed pinned_upstream validation
+    assert format_release_title(repo, "v0.3.4") == "ForeverSuite v0.3.4"
+    (repo / "pinned_upstream.json").write_text('{"version": "5.278"}', encoding="utf-8")
+    assert format_release_title(repo, "v0.3.4") == "ForeverSuite v0.3.4 + 갓존슨 v5.278"
+    assert format_release_title(repo, "v0.3.4", include_auto_suffix=True) == "ForeverSuite v0.3.4 + 갓존슨 v5.278 — 자동 릴리스 패키지"
+    (repo / "pinned_upstream.json").write_text('{"version": null}', encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid upstream version"):
+        format_release_title(repo, "v0.3.4")
+
 
 def test_release_workflow_yaml_and_zero_pii_leak() -> None:
     wf_path = REPO_ROOT / ".github" / "workflows" / "release.yml"
@@ -192,6 +201,11 @@ def test_release_workflow_yaml_and_zero_pii_leak() -> None:
         assert "push" in triggers and "workflow_dispatch" in triggers
     assert "tags:" in raw_wf and "workflow_dispatch:" in raw_wf
     assert "scripts/notify_release.py" in raw_wf
+    assert '--target "$TAG"' not in raw_wf
+    assert '--target "$TARGET_SHA"' in raw_wf
+    assert "--verify-tag" in raw_wf
+    assert "refs/tags/" in raw_wf
+    assert "format_release_title" in raw_wf
 
     # Zero real email addresses leaked inside public repo automation files
     for rel in (
