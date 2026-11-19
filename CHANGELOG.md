@@ -2,6 +2,20 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.6] - 2026-11-19
+
+### Changed & Hardened (`FS-V036-ECOSYSTEM`)
+- **Zero-Flicker Combat Default Tracker Hide (`ForeverSuite/UI/DefaultTrackerSync.lua`)**:
+  - Applied unprotected `SetAlpha(0)` immediately when Blizzard shows `ObjectiveTrackerFrame`/`QuestWatchFrame` during `InCombatLockdown()` (matching Questie `6e2d15b`), preventing the default tracker from flashing over `ForeverSuiteQuestTracker` before `CombatQueue` defers `Hide()`, and restoring `SetAlpha(1)` before `Show()`.
+- **Persistent Per-Quest Folding & Zone Transition Debounce (`ForeverSuite/Core/ProfileManager.lua`, `UI/QuestTracker.lua`, `Modules/Quest.lua`, `Modules/Profession.lua`)**:
+  - Persisted per-quest right-click collapse state (`collapsedQuests`) across `/reload` with hierarchy + `ClearCollapsedQuests()` support.
+  - Debounced `ZONE_CHANGED_NEW_AREA` through `0.30s` / `0.35s` buckets to avoid stale/empty zone strings immediately after portals (`forever-lint FL013` parity).
+- **Hybrid Feature-Level Coexistence & 16001 Static Checks (`ForeverSuite/Core/Init.lua`, `ModuleManager.lua`, `Modules/*`, `tests/test_forever_suite.py`)**:
+  - Added granular `FeatureYield` rules for `Plumber` (`fastLoot`), `DialogueUI` (`questAutoDialog`), `Leatrix_Maps` (`mapCoords`), `BetterBags`/`Baganator`/`Bagnon` (`bagHud`), `!KalielsTracker` (`questTrackerHud`), and `TomTom` (`way`), keeping orthogonal `/fs layer`, map coords, and `[판매 보호됨]`/vendor-price tooltips active.
+  - Added `forever-lint` Forever 1.60.1 parity rules to static Lua compliance tests (`GetFrameStrata`, `WOW_PROJECT_CLASSIC`, guarded `SendChatMessage`, multiline `GetBuildInfo >= 100000`).
+- **Settings Panel Search (`ForeverSuite/UI/Framework.lua`, `UI/SettingsPanel.lua`)**:
+  - Added a cross-module keyword search box inside `/fs` detail settings drawer to filter options across all 7 modules without leaving the panel.
+
 ## [0.3.5] - 2026-11-19
 
 ### Fixed (`FS-QUEST-NAV-FIX`)

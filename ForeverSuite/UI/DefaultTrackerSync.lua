@@ -16,6 +16,7 @@ ns.QuestTracker = QuestTracker
 local hookedDefaultFrames = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local hookedEditModeFrames = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local hiddenByUs = setmetatable and setmetatable({}, { __mode = "k" }) or {}
+local alphaZeroedByUs = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 
 local function IsEditModeActive()
     local em = _G.EditModeManagerFrame
@@ -23,6 +24,50 @@ local function IsEditModeActive()
         return true
     end
     return false
+end
+
+local function ShouldHideDefaultTracker()
+    return QuestTracker.active
+        and (not ns.IsFeatureYielded("questTrackerHud"))
+        and ns.ProfileManager:Get("quest", "trackerEnabled")
+        and ns.ProfileManager:Get("quest", "hideDefaultTracker")
+        and true
+        or false
+end
+
+local function TrySetAlpha(frame, alpha)
+    if not frame or not frame.SetAlpha then
+        return false
+    end
+    return pcall(frame.SetAlpha, frame, alpha) and true or false
+end
+
+local function HideDefaultFrame(frame)
+    if not ShouldHideDefaultTracker() or IsEditModeActive() or not frame then
+        return
+    end
+    if TrySetAlpha(frame, 0) then
+        alphaZeroedByUs[frame] = true
+    end
+    if frame.Hide and pcall(frame.Hide, frame) then
+        hiddenByUs[frame] = true
+    end
+end
+
+local function RestoreDefaultFrame(frame)
+    if not frame or ShouldHideDefaultTracker() or IsEditModeActive() then
+        return
+    end
+    if alphaZeroedByUs[frame] and not TrySetAlpha(frame, 1) then
+        return
+    end
+    if hiddenByUs[frame] then
+        if not (frame.Show and pcall(frame.Show, frame)) then
+            return
+        end
+        hiddenByUs[frame] = nil
+    end
+    alphaZeroedByUs[frame] = nil
 end
 
 local function EnsureEditModeExitHook()
@@ -37,38 +82,25 @@ end
 
 function QuestTracker:SyncDefaultTrackerVisibility()
     EnsureEditModeExitHook()
-    local shouldHide = self.active
-        and ns.ProfileManager:Get("quest", "trackerEnabled")
-        and ns.ProfileManager:Get("quest", "hideDefaultTracker")
-        and true
-        or false
+    local shouldHide = ShouldHideDefaultTracker()
 
     local targets = { _G.ObjectiveTrackerFrame, _G.QuestWatchFrame }
-    for i = 1, #targets do
-        local targetFrame = targets[i]
+    for i = 1, 2 do
+        local slot = i
+        local targetFrame = targets[slot]
         if not ns.IsSecret(targetFrame) and type(targetFrame) == "table" then
             if shouldHide and not hookedDefaultFrames[targetFrame] and targetFrame.HookScript then
                 hookedDefaultFrames[targetFrame] = true
                 pcall(targetFrame.HookScript, targetFrame, "OnShow", function(shownFrame)
-                    if not QuestTracker.active then
+                    if not ShouldHideDefaultTracker() or IsEditModeActive() then
                         return
                     end
-                    if not ns.ProfileManager:Get("quest", "trackerEnabled") or not ns.ProfileManager:Get("quest", "hideDefaultTracker") then
-                        return
+                    -- Alpha is unprotected: hide visually mid-combat before CombatQueue can run Hide().
+                    if TrySetAlpha(shownFrame, 0) then
+                        alphaZeroedByUs[shownFrame] = true
                     end
-                    if IsEditModeActive() then
-                        return
-                    end
-                    ns.CombatQueue:RunOrDefer("quest:hideDefault:" .. tostring(i), function()
-                        if QuestTracker.active
-                            and ns.ProfileManager:Get("quest", "trackerEnabled")
-                            and ns.ProfileManager:Get("quest", "hideDefaultTracker")
-                            and not IsEditModeActive()
-                            and shownFrame.Hide
-                        then
-                            hiddenByUs[shownFrame] = true
-                            shownFrame:Hide()
-                        end
+                    ns.CombatQueue:RunOrDefer("quest:hideDefault:" .. tostring(slot), function()
+                        HideDefaultFrame(shownFrame)
                     end)
                 end)
             end
@@ -76,27 +108,17 @@ function QuestTracker:SyncDefaultTrackerVisibility()
             if shouldHide then
                 local currentlyShown = (not targetFrame.IsShown) or (targetFrame:IsShown() and true or false)
                 if currentlyShown and not IsEditModeActive() then
-                    ns.CombatQueue:RunOrDefer("quest:syncDefault:" .. tostring(i), function()
-                        if QuestTracker.active
-                            and ns.ProfileManager:Get("quest", "trackerEnabled")
-                            and ns.ProfileManager:Get("quest", "hideDefaultTracker")
-                            and not IsEditModeActive()
-                            and targetFrame.Hide
-                        then
-                            hiddenByUs[targetFrame] = true
-                            targetFrame:Hide()
-                        end
+                    if TrySetAlpha(targetFrame, 0) then
+                        alphaZeroedByUs[targetFrame] = true
+                    end
+                    ns.CombatQueue:RunOrDefer("quest:syncDefault:" .. tostring(slot), function()
+                        HideDefaultFrame(targetFrame)
                     end)
                 end
-            elseif hiddenByUs[targetFrame] then
+            elseif hiddenByUs[targetFrame] or alphaZeroedByUs[targetFrame] then
                 if not IsEditModeActive() then
-                    ns.CombatQueue:RunOrDefer("quest:syncDefault:" .. tostring(i), function()
-                        if not IsEditModeActive() then
-                            hiddenByUs[targetFrame] = nil
-                            if targetFrame.Show then
-                                targetFrame:Show()
-                            end
-                        end
+                    ns.CombatQueue:RunOrDefer("quest:syncDefault:" .. tostring(slot), function()
+                        RestoreDefaultFrame(targetFrame)
                     end)
                 end
             end

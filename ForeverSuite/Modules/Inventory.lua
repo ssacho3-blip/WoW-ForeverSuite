@@ -17,8 +17,8 @@ local NUM_TOTAL_BAGS = 4
 local Inventory = {
     title = "가방 및 아이템 정보 (Inventory)",
     priority = "P1",
-    description = "Baganator/Bagnon 공존, 여유 슬롯·골드 원장 HUD, 툴팁 상점가·묶음가·보호 표시",
-    yieldTo = { "Baganator", "Bagnon" },
+    description = "Baganator/BetterBags 공존, 여유 슬롯·골드 원장 HUD, 툴팁 상점가·묶음가·보호 표시",
+    yieldTo = {},
     hudFrame = nil,
     hudText = nil,
     hudHovered = false,
@@ -71,16 +71,16 @@ function Inventory:SyncHUDLockState()
 end
 
 function Inventory:UpdateHUD()
-    local freeSlots, totalSlots = self:ScanBagCapacity()
-    if not self.hudText then
-        return
-    end
-    if not ns.ProfileManager:Get("inventory", "showFreeSlotsHUD") then
+    if ns.IsFeatureYielded("bagHud") or not ns.ProfileManager:Get("inventory", "showFreeSlotsHUD") then
         if self.hudFrame then
             self.hudFrame:Hide()
         end
         return
     end
+    if not self.hudText then
+        return
+    end
+    local freeSlots, totalSlots = self:ScanBagCapacity()
     if self.hudFrame and self.hudFrame.Show and not ns.InCombat() then
         self.hudFrame:Show()
     end

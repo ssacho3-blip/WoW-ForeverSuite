@@ -6,7 +6,9 @@
 local _, ns = ...
 
 local type, ipairs, pairs, tostring = type, ipairs, pairs, tostring
-local string_format, string_lower, string_match = string.format, string.lower, string.match
+local string_format, string_lower, string_match, string_find = string.format, string.lower, string.match, string.find
+local math_floor = math.floor
+local SEARCH_PAGE_SIZE = 9
 
 local READONLY_MSG = "읽기 전용 프로필(미래 스키마)에서는 설정을 변경할 수 없습니다."
 
@@ -84,7 +86,7 @@ local SLASH_MODULE_DISPATCH = {
 
 local SettingsPanel = {
     MODULE_OPTION_SPECS = MODULE_OPTION_SPECS,
-    activeTab = "modules", selectedModule = "Quest",
+    activeTab = "modules", selectedModule = "Quest", searchQuery = "", searchPage = 1,
     tabButtons = {}, tabPanels = {}, rows = {}, drawerCheckboxes = {},
     lastMemUpdateAt = -999,
 }
@@ -208,7 +210,16 @@ function SettingsPanel:SelectTab(tabKey)
 end
 
 function SettingsPanel:SelectDetailModule(moduleName)
-    if MODULE_OPTION_SPECS[moduleName] then self.selectedModule = moduleName; self:Refresh() end
+    if MODULE_OPTION_SPECS[moduleName] then
+        self.selectedModule = moduleName
+        self.searchQuery = ""
+        self.searchPage = 1
+        if self.searchBox and self.searchBox.SetText and self.searchBox.GetText and self.searchBox:GetText() ~= "" then
+            self.searchBox:SetText("")
+            return
+        end
+        self:Refresh()
+    end
 end
 
 local function BuildBridgeStatusText()
@@ -349,6 +360,18 @@ function SettingsPanel:EnsureFrame()
         drawer:SetPoint("BOTTOMLEFT", modPanel, "BOTTOMLEFT", 0, 0)
         local dTitle = ns.UI.CreateLabel(drawer, "세부 설정", "GameFontNormalSmall", ns.UI.COLORS.ACCENT)
         if dTitle then dTitle:SetPoint("TOPLEFT", drawer, "TOPLEFT", 12, -8); self.drawerTitle = dTitle end
+        local pageBtn = ns.UI.CreateButton(drawer, "다음", 42, 18, function()
+            SettingsPanel.searchPage = (SettingsPanel.searchPage or 1) + 1
+            SettingsPanel:Refresh()
+        end)
+        if pageBtn then pageBtn:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -12, -6); self.searchPageBtn = pageBtn end
+        local sBox = ns.UI.CreateSearchBox(drawer, 148, 18, "옵션 검색...", function(query)
+            SettingsPanel.searchQuery = query or ""
+            SettingsPanel.searchPage = 1
+            SettingsPanel:Refresh()
+        end)
+        if sBox and pageBtn then sBox:SetPoint("RIGHT", pageBtn, "LEFT", -6, 0); self.searchBox = sBox
+        elseif sBox then sBox:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -12, -6); self.searchBox = sBox end
         for slotIdx = 1, 9 do
             local col = (slotIdx - 1) % 3
             local rIdx = (slotIdx - 1 - col) / 3
@@ -415,6 +438,39 @@ function SettingsPanel:EnsureFrame()
     return f
 end
 
+local function CollectOptionMatches(catalog, query)
+    local specs, labels = {}, {}
+    local q = string_lower(string_match(tostring(query or ""), "^%s*(.-)%s*$") or "")
+    if q == "" or type(catalog) ~= "table" then return specs, labels, q end
+    for i = 1, #catalog do
+        local entry = catalog[i]
+        local modName = type(entry) == "table" and entry.name or nil
+        local modSpecs = type(entry) == "table" and entry.specs or nil
+        if modName and modSpecs then
+            local modMatch = string_find(string_lower(modName), q, 1, true) ~= nil
+            for si = 1, #modSpecs do
+                local sp = modSpecs[si]
+                if modMatch or string_find(string_lower(sp.label), q, 1, true) or string_find(string_lower(sp.key), q, 1, true) then
+                    specs[#specs + 1] = sp
+                    labels[#specs] = "[" .. modName .. "] " .. sp.label
+                end
+            end
+        end
+    end
+    return specs, labels, q
+end
+
+local function BuildOptionCatalog()
+    local catalog = {}
+    for _, rec in ipairs(ns.ModuleManager:ListModules()) do
+        local specs = MODULE_OPTION_SPECS[rec.name]
+        if specs then catalog[#catalog + 1] = { name = rec.name, specs = specs } end
+    end
+    return catalog
+end
+SettingsPanel.CollectOptionMatches = CollectOptionMatches
+SettingsPanel.BuildOptionCatalog = BuildOptionCatalog
+
 function SettingsPanel:Refresh()
     local f = self:EnsureFrame()
     if not f then return end
@@ -440,14 +496,36 @@ function SettingsPanel:Refresh()
         end
     end
 
+    local allSpecs, allLabels, query = CollectOptionMatches(BuildOptionCatalog(), self.searchQuery)
     local specs = MODULE_OPTION_SPECS[self.selectedModule] or MODULE_OPTION_SPECS.Quest
-    if self.drawerTitle then self.drawerTitle:SetText("세부 설정 — [" .. tostring(self.selectedModule) .. "]") end
+    local matchLabels = nil
+    local shownCount = 0
+    if query ~= "" then
+        local pageCount = math_floor((#allSpecs + SEARCH_PAGE_SIZE - 1) / SEARCH_PAGE_SIZE)
+        if pageCount < 1 then pageCount = 1 end
+        if (self.searchPage or 1) > pageCount or (self.searchPage or 1) < 1 then self.searchPage = 1 end
+        local startIdx = ((self.searchPage or 1) - 1) * SEARCH_PAGE_SIZE
+        specs, matchLabels = {}, {}
+        for i = 1, SEARCH_PAGE_SIZE do
+            local src = allSpecs[startIdx + i]
+            if src then
+                specs[#specs + 1] = src
+                matchLabels[#specs] = allLabels[startIdx + i]
+            end
+        end
+        shownCount = #allSpecs
+        self.searchPageCount = pageCount
+    end
+    if self.drawerTitle then
+        local pageNote = (query ~= "" and (self.searchPageCount or 1) > 1) and (" " .. tostring(self.searchPage) .. "/" .. tostring(self.searchPageCount)) or ""
+        self.drawerTitle:SetText((query ~= "") and ("검색 결과: \"" .. query .. "\" (" .. tostring(shownCount) .. "건" .. pageNote .. ")") or ("세부 설정 — [" .. tostring(self.selectedModule) .. "]"))
+    end
     for idx = 1, #self.drawerCheckboxes do
         local chk, spec = self.drawerCheckboxes[idx], specs[idx]
         if chk then
             if spec then
                 chk._fsSpec = spec
-                if chk._fsLabel then chk._fsLabel:SetText(spec.label) end
+                if chk._fsLabel then chk._fsLabel:SetText((matchLabels and matchLabels[idx]) or spec.label) end
                 chk:SetChecked(ns.ProfileManager:Get(spec.section, spec.key) and true or false)
                 chk:Show()
             else

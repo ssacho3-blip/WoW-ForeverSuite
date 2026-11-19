@@ -87,6 +87,143 @@ def _strip_comments(src: str) -> str:
     return "\n".join(line.split("--", 1)[0] for line in src.splitlines())
 
 
+def _node_name(node: object) -> str | None:
+    if isinstance(node, tuple) and len(node) >= 2 and node[0] == "var" and isinstance(node[1], str):
+        return node[1]
+    return None
+
+
+def _call_name(node: object) -> str | None:
+    if isinstance(node, tuple) and node and node[0] == "call":
+        return _node_name(node[1])
+    return None
+
+
+def _unwrap_paren(expr: object) -> object:
+    while isinstance(expr, tuple) and expr and expr[0] == "paren":
+        expr = expr[1]
+    return expr
+
+
+def _is_api(node: object, name: str) -> bool:
+    node = _unwrap_paren(node)
+    if _node_name(node) == name:
+        return True
+    return (
+        isinstance(node, tuple)
+        and node[0] == "index"
+        and _node_name(node[1]) == "_G"
+        and len(node) >= 3
+        and node[2] == ("lit", name)
+    )
+
+
+def _is_call_api(node: object, name: str) -> bool:
+    return isinstance(node, tuple) and bool(node) and node[0] == "call" and _is_api(node[1], name)
+
+
+def _expr_uses_build(expr: object, tainted: set[str]) -> bool:
+    if isinstance(expr, list):
+        return any(_expr_uses_build(item, tainted) for item in expr)
+    if not isinstance(expr, tuple) or not expr:
+        return False
+    if expr[0] == "var" and isinstance(expr[1], str) and expr[1] in tainted:
+        return True
+    if _is_call_api(expr, "GetBuildInfo"):
+        return True
+    return any(_expr_uses_build(child, tainted) for child in expr[1:])
+
+
+def _is_positive_sendchat_guard(cond: object) -> bool:
+    cond = _unwrap_paren(cond)
+    if isinstance(cond, tuple) and cond and cond[0] == "unop" and cond[1] == "not":
+        return False
+    return _is_api(cond, "SendChatMessage") or "SendChatMessage" in _expr_names(cond) and not (
+        isinstance(cond, tuple) and cond[0] == "unop"
+    )
+
+
+def _expr_names(expr: object) -> set[str]:
+    found: set[str] = set()
+    if isinstance(expr, list):
+        for item in expr:
+            found |= _expr_names(item)
+        return found
+    if isinstance(expr, tuple) and expr:
+        if expr[0] == "var" and isinstance(expr[1], str):
+            found.add(expr[1])
+        for child in expr[1:]:
+            found |= _expr_names(child)
+    return found
+
+
+def _mark_assign(names: object, exprs: object, tainted: set[str]) -> None:
+    if not isinstance(names, list):
+        return
+    values = exprs if isinstance(exprs, list) else []
+    for idx, name in enumerate(names):
+        if not isinstance(name, str):
+            continue
+        expr = values[idx] if idx < len(values) else None
+        if expr is not None and _expr_uses_build(expr, tainted):
+            tainted.add(name)
+        else:
+            tainted.discard(name)
+
+
+def _lua_issue(node: object, tainted: set[str], guarded: bool) -> str | None:
+    if isinstance(node, list):
+        for item in node:
+            found = _lua_issue(item, tainted, guarded)
+            if found:
+                return found
+        return None
+    if not isinstance(node, tuple) or not node or not isinstance(node[0], str):
+        return None
+    kind = node[0]
+    if kind in ("local", "assign") and len(node) >= 3:
+        _mark_assign(node[1], node[2], tainted)
+    if kind == "binop" and len(node) >= 4 and node[1] == ">=" and node[3] == ("lit", 100000):
+        if _expr_uses_build(node[2], tainted):
+            return "build"
+    if kind == "expr_stat" and _is_call_api(node[1], "SendChatMessage") and not guarded:
+        return "chat"
+    if kind == "if" and len(node) >= 2:
+        clauses = node[1] if isinstance(node[1], list) else []
+        for clause in clauses:
+            if isinstance(clause, tuple) and len(clause) >= 2:
+                cond, body = clause[0], clause[1]
+                found = _lua_issue(cond, tainted, guarded)
+                if found:
+                    return found
+                found = _lua_issue(body, tainted, guarded or _is_positive_sendchat_guard(cond))
+                if found:
+                    return found
+        else_body = node[2] if len(node) > 2 else None
+        if else_body is not None:
+            return _lua_issue(else_body, tainted, guarded)
+        return None
+    for child in node[1:]:
+        found = _lua_issue(child, tainted, guarded)
+        if found:
+            return found
+    return None
+
+
+def _lua_static_issue(code: str) -> str | None:
+    src = code if code.lstrip().startswith("local ") else "local _, ns = ...\n" + code
+    tree = parse_lua51(src, "fixture.lua")
+    return _lua_issue(tree, set(), False)
+
+
+def _has_unguarded_sendchat(code: str) -> bool:
+    return _lua_static_issue("local _, ns = ...\n" + code) == "chat"
+
+
+def _has_build_version_trap(code: str) -> bool:
+    return _lua_static_issue("local _, ns = ...\n" + code) == "build"
+
+
 def _verify_single_lua_file_compliance(lua_file: pathlib.Path) -> set[str]:
     assert lua_file.is_file(), f"Missing file in TOC: {lua_file}"
     raw = lua_file.read_bytes()
@@ -110,6 +247,12 @@ def _verify_single_lua_file_compliance(lua_file: pathlib.Path) -> set[str]:
 
     assert not (tokens & FORBIDDEN_LEGACY_APIS), f"{lua_file.name} uses removed legacy APIs"
     assert not (tokens & FORBIDDEN_COMBAT_AUTOMATION_APIS), f"{lua_file.name} uses forbidden combat APIs"
+    assert not (tokens & {"GetFrameStrata", "WOW_PROJECT_CLASSIC"}), (
+        f"{lua_file.name} uses restricted Forever 1.60.1 API (forever-lint parity)"
+    )
+    issue = _lua_issue(parse_lua51(src, lua_file.name), set(), False)
+    assert issue != "chat", f"{lua_file.name} calls SendChatMessage without a capability guard"
+    assert issue != "build", f"{lua_file.name} uses >=100000 GetBuildInfo version trap"
     assert "BAG_UPDATE" not in re.findall(r'"(BAG_UPDATE)"', code_no_comments)
     return extract_c_api_calls_from_lua(src)
 
@@ -141,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.5"
+    assert ns["VERSION"] == "0.3.6"
 
     allowed_globals = {
         "ForeverSuite",
@@ -457,16 +600,23 @@ def test_ac6_economic_safety_buyback_cap_repair_fallback_and_ledger() -> None:
 
 
 def test_ac7_coexistence_yield_zero_idle_tickers_and_waypoint_guard() -> None:
-    # A. Coexistence: Baganator, Questie, TomTom, Auctionator pre-loaded -> YIELDED with 0 hooks
+    # A. Coexistence: Questie, Auctionator, Leatrix_Plus -> YIELDED; TomTom & Baganator -> FeatureYield only
     rt_co = WoWForeverMockRuntime(ADDON_ROOT)
-    rt_co.loaded_external_addons = {"Baganator", "Questie", "TomTom", "Auctionator"}
+    rt_co.loaded_external_addons = {"Baganator", "Questie", "TomTom", "Auctionator", "Leatrix_Plus"}
     ns_co = rt_co.boot_session()
     mm_co = ns_co["ModuleManager"]
 
-    for mod_name in ("Inventory", "Quest", "Map", "Economy"):
+    for mod_name in ("Quest", "Economy", "Utility"):
         rec = mm_co["modules"][mod_name]
         assert rec["state"] == "YIELDED", f"{mod_name} must yield to external addon"
         assert mod_name not in ns_co["EventBus"]["ownerRecords"], f"{mod_name} must register 0 event hooks"
+
+    assert mm_co["modules"]["Map"]["state"] == "ENABLED"
+    assert mm_co["modules"]["Inventory"]["state"] == "ENABLED"
+    assert rt_co.vm._invoke_callable(ns_co["IsFeatureYielded"], ("way",))[0] is True
+    assert rt_co.vm._invoke_callable(ns_co["IsFeatureYielded"], ("bagHud",))[0] is True
+    assert ns_co["ModuleManager"]["modules"]["Map"]["definition"]["wayOwned"] is not True
+    assert rt_co.vm.G["ForeverSuiteBagHUD"]["_shown"] is False
 
     # B. Standalone Performance & Map /way Behavior
     rt = WoWForeverMockRuntime(ADDON_ROOT)
@@ -836,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.5 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.6 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1151,7 +1301,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.5"
+    assert ns["VERSION"] == "0.3.6"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -1382,6 +1532,182 @@ def test_v032_map_layer_guid_extraction_and_secret_safety() -> None:
     rt.chat_messages.clear()
     rt.run_slash("FOREVERSUITE", "layer")
     assert any("ZoneUID=1429" in m and "Server=4521" in m for m in rt.chat_messages)
+
+
+def test_v036_feature_yields_16001_and_settings_search() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Plumber", "DialogueUI", "Leatrix_Maps", "BetterBags", "!KalielsTracker"}
+    ns = rt.boot_session()
+
+    for key in ("fastLoot", "questAutoDialog", "mapCoords", "bagHud", "questTrackerHud"):
+        assert rt.vm._invoke_callable(ns["IsFeatureYielded"], (key,))[0] is True, f"{key} must yield"
+
+    mm = ns["ModuleManager"]
+    assert mm["modules"]["Utility"]["state"] == "ENABLED"
+    assert mm["modules"]["Quest"]["state"] == "ENABLED"
+    assert mm["modules"]["Map"]["state"] == "ENABLED"
+    assert mm["modules"]["Inventory"]["state"] == "ENABLED"
+    assert ns["QuestTracker"]["frame"]["_shown"] is False
+    assert rt.vm.G["ObjectiveTrackerFrame"]["_shown"] is True
+
+    # Late ADDON_LOADED for TomTom unregisters /way cleanly while keeping Map coords/layer alive
+    rt.loaded_external_addons.add("TomTom")
+    rt.fire_event("ADDON_LOADED", "TomTom")
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("way",))[0] is True
+    assert mm["modules"]["Map"]["definition"]["wayOwned"] is False
+
+    # SettingsPanel SearchBox filters options across modules and resets cleanly
+    sp = ns["SettingsPanel"]
+    rt.run_slash("FOREVERSUITE", "ui")
+    sbox = sp["searchBox"]
+    rt.vm._invoke_callable(sbox["SetText"], (sbox, "자동"))
+    assert "검색 결과:" in sp["drawerTitle"]["_text"]
+    assert sp["drawerCheckboxes"][1]["_shown"] is True
+    assert "[" in sp["drawerCheckboxes"][1]["_fsLabel"]["_text"]
+
+    rt.vm._invoke_callable(sp["SelectDetailModule"], (sp, "Combat"))
+    assert sp["searchQuery"] == ""
+    assert "Combat" in sp["drawerTitle"]["_text"]
+
+
+def test_v036_static_rule_fixtures_guarded_chat_and_multiline_build() -> None:
+    guarded = "if type(SendChatMessage) == \"function\" then\nSendChatMessage('x')\nend\n"
+    split = "if type(SendChatMessage)\n== \"function\" then\nSendChatMessage('x')\nend\n"
+    bare = "SendChatMessage('x')\n"
+    negated = "if not SendChatMessage then\nSendChatMessage('x')\nend\n"
+    paren_negated = "if (not SendChatMessage) then\nSendChatMessage('x')\nend\n"
+    global_call = "_G.SendChatMessage('x')\n"
+    later = "if not SendChatMessage then\nreturn\nend\nSendChatMessage('y')\n"
+    multiline = "local build = select(4, GetBuildInfo())\nif build >= 100000 then\nreturn\nend\n"
+    global_build = "local build = select(4, _G.GetBuildInfo())\nif build >= 100000 then\nreturn\nend\n"
+    unrelated = "local other = 1\nif other >= 100000 then\nreturn\nend\n"
+    assert not _has_unguarded_sendchat(guarded)
+    assert not _has_unguarded_sendchat(split)
+    assert _has_unguarded_sendchat(bare)
+    assert _has_unguarded_sendchat(negated)
+    assert _has_unguarded_sendchat(paren_negated)
+    assert _has_unguarded_sendchat(global_call)
+    assert _has_unguarded_sendchat(later)
+    assert _has_build_version_trap(multiline)
+    assert _has_build_version_trap(global_build)
+    assert not _has_build_version_trap(unrelated)
+
+
+def test_v036_review_handoff_profile_and_search_page() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Leatrix_Maps", "Plumber", "DialogueUI"}
+    rt.loot_slots = [1, 2]
+    ns = rt.boot_session()
+    holder = ns["Map"]["coordHolder"]
+    wmf = rt.vm.G["WorldMapFrame"]
+    wmf["_shown"] = True
+    rt._fire_widget_script(wmf, "OnShow")
+    assert holder["_shown"] is False
+    assert ns["Map"]["coordTicker"] is None
+
+    rt.fire_event("LOOT_READY")
+    assert rt.looted_slots == []
+    accepted: list[str] = []
+    rt.vm.G["AcceptQuest"] = lambda: accepted.append("accept")
+    rt.fire_event("QUEST_DETAIL")
+    assert accepted == []
+
+    way_fn = rt.vm.G["SlashCmdList"].get("FOREVERSUITEWAY")
+    rt.loaded_external_addons.add("TomTom")
+    rt.fire_event("ADDON_LOADED", "TomTom")
+    if callable(way_fn):
+        rt.vm._invoke_callable(way_fn, ("50 50",))
+    assert ns["Map"]["userWaypointActive"] is False
+
+    item_btn = rt._make_frame("Button", None)
+    item_btn["_shown"] = True
+    ns["QuestTracker"]["itemButtons"][1] = item_btn
+    rt.loaded_external_addons.add("!KalielsTracker")
+    rt.vm._invoke_callable(ns["SyncExternalFeatureYields"], ())
+    rt.vm._invoke_callable(ns["QuestTracker"]["SyncQuestItemButtons"], (ns["QuestTracker"],))
+    assert item_btn["_shown"] is False
+
+    calls = {"quest": 0}
+
+    def boom_map(*_args):
+        raise RuntimeError("map handoff failed")
+
+    def count_quest(*_args):
+        calls["quest"] += 1
+        return None
+
+    ns["Map"]["SyncSettings"] = boom_map
+    ns["QuestTracker"]["Refresh"] = count_quest
+    rt.fire_event("ADDON_LOADED", "Plumber")
+    assert ns["ModuleManager"]["modules"]["Map"]["errorCount"] >= 1
+    assert calls["quest"] >= 1
+
+    pm = ns["ProfileManager"]
+    pm["runtimeAccount"]["quest"]["collapsedQuests"][202] = True
+    rt.vm._invoke_callable(pm["SetQuestCollapsed"], (pm, 101, True))
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 101))[0] is True
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 202))[0] is True
+    rt.vm._invoke_callable(pm["SetQuestCollapsed"], (pm, 202, False))
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 202))[0] is False
+    rt.vm._invoke_callable(pm["SetQuestCollapsed"], (pm, 202, True))
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 202))[0] is True
+    secret = SecretValue("quest-id")
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, secret))[0] is False
+    rt.fire_event("QUEST_REMOVED", 101)
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 101))[0] is False
+    assert rt.vm._invoke_callable(pm["IsQuestCollapsed"], (pm, 202))[0] is True
+
+    catalog = rt.vm._invoke_callable(ns["SettingsPanel"]["BuildOptionCatalog"], ())[0]
+    matches = rt.vm._invoke_callable(ns["SettingsPanel"]["CollectOptionMatches"], (catalog, "a"))
+    spec_list = matches[0]
+    match_count = 0
+    while spec_list[match_count + 1] is not None:
+        match_count += 1
+    assert match_count >= 10
+    sp = ns["SettingsPanel"]
+    rt.run_slash("FOREVERSUITE", "ui")
+    rt.vm._invoke_callable(sp["searchBox"]["SetText"], (sp["searchBox"], "a"))
+    assert f"{match_count}건" in sp["drawerTitle"]["_text"]
+    first = sp["drawerCheckboxes"][1]["_fsLabel"]["_text"]
+    rt._fire_widget_script(sp["searchPageBtn"], "OnClick")
+    assert sp["searchPage"] == 2
+    assert sp["drawerCheckboxes"][1]["_fsLabel"]["_text"] != first
+
+    key_matches = rt.vm._invoke_callable(ns["SettingsPanel"]["CollectOptionMatches"], (catalog, "useGuildRepair"))
+    key_labels = key_matches[1]
+    joined = str(key_labels[1])
+    assert "길드 수리" in joined
+
+
+def test_v036_quest_watch_only_and_failed_alpha_restore() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.quest_watch_only = True
+    rt.vm = type(rt.vm)()
+    rt.frames.clear()
+    rt._install_wow_globals()
+    rt.baseline_global_keys = set(rt.vm.G.keys())
+    ns = rt.boot_session()
+    watch = rt.vm.G["QuestWatchFrame"]
+    assert watch["_alpha"] == 0.0
+    assert watch["_shown"] is False
+
+    rt2 = WoWForeverMockRuntime(ADDON_ROOT)
+    ns2 = rt2.boot_session()
+    obj = rt2.vm.G["ObjectiveTrackerFrame"]
+    assert obj["_shown"] is False
+    original = obj["SetAlpha"]
+
+    def fail_alpha(*_args):
+        raise RuntimeError("SetAlpha failed")
+
+    obj["SetAlpha"] = fail_alpha
+    rt2.run_slash("FOREVERSUITE", "quest default")
+    assert obj["_shown"] is False
+    obj["SetAlpha"] = original
+    rt2.vm._invoke_callable(ns2["QuestTracker"]["SyncDefaultTrackerVisibility"], (ns2["QuestTracker"],))
+    assert obj["_shown"] is True
+    assert obj["_alpha"] == 1.0
+
 
 
 

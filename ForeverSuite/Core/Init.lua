@@ -39,7 +39,7 @@ local function SafeGetAddOnMetadata(addonName, field)
 end
 
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.3.5"
+    local ver = "0.3.6"
     local clientVer = "1.60.1"
     local targetToc = 16001
     local rawV = SafeGetAddOnMetadata(addonName, "Version")
@@ -215,6 +215,33 @@ function ns.HasExternalWayCommand()
         return true, "SlashCmdList.WAY"
     end
     return false, nil
+end
+
+local FEATURE_YIELD_RULES = {
+    { key = "mapCoords", addons = { "Leatrix_Maps" } },
+    { key = "bagHud", addons = { "Baganator", "Bagnon", "BetterBags" } },
+    { key = "fastLoot", addons = { "Plumber" } },
+    { key = "questAutoDialog", addons = { "DialogueUI" } },
+    { key = "questTrackerHud", addons = { "!KalielsTracker", "KalielsTracker" } },
+}
+
+function ns.SyncExternalFeatureYields()
+    for i = 1, #FEATURE_YIELD_RULES do
+        local rule = FEATURE_YIELD_RULES[i]
+        local owner = nil
+        for j = 1, #rule.addons do
+            local addonName = rule.addons[j]
+            if ns.IsExternalAddonLoaded(addonName) then
+                owner = addonName
+                break
+            end
+        end
+        ns.SetFeatureYield(rule.key, owner ~= nil, owner)
+    end
+    local hasWay, wayOwner = ns.HasExternalWayCommand()
+    if hasWay then
+        ns.SetFeatureYield("way", true, wayOwner)
+    end
 end
 
 -- CombatQueue: defers protected operations while InCombatLockdown() is active (AC-3)

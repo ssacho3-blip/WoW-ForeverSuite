@@ -1126,6 +1126,65 @@ def test_v035_live_item_btn_anchor_quest_tooltip_and_way_hardening() -> None:
     assert ns["Map"]["userWaypointActive"] is False
 
 
+def test_v036_combat_alpha_zero_tracker_collapse_persist_and_zone_debounce() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+    obj_frame = rt.vm.G["ObjectiveTrackerFrame"]
+
+    # 1. Combat OnShow of Blizzard tracker (secure Blizzard C-code shows frame) sets Alpha=0 before deferred Hide()
+    assert obj_frame["_shown"] is False
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    obj_frame["_shown"] = True
+    obj_frame["_alpha"] = 1.0
+    rt._fire_widget_script(obj_frame, "OnShow")
+    assert obj_frame["_shown"] is True  # Hide() is deferred during combat lockdown
+    assert obj_frame["_alpha"] == 0.0   # Non-protected Alpha hides Blizzard tracker visually!
+
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert obj_frame["_shown"] is False
+
+    # Restoring default tracker restores Alpha=1.0
+    rt.run_slash("FOREVERSUITE", "quest default")
+    assert obj_frame["_shown"] is True
+    assert obj_frame["_alpha"] == 1.0
+    rt.run_slash("FOREVERSUITE", "quest default")
+    assert obj_frame["_shown"] is False
+
+    # 2. Per-quest Right-Click fold persists across /reload and clears on ResetLayout
+    row_101 = _find_quest_row_widget(tracker, 101)
+    rt._fire_widget_script(row_101, "OnClick", "RightButton")
+    assert rt.vm._invoke_callable(ns["ProfileManager"]["IsQuestCollapsed"], (ns["ProfileManager"], 101))[0] is True
+
+    ns2 = rt.simulate_reload()
+    assert ns2["QuestTracker"]["lastSnapshot"]["rows"] is not None
+    assert rt.vm._invoke_callable(ns2["ProfileManager"]["IsQuestCollapsed"], (ns2["ProfileManager"], 101))[0] is True
+    assert not any(
+        (r.get("kind") == "objective" and r.get("questID") == 101)
+        for r in _lua_list_items(ns2["QuestTracker"]["lastSnapshot"]["rows"])
+    )
+
+    rt.run_slash("FOREVERSUITE", "quest reset")
+    assert rt.vm._invoke_callable(ns2["ProfileManager"]["IsQuestCollapsed"], (ns2["ProfileManager"], 101))[0] is False
+
+    # 3. ZONE_CHANGED_NEW_AREA debounces via 0.30s bucket so transient zone text settles
+    refresh_calls = []
+    orig_refresh = ns2["QuestTracker"]["Refresh"]
+    def tracked_refresh(self_t):
+        refresh_calls.append(rt.now)
+        return rt.vm._invoke_callable(orig_refresh, (self_t,))[0]
+    ns2["QuestTracker"]["Refresh"] = tracked_refresh
+
+    rt.fire_event("ZONE_CHANGED_NEW_AREA")
+    assert len(refresh_calls) == 0  # Not called synchronously on noisy portal tick
+    rt.advance_time(0.32)
+    assert len(refresh_calls) == 1
+
+
+
 
 
 

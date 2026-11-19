@@ -301,6 +301,7 @@ class WoWForeverMockRuntime:
             fs["_shadow_offset"] = None
             fs["_point"] = None
             fs["_width"] = None
+            fs["_shown"] = True
             def set_font_object(s: LuaTable, fobj: Any) -> None:
                 s.set("_font_object", fobj)
                 s.set("_shadow_offset", (0, 0))
@@ -318,6 +319,9 @@ class WoWForeverMockRuntime:
             fs["SetJustifyH"] = lambda *_x: None
             fs["SetWordWrap"] = lambda *_x: None
             fs["SetWidth"] = lambda s, w: s.set("_width", w)
+            fs["Show"] = lambda s: s.set("_shown", True)
+            fs["Hide"] = lambda s: s.set("_shown", False)
+            fs["IsShown"] = lambda s: bool(s.get("_shown"))
             return fs
 
         def set_point(self_f: LuaTable, point: str, rel_to: Any = None, rel_pt: Any = None, x: Any = 0, y: Any = 0) -> None:
@@ -342,6 +346,7 @@ class WoWForeverMockRuntime:
             return MultiReturn(pt)
 
         f["_mouse_enabled"] = True
+        f["_alpha"] = 1.0
         f["RegisterEvent"] = register_event
         f["RegisterUnitEvent"] = register_unit_event
         f["UnregisterEvent"] = unregister_event
@@ -351,6 +356,8 @@ class WoWForeverMockRuntime:
         f["Show"] = show
         f["Hide"] = hide
         f["IsShown"] = lambda self_f: bool(self_f["_shown"])
+        f["SetAlpha"] = lambda self_f, a: self_f.set("_alpha", float(a))
+        f["GetAlpha"] = lambda self_f: float(self_f.get("_alpha")) if self_f.get("_alpha") is not None else 1.0
         f["SetSize"] = lambda self_f, w, h: self_f.set("_size", (w, h))
         f["SetWidth"] = lambda *_x: None
         f["SetHeight"] = lambda *_x: None
@@ -366,6 +373,12 @@ class WoWForeverMockRuntime:
         f["RegisterForDrag"] = lambda *_x: None
         f["StartMoving"] = lambda self_f: self_f.set("_moving", True)
         f["StopMovingOrSizing"] = lambda self_f: self_f.set("_moving", False)
+        f["SetAutoFocus"] = lambda *_x: None
+        f["SetFontObject"] = lambda *_x: None
+        f["SetTextInsets"] = lambda *_x: None
+        f["ClearFocus"] = lambda *_x: None
+        f["SetText"] = lambda self_f, t: (self_f.set("_text", str(t)), self._fire_widget_script(self_f, "OnTextChanged"))[0]
+        f["GetText"] = lambda self_f: str(self_f.get("_text") or "")
         f["SetAttribute"] = set_attribute
         f["CreateTexture"] = create_texture
         f["CreateFontString"] = create_font_string
@@ -408,6 +421,11 @@ class WoWForeverMockRuntime:
         G["WorldFrame"] = self._make_frame("Frame", "WorldFrame")
         G["MerchantFrame"] = self._make_frame("Frame", "MerchantFrame", G["UIParent"])
         G["ObjectiveTrackerFrame"] = self._make_frame("Frame", "ObjectiveTrackerFrame", G["UIParent"], "SecureFrameTemplate")
+        if getattr(self, "quest_watch_only", False):
+            G["ObjectiveTrackerFrame"] = None
+            quest_watch = self._make_frame("Frame", "QuestWatchFrame", G["UIParent"])
+            quest_watch["_shown"] = True
+            quest_watch["_alpha"] = 1.0
         wmf = self._make_frame("Frame", "WorldMapFrame")
         wmf["GetMapID"] = lambda _s: self.current_map_id
         wmf["GetNormalizedCursorPosition"] = lambda _s: (

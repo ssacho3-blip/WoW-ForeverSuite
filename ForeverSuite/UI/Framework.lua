@@ -1,7 +1,7 @@
 -- Module: UI/Framework.lua
 -- Responsibility: Lightweight dark-slate & gold UI widget factory (panels, labels, buttons, pill buttons, checkboxes, badges).
 -- Dependencies: Core/Init.lua (ns).
--- Public API: ns.UI (COLORS, STATE_HEX, CreatePanel, CreateLabel, CreateButton, CreatePillButton, StylePillButton, CreateCheckbox, FormatStateBadge).
+-- Public API: ns.UI (COLORS, STATE_HEX, CreatePanel, CreateLabel, CreateButton, CreatePillButton, StylePillButton, CreateCheckbox, CreateSearchBox, FormatStateBadge).
 -- Combat/Secret Safety: Creates only non-secure Frame/Button widgets; zero legacy UIDropDownMenu or taint-prone templates.
 local _, ns = ...
 
@@ -234,6 +234,48 @@ function UI.CreateCheckbox(parent, labelText, initialChecked, onToggle)
         if onToggle then
             onToggle(self._checked)
         end
+    end)
+    return box
+end
+
+function UI.CreateSearchBox(parent, width, height, placeholder, onTextChanged)
+    if not _G.CreateFrame then
+        return nil
+    end
+    local box = _G.CreateFrame("EditBox", nil, parent)
+    box:SetSize(width or 180, height or 20)
+    ApplySolidBox(box, UI.COLORS.CARD, { 0.36, 0.41, 0.49, 0.95 })
+    if box.SetAutoFocus then box:SetAutoFocus(false) end
+    if box.SetFontObject then box:SetFontObject("GameFontHighlightSmall") end
+    if box.SetTextInsets then box:SetTextInsets(6, 6, 0, 0) end
+    local ph = UI.CreateLabel(box, placeholder or "", "GameFontHighlightSmall", UI.COLORS.MUTED)
+    if ph then
+        ph:SetPoint("LEFT", box, "LEFT", 6, 0)
+        box._fsPlaceholder = ph
+    end
+    box:SetScript("OnTextChanged", function(self)
+        local txt = (self.GetText and self:GetText()) or ""
+        if self._fsPlaceholder then
+            if txt == "" and self._fsPlaceholder.Show then
+                self._fsPlaceholder:Show()
+            elseif txt ~= "" and self._fsPlaceholder.Hide then
+                self._fsPlaceholder:Hide()
+            end
+        end
+        if onTextChanged then
+            onTextChanged(txt)
+        end
+    end)
+    box:SetScript("OnEscapePressed", function(self)
+        local txt = (self.GetText and self:GetText()) or ""
+        if txt ~= "" and self.SetText then
+            self:SetText("")
+        elseif self.ClearFocus then
+            self:ClearFocus()
+        end
+    end)
+    box:SetScript("OnEnterPressed", function(self)
+        if self.ClearFocus then self:ClearFocus() end
     end)
     return box
 end

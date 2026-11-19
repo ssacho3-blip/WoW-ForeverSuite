@@ -18,7 +18,7 @@ local Map = {
     title = "지도 좌표 및 경로 안내 (Map)",
     priority = "P1",
     description = "월드맵 열림 전용 0.15s 플레이어·커서 좌표, /way 네이티브 3D 화살표 연동",
-    yieldTo = { "TomTom" },
+    yieldTo = {},
     coordLabel = nil,
     coordTicker = nil,
     mapHooked = false,
@@ -89,8 +89,16 @@ function Map:FormatPlayerCoordinateText()
     return "플레이어: —"
 end
 
+function Map:CoordsAllowed()
+    return self.active
+        and ns.ProfileManager:Get("map", "showCoordsOnWorldMap")
+        and (not ns.IsFeatureYielded("mapCoords"))
+        and true
+        or false
+end
+
 function Map:RefreshCoords()
-    if not self.active or not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+    if not self:CoordsAllowed() then
         self:StopMapTicker()
         if self.coordHolder and self.coordHolder.Hide then
             self.coordHolder:Hide()
@@ -108,7 +116,7 @@ function Map:RefreshCoords()
 end
 
 function Map:StartMapTicker(ctx)
-    if not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+    if not self:CoordsAllowed() then
         self:StopMapTicker()
         if self.coordHolder and self.coordHolder.Hide then
             self.coordHolder:Hide()
@@ -135,7 +143,7 @@ function Map:StopMapTicker()
 end
 
 function Map:SetWaypointFromSlash(rawInput)
-    if not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
+    if ns.IsFeatureYielded("way") or not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
         return false
     end
     local rawTrim = string_match(tostring(rawInput or ""), "^%s*(.-)%s*$") or ""
@@ -214,12 +222,13 @@ function Map:SyncWayCommand()
         self:UnregisterWaySlash()
         return
     end
-    if self.wayOwned then
-        return
-    end
     local hasExtWay, extWayOwner = ns.HasExternalWayCommand()
     if hasExtWay then
+        self:UnregisterWaySlash()
         ns.SetFeatureYield("way", true, extWayOwner)
+        return
+    end
+    if self.wayOwned then
         return
     end
     ns.SetFeatureYield("way", false, nil)
@@ -233,7 +242,7 @@ function Map:SyncWayCommand()
 end
 
 function Map:SyncSettings(ctx)
-    if not self.active or not ns.ProfileManager:Get("map", "showCoordsOnWorldMap") then
+    if not self:CoordsAllowed() then
         self:StopMapTicker()
         if self.coordHolder and self.coordHolder.Hide then
             self.coordHolder:Hide()

@@ -27,7 +27,7 @@ local function IsShiftHeld()
 end
 
 function Quest:OnQuestDetail()
-    if ns.IsFeatureYielded("questAutoAccept") then
+    if ns.IsFeatureYielded("questAutoAccept") or ns.IsFeatureYielded("questAutoDialog") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoAccept") or IsShiftHeld() then
@@ -42,7 +42,7 @@ function Quest:OnQuestDetail()
 end
 
 function Quest:OnQuestProgress()
-    if ns.IsFeatureYielded("questAutoTurnIn") then
+    if ns.IsFeatureYielded("questAutoTurnIn") or ns.IsFeatureYielded("questAutoDialog") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
@@ -54,7 +54,7 @@ function Quest:OnQuestProgress()
 end
 
 function Quest:OnQuestComplete()
-    if ns.IsFeatureYielded("questAutoTurnIn") then
+    if ns.IsFeatureYielded("questAutoTurnIn") or ns.IsFeatureYielded("questAutoDialog") then
         return
     end
     if not ns.ProfileManager:Get("quest", "autoTurnIn") or IsShiftHeld() then
@@ -151,7 +151,10 @@ function Quest:OnQuestAccepted(_, arg1, arg2)
     self:OnTrackerRefreshEvent()
 end
 
-function Quest:OnTrackerRefreshEvent()
+function Quest:OnTrackerRefreshEvent(event, questID)
+    if (event == "QUEST_REMOVED" or event == "QUEST_TURNED_IN") and ns.ProfileManager.PruneCollapsedQuest then
+        ns.ProfileManager:PruneCollapsedQuest(questID)
+    end
     if not self.active or not ns.QuestTracker then
         return
     end
@@ -317,7 +320,7 @@ function Quest:OnEnable(ctx)
     ctx:RegisterEvent("QUEST_TURNED_IN", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("QUEST_REMOVED", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Quest.OnTrackerRefreshEvent)
-    ctx:RegisterEvent("ZONE_CHANGED_NEW_AREA", Quest.OnTrackerRefreshEvent)
+    ctx:RegisterBucketEvent("ZONE_CHANGED_NEW_AREA", 0.30, Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("ZONE_CHANGED", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("PLAYER_LEVEL_UP", Quest.OnTrackerRefreshEvent)
     ctx:RegisterEvent("SUPER_TRACKING_CHANGED", Quest.OnTrackerRefreshEvent)

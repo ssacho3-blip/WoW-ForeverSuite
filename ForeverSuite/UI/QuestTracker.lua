@@ -38,7 +38,7 @@ local ROW_THEMES = {
 local QuestTracker = ns.QuestTracker or {}
 ns.QuestTracker = QuestTracker
 for k, v in pairs({
-    rowWidgets = {}, itemButtons = {}, collapsedQuests = {},
+    rowWidgets = {}, itemButtons = {},
     scrollOffset = 0, lastFrameHeight = HEADER_HEIGHT, active = false, _suppressAutoRefresh = false, _flashSeq = 0,
 }) do
     if QuestTracker[k] == nil then QuestTracker[k] = v end
@@ -120,8 +120,8 @@ function QuestTracker:ResetLayout()
     self._suppressAutoRefresh = true
     for _, kv in ipairs(RESET_DEFAULTS) do ns.ProfileManager:Set("quest", kv[1], kv[2], "account") end
     ns.ProfileManager:ClearCollapsedQuestGroups()
+    ns.ProfileManager:ClearCollapsedQuests()
     self._suppressAutoRefresh = false
-    ns.WipeTable(self.collapsedQuests)
     self.progressState, self.scrollOffset = nil, 0
     self:ApplySavedAnchor(); self:Refresh()
     return true
@@ -176,8 +176,9 @@ function QuestTracker:OnRowClicked(rowWidget, mouseBtn)
 
     local qid = data.questID
     if mouseBtn == "RightButton" then
-        self.collapsedQuests[qid] = (not self.collapsedQuests[qid]) and true or nil
-        self:Refresh(); return
+        if not ns.ProfileManager:CanWrite() then ns.Warn(READONLY_MSG); return end
+        ns.ProfileManager:SetQuestCollapsed(qid, not ns.ProfileManager:IsQuestCollapsed(qid))
+        return
     end
 
     -- Modifier priority: Ctrl > Alt > Shift(chat active) > Shift(watch toggle) > LeftClick(SuperTrack)
@@ -415,7 +416,7 @@ function QuestTracker:SyncQuestItemButtons()
     ns.CombatQueue:RunOrDefer("quest:syncItemBtns", function()
         local trackerEnabled = ns.ProfileManager:Get("quest", "trackerEnabled") and true or false
         local minimized = ns.ProfileManager:Get("quest", "trackerMinimized") and true or false
-        if (not QuestTracker.active) or (not trackerEnabled) or minimized or (not QuestTracker.frame) or (not QuestTracker.lastSnapshot) then
+        if ns.IsFeatureYielded("questTrackerHud") or (not QuestTracker.active) or (not trackerEnabled) or minimized or (not QuestTracker.frame) or (not QuestTracker.lastSnapshot) then
             for i = 1, #QuestTracker.itemButtons do
                 if QuestTracker.itemButtons[i] and QuestTracker.itemButtons[i].Hide then QuestTracker.itemButtons[i]:Hide() end
             end
@@ -656,6 +657,11 @@ end
 
 function QuestTracker:Refresh()
     if not self.active then return nil end
+    if ns.IsFeatureYielded("questTrackerHud") then
+        local tf = self.frame
+        if tf and tf.Hide then ns.CombatQueue:RunOrDefer("quest:yieldHud", function() if tf.Hide then tf:Hide() end end) end
+        self:SyncQuestItemButtons(); self:SyncDefaultTrackerVisibility(); return nil
+    end
     local rawQuests, isAvailable = self:CollectLiveQuests()
     local snapshot = ns.QuestTrackerModel.BuildSnapshot(rawQuests, {
         groupMode = ns.ProfileManager:Get("quest", "groupMode") or "zone",
@@ -666,7 +672,7 @@ function QuestTracker:Refresh()
         watchedOnly = ns.ProfileManager:Get("quest", "watchedOnly") and true or false,
         questLogUnavailable = not isAvailable,
         isGroupCollapsed = function(groupKey) return ns.ProfileManager:IsQuestGroupCollapsed(groupKey) end,
-        collapsedQuests = self.collapsedQuests,
+        collapsedQuests = ns.ProfileManager:GetCollapsedQuestSet(isAvailable and rawQuests or nil),
         prevProgressState = isAvailable and self.progressState or nil,
     })
     if isAvailable then self.progressState = snapshot.progressState end

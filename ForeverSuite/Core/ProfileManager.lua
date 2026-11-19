@@ -56,6 +56,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         trackerX = -22,
         trackerY = -215,
         collapsedGroups = {},
+        collapsedQuests = {},
     },
     profession = {
         doubleClickFishing = true,
@@ -514,6 +515,121 @@ function ProfileManager:ClearCollapsedQuestGroups()
         ns.WipeTable(self.runtimeAccount.quest.collapsedGroups)
     end
     self:NotifySettingChanged("quest", "collapsedGroups", false, "char")
+    return true
+end
+
+local function CollapseFlag(root, qKey)
+    local tbl = type(root) == "table" and type(root.quest) == "table" and root.quest.collapsedQuests or nil
+    if type(tbl) ~= "table" then return nil end
+    local val = tbl[qKey]
+    if ns.IsSecret(val) or val == nil then return nil end
+    return val and true or false
+end
+
+function ProfileManager:NormalizeQuestID(questID)
+    if questID == nil or ns.IsSecret(questID) then return nil end
+    local qKey = tonumber(questID)
+    if ns.IsSecret(qKey) or type(qKey) ~= "number" or qKey <= 0 then return nil end
+    return qKey
+end
+
+function ProfileManager:CollapseLayers()
+    local classes = self.accountDB and self.accountDB.classes
+    local classRoot = type(classes) == "table" and classes[self.playerClass] or nil
+    return (self.runtimeChar and self.runtimeChar.overrides) or nil, classRoot, self.runtimeAccount
+end
+
+function ProfileManager:IsQuestCollapsed(questID)
+    local qKey = self:NormalizeQuestID(questID)
+    if not qKey then return false end
+    local a, b, c = self:CollapseLayers()
+    local layers = { a, b, c }
+    for i = 1, 3 do
+        local flag = CollapseFlag(layers[i], qKey)
+        if flag ~= nil then return flag end
+    end
+    return false
+end
+
+function ProfileManager:SetQuestCollapsed(questID, isCollapsed)
+    if not self:CanWrite() then
+        return false, "READ_ONLY"
+    end
+    local qKey = self:NormalizeQuestID(questID)
+    if not qKey then
+        return false, "INVALID_KEY"
+    end
+    local flag = (not ns.IsSecret(isCollapsed)) and (isCollapsed and true or false) or false
+    local charRoot = self:CollapseLayers()
+    if type(charRoot) == "table" then
+        charRoot.quest = type(charRoot.quest) == "table" and charRoot.quest or {}
+        charRoot.quest.collapsedQuests = type(charRoot.quest.collapsedQuests) == "table" and charRoot.quest.collapsedQuests or {}
+        if flag then
+            charRoot.quest.collapsedQuests[qKey] = true
+        else
+            charRoot.quest.collapsedQuests[qKey] = false
+        end
+        self:NotifySettingChanged("quest", "collapsedQuests", flag, "char")
+        return true
+    end
+    local acctQuest = self.runtimeAccount.quest
+    acctQuest.collapsedQuests = type(acctQuest.collapsedQuests) == "table" and acctQuest.collapsedQuests or {}
+    acctQuest.collapsedQuests[qKey] = flag and true or false
+    self:NotifySettingChanged("quest", "collapsedQuests", flag, "account")
+    return true
+end
+
+function ProfileManager:GetCollapsedQuestSet(rawQuests)
+    local out = {}
+    if type(rawQuests) == "table" then
+        for i = 1, #rawQuests do
+            local qid = rawQuests[i] and rawQuests[i].questID
+            if qid and self:IsQuestCollapsed(qid) then out[qid] = true end
+        end
+        return out
+    end
+    local merged = {}
+    local charRoot, classRoot, acctRoot = self:CollapseLayers()
+    local layers = { acctRoot, classRoot, charRoot }
+    for i = 1, 3 do
+        local root = layers[i]
+        local tbl = type(root) == "table" and type(root.quest) == "table" and root.quest.collapsedQuests or nil
+        if type(tbl) == "table" then
+            for qid, val in pairs(tbl) do
+                if not ns.IsSecret(qid) and not ns.IsSecret(val) and val ~= nil then
+                    merged[qid] = val and true or false
+                end
+            end
+        end
+    end
+    for qid, val in pairs(merged) do if val then out[qid] = true end end
+    return out
+end
+
+function ProfileManager:PruneCollapsedQuest(questID)
+    if not self:CanWrite() then return false end
+    local qKey = self:NormalizeQuestID(questID)
+    if not qKey then return false end
+    local charRoot, classRoot, acctRoot = self:CollapseLayers()
+    local layers = { charRoot, classRoot, acctRoot }
+    for i = 1, 3 do
+        local root = layers[i]
+        local tbl = type(root) == "table" and type(root.quest) == "table" and root.quest.collapsedQuests or nil
+        if type(tbl) == "table" then tbl[qKey] = nil end
+    end
+    return true
+end
+
+function ProfileManager:ClearCollapsedQuests()
+    if not self:CanWrite() then return false, "READ_ONLY" end
+    local charRoot, _, acctRoot = self:CollapseLayers()
+    local layers = { charRoot, acctRoot }
+    for i = 1, 2 do
+        local root = layers[i]
+        local tbl = type(root) == "table" and type(root.quest) == "table" and root.quest.collapsedQuests or nil
+        if type(tbl) == "table" then ns.WipeTable(tbl) end
+    end
+    self:NotifySettingChanged("quest", "collapsedQuests", false, "char")
     return true
 end
 

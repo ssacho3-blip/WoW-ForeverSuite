@@ -358,6 +358,9 @@ function ModuleManager:HandleModuleError(name, stackSummary)
 end
 
 function ModuleManager:BootstrapAll()
+    if ns.SyncExternalFeatureYields then
+        ns.SyncExternalFeatureYields()
+    end
     for _, name in ipairs(self.order) do
         local rec = self.modules[name]
         if rec and rec.state == STATE_REGISTERED then
@@ -381,6 +384,9 @@ function ModuleManager:OnExternalAddonLoaded(loadedAddonName)
     if not self.bootstrapped or type(loadedAddonName) ~= "string" then
         return
     end
+    if ns.SyncExternalFeatureYields then
+        ns.SyncExternalFeatureYields()
+    end
     for _, name in ipairs(self.order) do
         local rec = self.modules[name]
         if rec and rec.state == STATE_ENABLED and type(rec.yieldTo) == "table" then
@@ -393,6 +399,29 @@ function ModuleManager:OnExternalAddonLoaded(loadedAddonName)
                 end
             end
         end
+    end
+    local function GuardedHandoff(moduleName, fn)
+        xpcall(fn, function(err)
+            self:HandleModuleError(moduleName, ns.SummarizeStack(err))
+        end)
+    end
+    local mapRec = self.modules["Map"]
+    if mapRec and mapRec.state == STATE_ENABLED and mapRec.definition and mapRec.definition.SyncSettings then
+        GuardedHandoff("Map", function()
+            mapRec.definition:SyncSettings(mapRec.ctx)
+        end)
+    end
+    local invRec = self.modules["Inventory"]
+    if invRec and invRec.state == STATE_ENABLED and invRec.definition and invRec.definition.UpdateHUD then
+        GuardedHandoff("Inventory", function()
+            invRec.definition:UpdateHUD()
+        end)
+    end
+    local qRec = self.modules["Quest"]
+    if qRec and qRec.state == STATE_ENABLED and ns.QuestTracker and ns.QuestTracker.Refresh then
+        GuardedHandoff("Quest", function()
+            ns.QuestTracker:Refresh()
+        end)
     end
 end
 

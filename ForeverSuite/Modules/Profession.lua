@@ -368,7 +368,7 @@ function Profession:OnEnable(ctx)
     ctx:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", Profession.OnEquipmentChanged)
     ctx:RegisterEvent("CHAT_MSG_LOOT", Profession.OnLootChatMsg)
     ctx:RegisterEvent("GET_ITEM_INFO_RECEIVED", Profession.OnItemInfoReceived)
-    ctx:RegisterEvent("ZONE_CHANGED_NEW_AREA", Profession.CheckGatheringTracking)
+    ctx:RegisterBucketEvent("ZONE_CHANGED_NEW_AREA", 0.35, Profession.CheckGatheringTracking)
 
     ctx:AddCleanup(function()
         Profession:ClearFishingBindingSafe()

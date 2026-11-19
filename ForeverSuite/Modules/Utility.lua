@@ -330,7 +330,7 @@ function Utility:OnMerchantClosed()
 end
 
 function Utility:OnLootReady()
-    if not ns.ProfileManager:Get("utility", "fastAutoLoot") or ns.InCombat() or IsShiftBypassActive() then
+    if ns.IsFeatureYielded("fastLoot") or not ns.ProfileManager:Get("utility", "fastAutoLoot") or ns.InCombat() or IsShiftBypassActive() then
         return
     end
     if not (_G.GetNumLootItems and _G.LootSlot) then
