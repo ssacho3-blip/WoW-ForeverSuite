@@ -2,6 +2,14 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.7] - 2026-11-19
+
+### Fixed (`FS-BUFF-RANK-FIX`)
+- **Out-of-Combat Class Buff False-Alarm Fix (`ForeverSuite/Modules/Combat.lua`)**:
+  - Expanded `CLASS_BUFF_FAMILIES` across all 9 classes to cover all Classic/Era/Forever spell ranks and aura/blessing/shield/armor/aspect variants instead of Rank 1 spell IDs only.
+  - Added a `C_Secrets`-safe `C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")` fallback scan matching both spell ID sets and cached localized spell names (`C_Spell.GetSpellInfo`) so higher ranks or custom Forever spell IDs never trigger false missing-buff alerts.
+  - Accepted numeric truthy (`1`) weapon enchant flags in `GetWeaponEnchantInfo` and added 10 new DDT/regression tests in `tests/test_forever_suite.py` (`148 passed`).
+
 ## [0.3.6] - 2026-11-19
 
 ### Changed & Hardened (`FS-V036-ECOSYSTEM`)

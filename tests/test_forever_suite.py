@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.6"
+    assert ns["VERSION"] == "0.3.7"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.6 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.7 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1084,6 +1084,79 @@ def test_v030_ac5_nine_class_buff_families_weapon_enchant_and_suppressions_ddt(
     rt.on_taxi = False
     rt.known_spells = set()
     assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+
+
+@pytest.mark.parametrize(
+    ("cls", "known_sid", "higher_rank_sid", "buff_name"),
+    [
+        ("MAGE", 1459, 10157, "신비한 지능"),
+        ("PRIEST", 1243, 10938, "신의 권능: 인내"),
+        ("WARRIOR", 6673, 11551, "전투의 외침"),
+        ("DRUID", 1126, 9885, "야생의 징표"),
+        ("PALADIN", 19740, 19838, "힘의 축복"),
+        ("PALADIN", 465, 7294, "응보의 오라"),
+        ("SHAMAN", 324, 10432, "번개 보호막"),
+        ("WARLOCK", 706, 11735, "악마의 갑옷"),
+        ("HUNTER", 13165, 14322, "매의 상"),
+    ],
+)
+def test_v037_buff_check_recognizes_higher_rank_ids_and_name_fallback_ddt(
+    cls: str, known_sid: int, higher_rank_sid: int, buff_name: str
+) -> None:
+    """Verify Classic/Forever higher-rank spell IDs and localized aura name fallback prevent false alarms."""
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_class = cls
+    rt.known_spells = {known_sid}
+    # 1) Player already has higher-rank buff on boot -> zero false alarm
+    rt.player_auras = {higher_rank_sid: LuaTable({"spellId": higher_rank_sid, "name": buff_name})}
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+
+    assert not any("비전투 버프 누락 알림" in m for m in rt.chat_messages), (
+        f"False missing-buff alert for {cls} with higher-rank spellId={higher_rank_sid}: {rt.chat_messages}"
+    )
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+
+    # 2) Player has an unknown/custom Forever spellId sharing the same localized spell name via GetAuraDataByIndex
+    rt.player_auras.clear()
+    rt.chat_messages.clear()
+    known_spell_info = rt.vm.G["C_Spell"]["GetSpellInfo"](known_sid)
+    localized_name = known_spell_info["name"]
+    rt.player_aura_list = [LuaTable({"spellId": 999001, "name": localized_name})]
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+    assert rt.chat_messages == []
+
+    # 3) Secret aura field in GetAuraDataByIndex fails closed (returns nil, no false alarm)
+    rt.player_aura_list = [LuaTable({"spellId": SecretValue("sid"), "name": SecretValue("name")})]
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    assert rt.chat_messages == []
+
+    # 4) Truly missing buff emits alert once
+    rt.player_aura_list = []
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert any("비전투 버프 누락 알림" in m for m in rt.chat_messages)
+
+
+def test_v037_weapon_enchant_numeric_truthy_and_custom_rank_known_spell() -> None:
+    """Verify numeric truthy weapon enchant (1) and higher-rank-only known spell do not false-alarm."""
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_class = "ROGUE"
+    rt.known_spells = {2842}
+    rt.weapon_enchant = (1, False)
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert not any("비전투 버프 누락 알림" in m for m in rt.chat_messages)
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+
+    # Warrior who only has Battle Shout Rank 6 in known_spells + active
+    rt2 = WoWForeverMockRuntime(ADDON_ROOT)
+    rt2.player_class = "WARRIOR"
+    rt2.known_spells = {11551}
+    rt2.player_auras = {11551: LuaTable({"spellId": 11551, "name": "전투의 외침"})}
+    ns2 = rt2.boot_session()
+    combat2 = ns2["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert not any("비전투 버프 누락 알림" in m for m in rt2.chat_messages)
+    assert rt2.vm._invoke_callable(combat2["CheckOutOfCombatBuffs"], (combat2,))[0] is True
 
 
 @pytest.mark.parametrize(
@@ -1301,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.6"
+    assert ns["VERSION"] == "0.3.7"
     assert ns["TARGET_TOC"] == 16001
 
 

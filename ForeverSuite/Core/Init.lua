@@ -39,7 +39,7 @@ local function SafeGetAddOnMetadata(addonName, field)
 end
 
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.3.6"
+    local ver = "0.3.7"
     local clientVer = "1.60.1"
     local targetToc = 16001
     local rawV = SafeGetAddOnMetadata(addonName, "Version")

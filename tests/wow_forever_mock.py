@@ -114,6 +114,7 @@ class WoWForeverMockRuntime:
         self.player_max_hp: Any = 1000
         self.player_dead: bool = False
         self.player_auras: dict[int, LuaTable] = {}
+        self.player_aura_list: list[Any] | None = None
         self.known_spells: set[int] = {1459, 1243, 6673, 1126, 7620}
         self.equipped_items: dict[int, int] = {}
         self.loaded_external_addons: set[str] = set()
@@ -772,11 +773,22 @@ class WoWForeverMockRuntime:
                 "IsSpellKnown": lambda sid: int(sid) in self.known_spells,
             },
         )
+        def get_aura_data_by_index(unit: Any, idx: Any, aura_filter: Any = None) -> Any:
+            if str(unit) != "player":
+                return None
+            if aura_filter is not None and "HARMFUL" in str(aura_filter):
+                return None
+            items = self.player_aura_list if self.player_aura_list is not None else list(self.player_auras.values())
+            pos = int(idx) - 1
+            if 0 <= pos < len(items):
+                return items[pos]
+            return None
+
         G["C_UnitAuras"] = StrictCNamespaceTable(
             "C_UnitAuras",
             {
                 "GetPlayerAuraBySpellID": lambda sid: self.player_auras.get(int(sid)),
-                "GetAuraDataByIndex": lambda _u, _idx, _f=None: None,
+                "GetAuraDataByIndex": get_aura_data_by_index,
             },
         )
         G["C_Minimap"] = StrictCNamespaceTable(

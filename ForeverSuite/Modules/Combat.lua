@@ -15,15 +15,101 @@ local string_lower = string.lower
 local string_match = string.match
 
 local CLASS_BUFF_FAMILIES = {
-    MAGE = { spells = { 1459, 23028 }, label = "신비한 지능" },
-    PRIEST = { spells = { 1243, 21562 }, label = "신의 권능: 인내" },
-    WARRIOR = { spells = { 6673 }, label = "전투의 외침" },
-    DRUID = { spells = { 1126, 21849 }, label = "야생의 징표" },
-    PALADIN = { spells = { 19740, 19742, 20217, 25782, 25894, 25898, 465 }, label = "성기사 축복/오라" },
-    SHAMAN = { spells = { 324, 8017, 8024, 8033, 8232 }, checkWeaponEnchant = true, label = "주술사 보호막/무기 강화" },
-    WARLOCK = { spells = { 687, 706 }, label = "악마의 갑옷" },
-    HUNTER = { spells = { 13165, 13163, 5118, 13161, 13159, 20043 }, label = "사냥꾼의 상" },
-    ROGUE = { spells = { 2842, 8679, 2823, 3408 }, checkWeaponEnchant = true, label = "도적 독 (무기 도포)" },
+    MAGE = {
+        spells = {
+            1459, 1460, 1461, 10156, 10157, 27126, -- Arcane Intellect (R1-R6)
+            23028, 27127, -- Arcane Brilliance (R1-R2)
+        },
+        nameSeeds = { 1459, 23028 },
+        label = "신비한 지능",
+    },
+    PRIEST = {
+        spells = {
+            1243, 1244, 1245, 2791, 10937, 10938, 25389, -- Power Word: Fortitude (R1-R7)
+            21562, 21564, 25392, -- Prayer of Fortitude (R1-R3)
+        },
+        nameSeeds = { 1243, 21562 },
+        label = "신의 권능: 인내",
+    },
+    WARRIOR = {
+        spells = {
+            6673, 5242, 6192, 11549, 11550, 11551, 25289, 2048, -- Battle Shout (R1-R8)
+            469, -- Commanding Shout
+        },
+        nameSeeds = { 6673, 469 },
+        label = "전투의 외침",
+    },
+    DRUID = {
+        spells = {
+            1126, 5232, 6756, 5234, 8907, 9884, 9885, 26990, -- Mark of the Wild (R1-R8)
+            21849, 21850, 26991, -- Gift of the Wild (R1-R3)
+        },
+        nameSeeds = { 1126, 21849 },
+        label = "야생의 징표",
+    },
+    PALADIN = {
+        spells = {
+            19740, 19834, 19835, 19836, 19837, 19838, 25291, 27140, -- Blessing of Might (R1-R8)
+            25782, 25916, 27141, -- Greater Blessing of Might (R1-R3)
+            19742, 19850, 19852, 19853, 19854, 25290, 27142, -- Blessing of Wisdom (R1-R7)
+            25894, 25918, 27143, -- Greater Blessing of Wisdom (R1-R3)
+            20217, 25898, -- Blessing of Kings / Greater
+            19977, 19978, 19979, 27144, 25890, 27145, -- Blessing of Light / Greater
+            20911, 20912, 20913, 20914, 27168, 25899, 27169, -- Blessing of Sanctuary / Greater
+            1038, 25895, -- Blessing of Salvation / Greater
+            465, 10290, 643, 10291, 1032, 10292, 10293, 27149, -- Devotion Aura (R1-R8)
+            7294, 10298, 10299, 10300, 10301, 27150, -- Retribution Aura (R1-R6)
+            19746, -- Concentration Aura
+            19876, 19895, 19896, 27151, -- Shadow Resistance Aura
+            19888, 19897, 19898, 27152, -- Frost Resistance Aura
+            19891, 19899, 19900, 27153, -- Fire Resistance Aura
+            20218, 32223, -- Sanctity Aura / Crusader Aura
+        },
+        nameSeeds = {
+            19740, 25782, 19742, 25894, 20217, 25898, 19977, 25890,
+            20911, 25899, 1038, 25895, 465, 7294, 19746, 19876, 19888, 19891, 20218, 32223,
+        },
+        label = "성기사 축복/오라",
+    },
+    SHAMAN = {
+        spells = {
+            324, 325, 905, 945, 8134, 10431, 10432, 25469, 25472, -- Lightning Shield (R1-R9)
+            24398, 33736, -- Water Shield
+            974, 32593, 32594, -- Earth Shield
+            8017, 8018, 8019, 10399, 16314, 16315, 16316, -- Rockbiter Weapon
+            8024, 8027, 8030, 16339, 16341, 16342, -- Flametongue Weapon
+            8033, 8038, 10456, 16355, 16356, -- Frostbrand Weapon
+            8232, 8235, 10486, 16362, -- Windfury Weapon
+        },
+        nameSeeds = { 324, 24398, 974, 8017, 8024, 8033, 8232 },
+        checkWeaponEnchant = true,
+        label = "주술사 보호막/무기 강화",
+    },
+    WARLOCK = {
+        spells = {
+            687, 696, -- Demon Skin (R1-R2)
+            706, 1086, 11733, 11734, 11735, 27260, -- Demon Armor (R1-R6)
+            28176, 28189, -- Fel Armor
+        },
+        nameSeeds = { 687, 706, 28176 },
+        label = "악마의 갑옷",
+    },
+    HUNTER = {
+        spells = {
+            13165, 14318, 14319, 14320, 14321, 14322, 25296, 27044, -- Aspect of the Hawk (R1-R8)
+            13163, 5118, 13161, 13159, -- Monkey / Cheetah / Beast / Pack
+            20043, 20190, 27045, -- Aspect of the Wild (R1-R3)
+            34074, -- Aspect of the Viper
+        },
+        nameSeeds = { 13165, 13163, 5118, 13161, 13159, 20043, 34074 },
+        label = "사냥꾼의 상",
+    },
+    ROGUE = {
+        spells = { 2842, 8679, 2823, 3408, 5761, 13219 },
+        nameSeeds = { 2842, 8679, 2823, 3408, 5761, 13219 },
+        checkWeaponEnchant = true,
+        label = "도적 독 (무기 도포)",
+    },
 }
 
 local Combat = {
@@ -290,6 +376,38 @@ function Combat:EvaluatePlayerHealth()
     end
 end
 
+local function AddSpellNameToSet(nameSet, spellID)
+    if not (C_Spell and C_Spell.GetSpellInfo) or type(spellID) ~= "number" then
+        return
+    end
+    local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+    if ok and type(info) == "table" and not ns.IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
+        nameSet[info.name] = true
+    end
+end
+
+local function GetClassBuffMatchers(self, playerClass, spec, firstKnownSpellID)
+    if type(self._buffMatcherCache) ~= "table" then
+        self._buffMatcherCache = {}
+    end
+    local entry = self._buffMatcherCache[playerClass]
+    if not entry then
+        local idSet = {}
+        local nameSet = {}
+        for _, sid in ipairs(spec.spells) do
+            idSet[sid] = true
+        end
+        local seeds = type(spec.nameSeeds) == "table" and spec.nameSeeds or spec.spells
+        for _, sid in ipairs(seeds) do
+            AddSpellNameToSet(nameSet, sid)
+        end
+        entry = { idSet = idSet, nameSet = nameSet }
+        self._buffMatcherCache[playerClass] = entry
+    end
+    AddSpellNameToSet(entry.nameSet, firstKnownSpellID)
+    return entry.idSet, entry.nameSet
+end
+
 function Combat:CheckOutOfCombatBuffs()
     if ns.InCombat() or not ns.ProfileManager:Get("combat", "remindMissingClassBuff") then
         return nil
@@ -307,7 +425,8 @@ function Combat:CheckOutOfCombatBuffs()
         return nil
     end
 
-    local spec = CLASS_BUFF_FAMILIES[ns.ProfileManager.playerClass]
+    local playerClass = ns.ProfileManager.playerClass
+    local spec = CLASS_BUFF_FAMILIES[playerClass]
     if not spec or type(spec.spells) ~= "table" then
         return nil
     end
@@ -316,7 +435,11 @@ function Combat:CheckOutOfCombatBuffs()
     for _, sid in ipairs(spec.spells) do
         local known = true
         if C_Spell and C_Spell.IsSpellKnown then
-            known = C_Spell.IsSpellKnown(sid) and true or false
+            local okK, kVal = pcall(C_Spell.IsSpellKnown, sid)
+            if not okK or ns.IsSecret(kVal) then
+                return nil
+            end
+            known = kVal and true or false
         end
         if known then
             firstKnownSpellID = sid
@@ -327,9 +450,10 @@ function Combat:CheckOutOfCombatBuffs()
         return nil
     end
 
-    local hasAuraAPI = (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) and true or false
+    local hasAuraByID = (C_UnitAuras and type(C_UnitAuras.GetPlayerAuraBySpellID) == "function") and true or false
+    local hasAuraByIndex = (C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function") and true or false
     local hasEnchantAPI = (spec.checkWeaponEnchant and type(_G.GetWeaponEnchantInfo) == "function") and true or false
-    if not hasAuraAPI and not hasEnchantAPI then
+    if not hasAuraByID and not hasAuraByIndex and not hasEnchantAPI then
         return nil
     end
 
@@ -340,22 +464,59 @@ function Combat:CheckOutOfCombatBuffs()
             if ns.IsSecret(mhEnchant) or ns.IsSecret(ohEnchant) then
                 return nil
             end
-            if mhEnchant == true or ohEnchant == true then
+            if mhEnchant == true or mhEnchant == 1 or ohEnchant == true or ohEnchant == 1 then
                 satisfied = true
             end
         end
     end
 
-    if (not satisfied) and hasAuraAPI then
+    if (not satisfied) and hasAuraByID then
         for _, sid in ipairs(spec.spells) do
-            local aura = C_UnitAuras.GetPlayerAuraBySpellID(sid)
+            local okA, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, sid)
+            if okA then
+                if ns.IsSecret(aura) then
+                    return nil
+                end
+                if aura ~= nil then
+                    satisfied = true
+                    break
+                end
+            end
+        end
+    end
+
+    if (not satisfied) and hasAuraByIndex then
+        local idSet, nameSet = GetClassBuffMatchers(self, playerClass, spec, firstKnownSpellID)
+        local sawSecretAura = false
+        for i = 1, 64 do
+            local okI, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not okI then
+                break
+            end
             if ns.IsSecret(aura) then
                 return nil
             end
-            if aura ~= nil then
-                satisfied = true
+            if aura == nil then
                 break
             end
+            if type(aura) == "table" then
+                local aSid = aura.spellId
+                local aName = aura.name
+                local sidSecret = ns.IsSecret(aSid)
+                local nameSecret = ns.IsSecret(aName)
+                if (not sidSecret) and type(aSid) == "number" and idSet[aSid] then
+                    satisfied = true
+                    break
+                elseif (not nameSecret) and type(aName) == "string" and aName ~= "" and nameSet[aName] then
+                    satisfied = true
+                    break
+                elseif sidSecret or nameSecret then
+                    sawSecretAura = true
+                end
+            end
+        end
+        if (not satisfied) and sawSecretAura then
+            return nil
         end
     end
 
@@ -456,6 +617,7 @@ function Combat:OnDisable()
     self.lastShownPct = nil
     self.lastHealthStatus = "NORMAL"
     self.lastBuffMissing = false
+    self._buffMatcherCache = nil
     self.nameplateOwner = nil
 end
 
