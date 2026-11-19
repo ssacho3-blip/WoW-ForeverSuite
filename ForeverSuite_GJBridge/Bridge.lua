@@ -210,6 +210,67 @@ function ns.PrintStatus()
     end
 end
 
+local function ShouldPreserveGJNavigation(C)
+    if type(C) ~= "table" or type(C.NavigationTarget) ~= "function" then
+        return false
+    end
+    local ok, preserve = pcall(function()
+        local tgt = C.NavigationTarget()
+        if type(tgt) ~= "table" then
+            return false
+        end
+        return tgt.source == "service" or (tgt.source == "checkpoint" and not tgt.routeQuestID)
+    end)
+    return ok and preserve == true or false
+end
+
+local function SyncExternalQuestNav(nextSuper, _clickedQID)
+    local C = _G.GJCompanion
+    if type(C) ~= "table" or type(nextSuper) ~= "number" or nextSuper <= 0 then
+        return
+    end
+    if ShouldPreserveGJNavigation(C) then
+        return
+    end
+    local okInfo, tgtQuestID, selQuest, isPaused, hasTarget = pcall(function()
+        local tgt = type(C.NavigationTarget) == "function" and C.NavigationTarget() or nil
+        local st = type(C.NavigationState) == "function" and C.NavigationState() or nil
+        local tQid = (type(tgt) == "table") and tgt.questID or nil
+        local sQid = (type(st) == "table") and st.selectedQuest or nil
+        local paused = (type(st) == "table") and (st.paused == true) or false
+        return tQid, sQid, paused, (tgt ~= nil)
+    end)
+    if not okInfo then
+        return
+    end
+    if hasTarget and tgtQuestID == nextSuper and not isPaused then
+        return
+    end
+    if (not hasTarget) and selQuest == nextSuper and not isPaused then
+        if type(C.UpdateSelectedQuest) == "function" then
+            pcall(C.UpdateSelectedQuest, true)
+        end
+    elseif type(C.ToggleQuestNavigation) == "function" then
+        pcall(C.ToggleQuestNavigation, nextSuper)
+    end
+end
+
+local function SyncBridgeNavHooks(available)
+    local FS = _G.ForeverSuite
+    if type(FS) ~= "table" then
+        return
+    end
+    if available then
+        FS.SyncExternalQuestNavigation = SyncExternalQuestNav
+        FS.ShouldPreserveActiveNavigation = function()
+            return ShouldPreserveGJNavigation(_G.GJCompanion)
+        end
+    else
+        FS.SyncExternalQuestNavigation = nil
+        FS.ShouldPreserveActiveNavigation = nil
+    end
+end
+
 function ns.Initialize()
     local C = _G.GJCompanion
     if type(C) ~= "table" then
@@ -217,10 +278,12 @@ function ns.Initialize()
         for k in pairs(ns.targets) do
             ns.targets[k] = "UNAVAILABLE"
         end
+        SyncBridgeNavHooks(false)
         ns.SyncOwnership()
         return false
     end
 
+    SyncBridgeNavHooks(true)
     ns.status = "ACTIVE"
     ns._ApplyBrandingOverrides(C)
     ns._ReconcileNavRangeLayout(C, ns._GetBridgeStore(false), false)
@@ -268,6 +331,7 @@ if _G.CreateFrame then
                 if evFrame.UnregisterEvent then
                     evFrame:UnregisterEvent("PLAYER_LOGIN")
                 end
+                SyncBridgeNavHooks(type(_G.GJCompanion) == "table")
                 ns.SanitizeLiveGJSettings(true)
                 ns.SyncOwnership()
             elseif event ~= "PLAYER_ENTERING_WORLD" or isInitialLogin ~= false or isReloadingUi ~= false then

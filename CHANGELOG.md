@@ -2,6 +2,17 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.5] - 2026-11-19
+
+### Fixed (`FS-QUEST-NAV-FIX`)
+- **Live Special Quest Item Button Anchor (`ForeverSuite/UI/QuestTracker.lua`)**:
+  - Replaced SavedVariables-only anchor math with `ResolveItemButtonAnchor()` reading live screen coordinates (`GetLeft`/`GetRight`/`GetTop`, `UIParent:GetWidth`, `GetEffectiveScale()` ratio, and `widget:GetTop`) anchored to `UIParent` `"BOTTOMLEFT"` inside `CombatQueue:RunOrDefer`, preventing item button drift under `SetClampedToScreen(true)` or mismatched `point`/`relPoint` settings while preserving headless fallback and `UIParent` isolation.
+- **Quest Row Readability & Hover Tooltip (`ForeverSuite/UI/QuestTracker.lua`, `ForeverSuite/UI/QuestTrackerModel.lua`)**:
+  - Stripped color codes when calculating `rightReserve` badge clearance and added `questZone` + up to 4 `questObjectives` to quest-row hover tooltips so truncated titles/objectives remain readable.
+- **ForeverSuite ↔ GodJohnson Navigation Sync & `/way` Protection (`ForeverSuite_GJBridge/Bridge.lua`, `ForeverSuite/Modules/Quest.lua`, `ForeverSuite/Modules/Map.lua`)**:
+  - Added `SyncExternalQuestNavigation` & `ShouldPreserveActiveNavigation` bridge hooks so left-clicking a quest in `ForeverSuiteQuestTracker` unpauses/re-syncs `GJCompanion` 3D arrow navigation without clobbering manual checkpoints or service routes.
+  - Hardened `/way` (`clear`/`reset` whitespace & case trimming, overview-map fallback to player map) and preserved active `/way` or external checkpoints during `QUEST_ACCEPTED` `autoSuperTrack`.
+
 ## [0.3.4] - 2026-11-18
 
 ### Synced & Improved (`FS-UPSTREAM-GJ-5278` & `navRangeLayout`)

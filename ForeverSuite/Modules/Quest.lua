@@ -140,7 +140,11 @@ function Quest:OnQuestAccepted(_, arg1, arg2)
                 pcall(C_QuestLog.AddQuestWatch, questID)
             end
         end
-        if ns.ProfileManager:Get("quest", "autoSuperTrack") and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+        local hasActiveWay = ns.Map and ns.Map.userWaypointActive == true
+            and (not C_SuperTrack or not C_SuperTrack.GetSuperTrackedQuestID or C_SuperTrack.GetSuperTrackedQuestID() == 0)
+        local preserveNav = hasActiveWay
+            or (type(ns.ShouldPreserveActiveNavigation) == "function" and ns.ShouldPreserveActiveNavigation())
+        if (not preserveNav) and ns.ProfileManager:Get("quest", "autoSuperTrack") and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
             pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
         end
     end

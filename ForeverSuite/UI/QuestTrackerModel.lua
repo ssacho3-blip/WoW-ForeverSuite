@@ -536,6 +536,8 @@ function QuestTrackerModel.BuildSnapshot(rawQuests, opts)
                         fontTier = "header",
                         questID = q.questID,
                         questTitle = q.title,
+                        questZone = q.zone,
+                        questObjectives = q.objectives,
                         logIndex = q.logIndex,
                         groupKey = grp.key,
                         text = FormatQuestTitleLine(q, mode),

@@ -8,7 +8,7 @@ local _, ns = ...
 local type, ipairs, pairs = type, ipairs, pairs
 local tostring, tonumber, pcall = tostring, tonumber, pcall
 local math_max, math_min, math_floor = math.max, math.min, math.floor
-local string_find = string.find
+local string_find, string_gsub = string.find, string.gsub
 
 local TRACKER_WIDTH, HEADER_HEIGHT, BODY_TOP_PAD, ROW_HEIGHT = 340, 32, 6, 22
 local MAX_VISIBLE_ROWS, MAX_ITEM_BUTTONS = 18, 6
@@ -196,8 +196,11 @@ function QuestTracker:OnRowClicked(rowWidget, mouseBtn)
 
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
         local currentSuper = self:QuerySuperTrackedQuestID()
-        pcall(C_SuperTrack.SetSuperTrackedQuestID, (currentSuper == qid) and 0 or qid)
+        local nextSuper = (currentSuper == qid) and 0 or qid
+        pcall(C_SuperTrack.SetSuperTrackedQuestID, nextSuper)
+        if nextSuper > 0 and ns.Map then ns.Map.userWaypointActive = false end
         if C_QuestLog and C_QuestLog.SetSelectedQuest then pcall(C_QuestLog.SetSelectedQuest, qid) end
+        if type(ns.SyncExternalQuestNavigation) == "function" then pcall(ns.SyncExternalQuestNavigation, nextSuper, qid) end
         self:Refresh()
     end
 end
@@ -259,7 +262,9 @@ local function ApplyRowVisualStyle(widget, d)
             widget._fontName = theme.font
         end
         local rTxt = (d and d.rightText) or ""
-        local rightReserve = (rTxt == "") and 6 or (string_find(rTxt, "아이템", 1, true) and 104 or 56)
+        local plainR = string_gsub(string_gsub(rTxt, "|c%x%x%x%x%x%x%x%x", ""), "|r", "")
+        local rightReserve = (plainR == "") and 6
+            or (string_find(plainR, "아이템", 1, true) and ((#plainR > 10) and 116 or 84) or 56)
         if lt.ClearAllPoints then lt:ClearAllPoints() end
         lt:SetPoint("LEFT", widget, "LEFT", theme.pad, 0)
         if lt.SetWidth then lt:SetWidth(INNER_ROW_WIDTH - theme.pad - rightReserve) end
@@ -273,7 +278,15 @@ local function RenderRowTooltip(owner, d)
         _G.GameTooltip:AddLine("그룹 접기 / 펼치기", 1.0, 0.85, 0.35)
         _G.GameTooltip:AddLine("좌클릭: 현재 그룹 토글  |  우클릭: 전체 그룹 일괄 접기/펼치기", 0.80, 0.84, 0.90)
     elseif d.kind == "quest" then
-        _G.GameTooltip:AddLine(d.questTitle or "퀘스트 포커스 및 제어", 1.0, 0.85, 0.35)
+        local baseTitle = d.questTitle or "퀘스트 포커스 및 제어"
+        local qHead = (type(d.questZone) == "string" and d.questZone ~= "") and (baseTitle .. " (" .. d.questZone .. ")") or baseTitle
+        _G.GameTooltip:AddLine(qHead, 1.0, 0.85, 0.35, true)
+        if type(d.questObjectives) == "table" then
+            for oi = 1, math_min(#d.questObjectives, 4) do
+                local obj = d.questObjectives[oi]
+                if type(obj) == "table" and obj.text then _G.GameTooltip:AddLine(" · " .. obj.text, obj.finished and 0.45 or 0.90, obj.finished and 0.88 or 0.94, obj.finished and 0.55 or 0.98, true) end
+            end
+        end
         _G.GameTooltip:AddLine("좌클릭: 화살표(SuperTrack)  |  Ctrl+좌클릭: 퀘스트 상세 열기", 0.85, 0.90, 0.95)
         _G.GameTooltip:AddLine("Alt+좌클릭: 채팅 링크  |  Shift+좌클릭: 추적 토글  |  우클릭: 접기", 0.72, 0.78, 0.86)
     elseif d.kind == "objective" then
@@ -372,18 +385,30 @@ function QuestTracker:EnsureItemButtonPool()
     end)
 end
 
-local function ComputeItemButtonAnchor(point, baseX, baseY, frameHeight, rowIdx)
-    local hasRight = string_find(point, "RIGHT", 1, true) ~= nil
-    local hasLeft = string_find(point, "LEFT", 1, true) ~= nil
-    local xOffset = hasRight and (baseX - TRACKER_WIDTH - 6)
-        or (hasLeft and (baseX + TRACKER_WIDTH + 6) or (baseX + math_floor(TRACKER_WIDTH / 2) + 6))
-    local topY = baseY
-    if string_find(point, "BOTTOM", 1, true) then
-        topY = baseY + frameHeight
-    elseif not string_find(point, "TOP", 1, true) then
-        topY = baseY + math_floor(frameHeight / 2)
+local function SafeFrameNum(fn, obj)
+    if type(fn) ~= "function" then return nil end
+    local ok, val = pcall(fn, obj)
+    return (ok and not ns.IsSecret(val) and type(val) == "number" and val == val) and val or nil
+end
+
+local function ResolveItemButtonAnchor(frame, widget, point, relPoint, baseX, baseY, frameHeight, rowIdx)
+    local rowOffset = HEADER_HEIGHT + BODY_TOP_PAD + (rowIdx - 1) * ROW_HEIGHT
+    local fLeft, fRight, fTop = SafeFrameNum(frame.GetLeft, frame), SafeFrameNum(frame.GetRight, frame), SafeFrameNum(frame.GetTop, frame)
+    local uiW = _G.UIParent and SafeFrameNum(_G.UIParent.GetWidth, _G.UIParent) or nil
+    if fLeft and fRight and fTop and uiW and uiW > 0 then
+        local fScale = SafeFrameNum(frame.GetEffectiveScale, frame) or 1
+        local uScale = SafeFrameNum(_G.UIParent.GetEffectiveScale, _G.UIParent) or 1
+        local ratio = (uScale > 0) and (fScale / uScale) or 1
+        local sLeft, sRight, sTop = fLeft * ratio, fRight * ratio, fTop * ratio
+        local wTop = widget and SafeFrameNum(widget.GetTop, widget)
+        local rowTop = wTop and (wTop * ratio) or (sTop - rowOffset)
+        local placeLeft = ((sLeft + sRight) * 0.5) >= (uiW * 0.5)
+        return placeLeft and "TOPRIGHT" or "TOPLEFT", "BOTTOMLEFT", placeLeft and (sLeft - 6) or (sRight + 6), rowTop
     end
-    return hasRight and "TOPRIGHT" or "TOPLEFT", xOffset, topY - (HEADER_HEIGHT + BODY_TOP_PAD + (rowIdx - 1) * ROW_HEIGHT)
+    local hasRight, hasLeft = string_find(point, "RIGHT", 1, true) ~= nil, string_find(point, "LEFT", 1, true) ~= nil
+    local xOffset = hasRight and (baseX - TRACKER_WIDTH - 6) or (hasLeft and (baseX + TRACKER_WIDTH + 6) or (baseX + math_floor(TRACKER_WIDTH / 2) + 6))
+    local topY = string_find(point, "BOTTOM", 1, true) and (baseY + frameHeight) or ((not string_find(point, "TOP", 1, true)) and (baseY + math_floor(frameHeight / 2)) or baseY)
+    return hasRight and "TOPRIGHT" or "TOPLEFT", relPoint, xOffset, topY - rowOffset
 end
 
 function QuestTracker:SyncQuestItemButtons()
@@ -424,8 +449,8 @@ function QuestTracker:SyncQuestItemButtons()
                             pcall(btn._fsIcon.SetTexture, btn._fsIcon, itemIcon)
                         end
                         if btn.ClearAllPoints then btn:ClearAllPoints() end
-                        local btnPoint, xOff, yOff = ComputeItemButtonAnchor(point, baseX, baseY, frameHeight, rowIdx)
-                        btn:SetPoint(btnPoint, _G.UIParent, relPoint, xOff, yOff)
+                        local btnPoint, anchorRel, xOff, yOff = ResolveItemButtonAnchor(QuestTracker.frame, widget, point, relPoint, baseX, baseY, frameHeight, rowIdx)
+                        btn:SetPoint(btnPoint, _G.UIParent, anchorRel, xOff, yOff)
                         if btn.Show then btn:Show() end
                     end
                 end
@@ -618,9 +643,7 @@ function QuestTracker:RenderSnapshot(snapshot)
 
     local footerExtra = 0
     if self.scrollHint then
-        local hintText, extra = ns.QuestTrackerModel.FormatScrollHint(
-            snapshot, self.scrollOffset, shownCount, totalRows, MAX_VISIBLE_ROWS
-        )
+        local hintText, extra = ns.QuestTrackerModel.FormatScrollHint(snapshot, self.scrollOffset, shownCount, totalRows, MAX_VISIBLE_ROWS)
         self.scrollHint:SetText(hintText)
         footerExtra = extra
     end

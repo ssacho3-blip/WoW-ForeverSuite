@@ -11,6 +11,7 @@ local ipairs = ipairs
 local tonumber = tonumber
 local tostring = tostring
 local string_format = string.format
+local string_lower = string.lower
 local string_match = string.match
 
 local Map = {
@@ -22,8 +23,10 @@ local Map = {
     coordTicker = nil,
     mapHooked = false,
     active = false,
+    userWaypointActive = false,
     lastCoordText = "플레이어: —",
 }
+ns.Map = Map
 
 function Map:QueryPlayerCoords()
     if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition) then
@@ -135,8 +138,10 @@ function Map:SetWaypointFromSlash(rawInput)
     if not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
         return false
     end
-    local clean = tostring(rawInput or "")
-    if clean == "clear" or clean == "reset" then
+    local rawTrim = string_match(tostring(rawInput or ""), "^%s*(.-)%s*$") or ""
+    local cleanCmd = string_lower(rawTrim)
+    if cleanCmd == "clear" or cleanCmd == "reset" then
+        self.userWaypointActive = false
         if C_Map and C_Map.ClearUserWaypoint then
             C_Map.ClearUserWaypoint()
             ns.Print("사용자 목표 지점 핀을 해제했습니다.")
@@ -144,7 +149,7 @@ function Map:SetWaypointFromSlash(rawInput)
         return true
     end
 
-    local sx, sy, note = string_match(clean, "^%s*([%d%.]+)[,%s]+([%d%.]+)%s*(.-)%s*$")
+    local sx, sy, note = string_match(rawTrim, "^([%d%.]+)[,%s]+([%d%.]+)%s*(.-)%s*$")
     local x = tonumber(sx)
     local y = tonumber(sy)
     if not x or not y or x < 0 or x > 100 or y < 0 or y > 100 then
@@ -159,13 +164,16 @@ function Map:SetWaypointFromSlash(rawInput)
 
     local uiMapID = nil
     if _G.WorldMapFrame and _G.WorldMapFrame.IsShown and _G.WorldMapFrame:IsShown() and _G.WorldMapFrame.GetMapID then
-        uiMapID = _G.WorldMapFrame:GetMapID()
+        local shownMap = _G.WorldMapFrame:GetMapID()
+        if shownMap and not ns.IsSecret(shownMap) and C_Map.CanSetUserWaypointOnMap(shownMap) then
+            uiMapID = shownMap
+        end
     end
     if not uiMapID then
         uiMapID = C_Map.GetBestMapForUnit("player")
     end
 
-    if not uiMapID or not C_Map.CanSetUserWaypointOnMap(uiMapID) then
+    if not uiMapID or ns.IsSecret(uiMapID) or not C_Map.CanSetUserWaypointOnMap(uiMapID) then
         ns.Warn("현재 지역(인스턴스/미지원 맵)에서는 웨이포인트를 설정할 수 없습니다.")
         return false
     end
@@ -180,6 +188,7 @@ function Map:SetWaypointFromSlash(rawInput)
     end
 
     C_Map.SetUserWaypoint(mapPoint)
+    self.userWaypointActive = true
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
         C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     end
@@ -298,6 +307,7 @@ end
 
 function Map:OnDisable()
     self.active = false
+    self.userWaypointActive = false
     self:StopMapTicker()
     self:UnregisterWaySlash()
     if self.coordHolder and self.coordHolder.Hide then

@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.3.4)" in ps1
+    assert "(v0.3.5)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1502,6 +1502,76 @@ def test_nav_range_layout_combat_init_defers_to_player_regen_enabled() -> None:
     rt.fire_event("PLAYER_REGEN_ENABLED")
     assert bridge.get("targets").get("navRangeLayout") == "APPLIED"
     assert abs(rt.vm.run_chunk("return GJCompanion._nav.arrowPosition.y")[0] - 0.74) < 1e-4
+
+
+def test_v035_quest_nav_sync_unpauses_gj_and_preserves_checkpoints() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_level = 24
+    rt.real_zone_text = "서부 몰락지대"
+    rt.zone_text = "서부 몰락지대"
+    rt.quest_log_entries = [
+        {"title": "서부 몰락지대", "isHeader": True},
+        {"questID": 101, "title": "데피아즈단 두목 처치", "level": 23, "isOnMap": True},
+        {"questID": 102, "title": "농장 수색", "level": 24, "isOnMap": True},
+    ]
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+
+    # When GJCompanion is paused on 101 with target == nil, clicking quest 101 in ForeverSuite must unpause via ToggleQuestNavigation
+    rt.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.278",
+            _tgt = nil,
+            _state = { mode = "auto", paused = true, selectedQuest = 101 },
+            _calls = {},
+            NavigationTarget = function() return GJCompanion._tgt end,
+            NavigationState = function() return GJCompanion._state end,
+            ToggleQuestNavigation = function(id)
+                table.insert(GJCompanion._calls, { "toggle", id })
+                GJCompanion._state.paused = false
+                GJCompanion._state.selectedQuest = id
+                GJCompanion._tgt = { source = "quest", questID = id }
+            end,
+            UpdateSelectedQuest = function(force)
+                table.insert(GJCompanion._calls, { "update", force })
+            end,
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    assert bridge.get("status") == "ACTIVE"
+
+    row_101 = next(
+        w for w in [tracker["rowWidgets"][i] for i in range(1, 19)]
+        if w.get("_rowData") and w["_rowData"].get("kind") == "quest" and w["_rowData"].get("questID") == 101
+    )
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.super_tracked_quest_id == 101
+    assert rt.vm.run_chunk("return #GJCompanion._calls, GJCompanion._calls[1][1], GJCompanion._calls[1][2]")[0:3] == (
+        1,
+        "toggle",
+        101,
+    )
+
+    # When GJCompanion already tracks 101, clicking 101 toggles SuperTrack off without extra ToggleQuestNavigation
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.super_tracked_quest_id == 0
+    assert rt.vm.run_chunk("return #GJCompanion._calls")[0] == 1
+
+    # When GJCompanion holds an active manual checkpoint, QUEST_ACCEPTED must not hijack SuperTrack
+    rt.vm.run_chunk('GJCompanion._tgt = { source = "checkpoint", id = 1417 }')
+    rt.super_tracked_quest_id = 0
+    rt.quest_log_entries.append({"questID": 205, "title": "새 퀘스트", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 205)
+    assert rt.super_tracked_quest_id == 0
+
+    # When GJCompanion disappears, bridge clears hooks cleanly
+    rt.vm.run_chunk("GJCompanion = nil")
+    bridge.get("Initialize")()
+    assert ns.get("SyncExternalQuestNavigation") is None
+    assert ns.get("ShouldPreserveActiveNavigation") is None
+
 
 
 

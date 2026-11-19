@@ -1062,6 +1062,71 @@ def test_v032_forever_expansion_quest_badge_and_collector_ddt() -> None:
     assert "[∞ 포에버]" in badges[90001]
 
 
+def test_v035_live_item_btn_anchor_quest_tooltip_and_way_hardening() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    rt.quest_special_items = {101: ("|Hitem:5501|h[데피아즈단 신호탄]|h", 133710)}
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
+    ui_parent = rt.vm.G["UIParent"]
+    tf = tracker["frame"]
+
+    # 1. Quest row hover tooltip displays zone & objectives even if truncated in 340px row
+    row_101 = _find_quest_row_widget(tracker, 101)
+    gt = rt.vm.G["GameTooltip"]
+    rt._fire_widget_script(row_101, "OnEnter")
+    assert gt["IsShown"](gt) is True
+    assert any("서부 몰락지대" in line for line in gt["_lines"])
+    assert any("에드윈 밴클리프 처치: 0/1" in line for line in gt["_lines"])
+    rt._fire_widget_script(row_101, "OnLeave")
+
+    # 2. Live clamped geometry overrides mismatched RIGHT/TOPRIGHT anchor math while keeping UIParent parent & anchor
+    ui_parent["GetWidth"] = lambda _s: 1920.0
+    ui_parent["GetEffectiveScale"] = lambda _s: 1.0
+    tf["GetLeft"] = lambda _s: 1570.0
+    tf["GetRight"] = lambda _s: 1910.0
+    tf["GetTop"] = lambda _s: 880.0
+    tf["GetEffectiveScale"] = lambda _s: 1.0
+    row_101["GetTop"] = lambda _s: 822.0
+
+    rt.vm._invoke_callable(tracker["SyncQuestItemButtons"], (tracker,))
+    btn1 = rt.vm.G["ForeverSuiteQuestItemBtn1"]
+    assert btn1["_parent"] is ui_parent
+    assert btn1["_point"][0] == "TOPRIGHT"
+    assert btn1["_point"][1] is ui_parent
+    assert btn1["_point"][2] == "BOTTOMLEFT"
+    assert btn1["_point"][3] == 1564.0
+    assert btn1["_point"][4] == 822.0
+
+    # Left half of screen places button on the right side of the tracker
+    tf["GetLeft"] = lambda _s: 40.0
+    tf["GetRight"] = lambda _s: 380.0
+    rt.vm._invoke_callable(tracker["SyncQuestItemButtons"], (tracker,))
+    assert btn1["_point"][0] == "TOPLEFT"
+    assert btn1["_point"][3] == 386.0
+
+    # 3. /way trims whitespace & case for clear/reset, falls back from overview map, and Quest accept preserves /way
+    rt.current_map_id = 1411
+    rt.vm.G["C_Map"]["CanSetUserWaypointOnMap"] = lambda mid: int(mid) == 1411
+    wmf = rt.vm.G["WorldMapFrame"]
+    wmf["IsShown"] = lambda _s: True
+    wmf["GetMapID"] = lambda _s: 947  # Azeroth continent overview map where waypoint cannot be set
+
+    rt.run_slash("FOREVERSUITEWAY", "55.2 41.8 광맥")
+    assert rt.user_waypoint is not None and rt.user_waypoint["uiMapID"] == 1411
+    assert ns["Map"]["userWaypointActive"] is True
+
+    rt.super_tracked_quest_id = 0
+    rt.quest_log_entries.append({"questID": 499, "title": "새 퀘스트", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 499)
+    assert rt.super_tracked_quest_id == 0  # Active /way route is preserved!
+
+    rt.run_slash("FOREVERSUITEWAY", "  CLEAR  ")
+    assert rt.user_waypoint is None
+    assert ns["Map"]["userWaypointActive"] is False
+
+
+
 
 
 
