@@ -632,6 +632,7 @@ function Combat:OnEnable(ctx)
 
     ctx:RegisterUnitEvent("UNIT_HEALTH", "player", Combat.EvaluatePlayerHealth)
     ctx:RegisterBucketEvent("UNIT_AURA", 0.50, Combat.CheckOutOfCombatBuffs, "player")
+    ctx:RegisterBucketEvent("WEAPON_ENCHANT_CHANGED", 0.30, Combat.CheckOutOfCombatBuffs)
     ctx:RegisterEvent("PLAYER_REGEN_ENABLED", Combat.CheckOutOfCombatBuffs)
     ctx:RegisterEvent("ADDON_LOADED", Combat.OnAddonLoaded)
 

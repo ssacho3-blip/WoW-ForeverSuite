@@ -2,6 +2,18 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.9] - 2026-11-21
+
+### Hardened (`FS-PREEMPTIVE-AUDIT-V039`)
+- **Zero-Taint `GameTooltip` & Fail-Closed Bag Capacity (`ForeverSuite/Modules/Inventory.lua`)**:
+  - Replaced direct `_fs*` field mutations on Blizzard's global `GameTooltip` frame with module-local weak-key tables (`__mode = "k"`), preventing tooltip taint propagation in WoW Forever `1.60.1`.
+  - Wrapped `C_Container.GetContainerNumSlots` / `GetContainerNumFreeSlots` in `pcall` + `ns.IsSecret` guards, returning an incomplete scan (`nil, nil, true` -> `가방: —`) whenever any bag is unreadable instead of fabricating partial totals.
+- **Combat-Safe & Read-Only-Safe CVar Management (`ForeverSuite/Modules/Utility.lua`, `Modules/Profession.lua`)**:
+  - Routed `Utility:ApplyQoLCVars()` / `RestoreQoLCVars()` and `Profession:SyncFishingSoundBoost()` / `RestoreFishingSoundBoost()` through `CombatQueue:RunOrDefer` with strict `CanWrite()` guards, independent `Sound_SFXVolume` / `Sound_MusicVolume` recovery, and accurate return values.
+- **`C_Secrets` & Weapon Enchant Reactivity (`ForeverSuite/Modules/Profession.lua`, `Modules/Quest.lua`, `Modules/Combat.lua`)**:
+  - Guarded `GetInventoryItemID`, `GetItemInfo` fishing-pole fields, `C_Minimap.GetNumTrackingTypes`, and `C_SuperTrack.GetSuperTrackedQuestID` against `SecretValue` traps.
+  - Subscribed `Combat` to `WEAPON_ENCHANT_CHANGED` (`0.30s` bucket) so Shaman/Rogue weapon imbue changes refresh out-of-combat buff state immediately (`151 passed`).
+
 ## [0.3.8] - 2026-11-21
 
 ### Fixed (`FS-TEMP-ENCHANT-ICON`)

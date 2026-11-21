@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.8"
+    assert ns["VERSION"] == "0.3.9"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.8 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.9 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.8"
+    assert ns["VERSION"] == "0.3.9"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -1982,6 +1982,163 @@ def test_v038_startup_cvar_recovery_defers_in_combat_and_rejected_writes_fail_cl
     rt_ret.vm.G["C_CVar"]["SetCVar"] = orig_set_ret
     assert rt_ret.vm._invoke_callable(combat_ret["RestoreTempEnchantIconCVar"], (combat_ret,))[0] is True
     assert rt_ret.cvars["displayTemporaryEnchantIcon"] == "0"
+
+
+def test_v039_preemptive_audit_zero_taint_tooltip_cvar_combat_secrets_and_weapon_enchant_event() -> None:
+    """Verify all 6 pre-emptive audit fixes: zero GameTooltip mutation, Utility/Profession CombatQueue+RO, C_Secrets guards, WEAPON_ENCHANT_CHANGED."""
+    # 1. Zero-Taint GameTooltip: EnrichItemTooltip must NOT attach _fs* keys onto Blizzard GameTooltip
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    ns = rt.boot_session()
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+    gt = rt.vm.G["GameTooltip"]
+    gt["ClearLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    assert gt.get("_fsResetHookInstalled") is None
+    assert gt.get("_fsLastEnrichSig") is None
+    assert gt.get("_fsLastLineCount") is None
+    lines_after_first = gt["NumLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    assert gt["NumLines"](gt) == lines_after_first
+    gt["ClearLines"](gt)
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    assert any("묶음 판매가(x5)" in line for line in gt["_lines"])
+
+    # 2A. Utility QoL CVar: Read-Only fails closed; combat disable defers restore until PLAYER_REGEN_ENABLED
+    rt_uro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_uro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 99})
+    rt_uro.boot_session()
+    assert rt_uro.cvars["countdownForCooldowns"] == "0"
+
+    rt_uc = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_uc.boot_session()
+    assert rt_uc.cvars["countdownForCooldowns"] == "1"
+    rt_uc.combat_lockdown = True
+    rt_uc.run_slash("FOREVERSUITE", "disable Utility")
+    assert rt_uc.cvars["countdownForCooldowns"] == "1"
+    rt_uc.combat_lockdown = False
+    rt_uc.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt_uc.cvars["countdownForCooldowns"] == "0"
+    # Stale qolApplied=True while Utility is disabled must still return False from ApplyQoLCVars
+    util_uc = rt_uc.vm.G["ForeverSuite"]["ModuleManager"]["modules"]["Utility"]["definition"]
+    util_uc["qolApplied"] = True
+    assert rt_uc.vm._invoke_callable(util_uc["ApplyQoLCVars"], (util_uc,))[0] is False
+
+    # 2B. Profession Sound Boost: Read-Only fails closed; combat disable defers restore; partial apply retries failed CVar
+    rt_pro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_pro.equipped_items[16] = 6256
+    rt_pro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 99})
+    ns_pro = rt_pro.boot_session()
+    assert rt_pro.cvars["Sound_SFXVolume"] == "0.5"
+    assert ns_pro["ModuleManager"]["modules"]["Profession"]["definition"]["soundBoostActive"] is False
+
+    rt_pc = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_pc.equipped_items[16] = 6256
+    rt_pc.boot_session()
+    assert rt_pc.cvars["Sound_SFXVolume"] == "1.0"
+    assert rt_pc.cvars["Sound_MusicVolume"] == "0.2"
+    rt_pc.combat_lockdown = True
+    rt_pc.run_slash("FOREVERSUITE", "disable Profession")
+    assert rt_pc.cvars["Sound_SFXVolume"] == "1.0"
+    assert rt_pc.cvars["Sound_MusicVolume"] == "0.2"
+    rt_pc.combat_lockdown = False
+    rt_pc.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt_pc.cvars["Sound_SFXVolume"] == "0.5"
+    assert rt_pc.cvars["Sound_MusicVolume"] == "0.6"
+
+    rt_part = WoWForeverMockRuntime(ADDON_ROOT)
+    orig_set_part = rt_part.vm.G["C_CVar"]["SetCVar"]
+    rt_part.vm.G["C_CVar"]["SetCVar"] = lambda k, v: False if str(k) == "Sound_MusicVolume" else orig_set_part(k, v)
+    ns_part = rt_part.boot_session()
+    prof_part = ns_part["ModuleManager"]["modules"]["Profession"]["definition"]
+    rt_part.equipped_items[16] = 6256
+    assert rt_part.vm._invoke_callable(prof_part["SyncFishingSoundBoost"], (prof_part,))[0] is False
+    assert rt_part.cvars["Sound_SFXVolume"] == "1.0"
+    assert rt_part.cvars["Sound_MusicVolume"] == "0.6"
+    assert prof_part["sfxBoostApplied"] is True
+    assert prof_part["musicBoostApplied"] is False
+    rt_part.vm.G["C_CVar"]["SetCVar"] = orig_set_part
+    assert rt_part.vm._invoke_callable(prof_part["SyncFishingSoundBoost"], (prof_part,))[0] is True
+    assert rt_part.cvars["Sound_MusicVolume"] == "0.2"
+    assert prof_part["musicBoostApplied"] is True
+
+    # Unverified music restore (writes 0.6 but readback returns None) retains pending entry and invalidates applied flag so re-equip re-applies 0.2
+    orig_get_part = rt_part.vm.G["C_CVar"]["GetCVar"]
+    rt_part.equipped_items.pop(16, None)
+    rt_part.vm.G["C_CVar"]["GetCVar"] = lambda k: None if str(k) == "Sound_MusicVolume" else orig_get_part(k)
+    assert rt_part.vm._invoke_callable(prof_part["SyncFishingSoundBoost"], (prof_part,))[0] is False
+    assert rt_part.cvars["Sound_MusicVolume"] == "0.6"
+    assert rt_part.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["Sound_MusicVolume"] == "0.6"
+    assert prof_part["musicBoostApplied"] is False
+    rt_part.vm.G["C_CVar"]["GetCVar"] = orig_get_part
+    rt_part.equipped_items[16] = 6256
+    assert rt_part.vm._invoke_callable(prof_part["SyncFishingSoundBoost"], (prof_part,))[0] is True
+    assert rt_part.cvars["Sound_MusicVolume"] == "0.2"
+    assert prof_part["musicBoostApplied"] is True
+
+    # 3. Inventory ScanBagCapacity C_Secrets & throwing getter guards -> incomplete scan renders "가방: —"
+    rt_bag = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_bag = rt_bag.boot_session()
+    inv_bag = ns_bag["ModuleManager"]["modules"]["Inventory"]["definition"]
+    orig_free = rt_bag.vm.G["C_Container"]["GetContainerNumFreeSlots"]
+    rt_bag.vm.G["C_Container"]["GetContainerNumFreeSlots"] = lambda b: SecretValue("freeSlots") if int(b) == 2 else orig_free(b)
+    free_s, total_s, incomplete = rt_bag.vm._invoke_callable(inv_bag["ScanBagCapacity"], (inv_bag,))
+    assert (free_s, total_s, incomplete) == (None, None, True)
+    rt_bag.vm._invoke_callable(inv_bag["UpdateHUD"], (inv_bag,))
+    assert "가방: —" in inv_bag["hudText"]["_text"]
+
+    def throwing_free_slots(_b: object) -> object:
+        raise RuntimeError("bag getter fault")
+
+    rt_bag.vm.G["C_Container"]["GetContainerNumFreeSlots"] = throwing_free_slots
+    assert rt_bag.vm._invoke_callable(inv_bag["ScanBagCapacity"], (inv_bag,)) == (None, None, True)
+    rt_bag.vm._invoke_callable(inv_bag["UpdateHUD"], (inv_bag,))
+    assert "가방: —" in inv_bag["hudText"]["_text"]
+
+    # 4. Profession IsFishingPoleEquipped & CheckGatheringTracking C_Secrets guards
+    rt_ps = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_ps = rt_ps.boot_session()
+    prof_ps = ns_ps["ModuleManager"]["modules"]["Profession"]["definition"]
+    rt_ps.vm.G["GetInventoryItemID"] = lambda _u, _s: SecretValue("mhItem")
+    assert rt_ps.vm._invoke_callable(prof_ps["IsFishingPoleEquipped"], (prof_ps,))[0] is False
+    rt_ps.vm.G["GetInventoryItemID"] = lambda _u, _s: 6256
+    rt_ps.item_db[6256] = ("낚싯대", "|Hitem:6256|h[낚싯대]|h", 1, 5, 1, "무기", SecretValue("sub"), 1, "", 132932, 20, SecretValue("cls"), SecretValue("subcls"))
+    assert rt_ps.vm._invoke_callable(prof_ps["IsFishingPoleEquipped"], (prof_ps,))[0] is False
+    rt_ps.vm.G["C_Minimap"]["GetNumTrackingTypes"] = lambda: SecretValue("numTrack")
+    rt_ps.vm._invoke_callable(prof_ps["CheckGatheringTracking"], (prof_ps,))
+
+    # 5. Quest OnQuestAccepted C_Secrets guard: unreadable GetSuperTrackedQuestID must NOT crash or falsely treat super-track as clear
+    rt_qs = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_qs = rt_qs.boot_session()
+    ns_qs["Map"]["userWaypointActive"] = True
+    rt_qs.super_tracked_quest_id = 100
+    rt_qs.vm.G["C_SuperTrack"]["GetSuperTrackedQuestID"] = lambda: SecretValue("superQID")
+    rt_qs.fire_event("QUEST_ACCEPTED", 1, 777)
+    assert rt_qs.super_tracked_quest_id == 777
+    # When readable and == 0, active /way IS preserved
+    rt_qs.super_tracked_quest_id = 0
+    rt_qs.vm.G["C_SuperTrack"]["GetSuperTrackedQuestID"] = lambda: 0
+    rt_qs.fire_event("QUEST_ACCEPTED", 1, 778)
+    assert rt_qs.super_tracked_quest_id == 0
+
+    # 6. Combat WEAPON_ENCHANT_CHANGED bucket refreshes Shaman buff state without needing UNIT_AURA
+    rt_sh = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_sh.player_class = "SHAMAN"
+    rt_sh.known_spells = {8017}
+    ns_sh = rt_sh.boot_session()
+    combat_sh = ns_sh["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert combat_sh["lastBuffMissing"] is True
+    rt_sh.chat_messages.clear()
+
+    rt_sh.weapon_enchant = (True, False)
+    rt_sh.fire_event("WEAPON_ENCHANT_CHANGED")
+    rt_sh.advance_time(0.35)
+    assert combat_sh["lastBuffMissing"] is False
+
+    rt_sh.weapon_enchant = (False, False)
+    rt_sh.fire_event("WEAPON_ENCHANT_CHANGED")
+    rt_sh.advance_time(0.35)
+    assert combat_sh["lastBuffMissing"] is True
+    assert any("비전투 버프 누락 알림" in m for m in rt_sh.chat_messages)
 
 
 

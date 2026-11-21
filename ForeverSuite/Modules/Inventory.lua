@@ -9,10 +9,13 @@ local type = type
 local pcall = pcall
 local select = select
 local tonumber = tonumber
+local setmetatable = setmetatable
 local math_floor = math.floor
 local string_format = string.format
 
 local NUM_TOTAL_BAGS = 4
+local tooltipHooked = setmetatable and setmetatable({}, { __mode = "k" }) or {}
+local tooltipState = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 
 local Inventory = {
     title = "가방 및 아이템 정보 (Inventory)",
@@ -30,19 +33,31 @@ local Inventory = {
 
 function Inventory:ScanBagCapacity()
     if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerNumFreeSlots) then
-        return 0, 0
+        return 0, 0, true
     end
     local freeTotal = 0
     local slotTotal = 0
+    local incomplete = false
     for bag = 0, NUM_TOTAL_BAGS do
-        local numSlots = C_Container.GetContainerNumSlots(bag) or 0
-        local freeSlots = C_Container.GetContainerNumFreeSlots(bag) or 0
-        slotTotal = slotTotal + numSlots
-        freeTotal = freeTotal + freeSlots
+        local okSlots, numSlots = pcall(C_Container.GetContainerNumSlots, bag)
+        local okFree, freeSlots = pcall(C_Container.GetContainerNumFreeSlots, bag)
+        if okSlots and okFree
+            and type(numSlots) == "number" and not ns.IsSecret(numSlots) and numSlots >= 0
+            and type(freeSlots) == "number" and not ns.IsSecret(freeSlots) and freeSlots >= 0 then
+            slotTotal = slotTotal + numSlots
+            freeTotal = freeTotal + freeSlots
+        else
+            incomplete = true
+        end
+    end
+    if incomplete then
+        self.lastFreeSlots = nil
+        self.lastTotalSlots = nil
+        return nil, nil, true
     end
     self.lastFreeSlots = freeTotal
     self.lastTotalSlots = slotTotal
-    return freeTotal, slotTotal
+    return freeTotal, slotTotal, false
 end
 
 function Inventory:ApplyHUDAnchor()
@@ -80,12 +95,12 @@ function Inventory:UpdateHUD()
     if not self.hudText then
         return
     end
-    local freeSlots, totalSlots = self:ScanBagCapacity()
+    local freeSlots, totalSlots, incomplete = self:ScanBagCapacity()
     if self.hudFrame and self.hudFrame.Show and not ns.InCombat() then
         self.hudFrame:Show()
     end
     local prefix = ns.ProfileManager:Get("ui", "hudUnlocked") and "|cffffd23f✥ |r" or ""
-    if totalSlots <= 0 then
+    if incomplete or type(totalSlots) ~= "number" or totalSlots <= 0 then
         self.hudText:SetText(prefix .. "가방: —")
         return
     end
@@ -162,16 +177,15 @@ end
 
 local function ResetTooltipEnrichState(tip)
     if type(tip) == "table" then
-        tip._fsLastEnrichSig = nil
-        tip._fsLastLineCount = nil
+        tooltipState[tip] = nil
     end
 end
 
 local function EnsureTooltipResetHooks(tooltip)
-    if type(tooltip) ~= "table" or tooltip._fsResetHookInstalled then
+    if type(tooltip) ~= "table" or tooltipHooked[tooltip] then
         return
     end
-    tooltip._fsResetHookInstalled = true
+    tooltipHooked[tooltip] = true
     if type(tooltip.HookScript) == "function" then
         pcall(tooltip.HookScript, tooltip, "OnTooltipCleared", ResetTooltipEnrichState)
         pcall(tooltip.HookScript, tooltip, "OnHide", ResetTooltipEnrichState)
@@ -218,7 +232,8 @@ function Inventory:EnrichItemTooltip(tooltip, itemID, itemLink, stackCount)
 
     if type(tooltip.NumLines) == "function" then
         local lineCount = tooltip:NumLines()
-        if type(lineCount) == "number" and lineCount > 0 and tooltip._fsLastEnrichSig == enrichSig and tooltip._fsLastLineCount == lineCount then
+        local prev = tooltipState[tooltip]
+        if type(lineCount) == "number" and lineCount > 0 and prev and prev.sig == enrichSig and prev.lines == lineCount then
             return
         end
     end
@@ -250,8 +265,10 @@ function Inventory:EnrichItemTooltip(tooltip, itemID, itemLink, stackCount)
     end
 
     if type(tooltip.NumLines) == "function" then
-        tooltip._fsLastEnrichSig = enrichSig
-        tooltip._fsLastLineCount = tooltip:NumLines()
+        tooltipState[tooltip] = {
+            sig = enrichSig,
+            lines = tooltip:NumLines(),
+        }
     end
 end
 

@@ -27,6 +27,8 @@ local Profession = {
     worldHooked = false,
     overrideActive = false,
     soundBoostActive = false,
+    sfxBoostApplied = false,
+    musicBoostApplied = false,
     lastRightClickAt = 0,
     sessionStartAt = 0,
     sessionTotalItems = 0,
@@ -53,15 +55,15 @@ function Profession:IsFishingPoleEquipped()
         return false
     end
     local itemID = _G.GetInventoryItemID("player", MAINHAND_SLOT)
-    if not itemID then
+    if not itemID or ns.IsSecret(itemID) then
         return false
     end
     if C_Item and C_Item.GetItemInfo then
         local _, _, _, _, _, _, itemSubType, _, _, _, _, classID, subClassID = C_Item.GetItemInfo(itemID)
-        if classID == 2 and subClassID == 20 then
+        if not ns.IsSecret(classID) and not ns.IsSecret(subClassID) and classID == 2 and subClassID == 20 then
             return true
         end
-        if type(itemSubType) == "string" then
+        if not ns.IsSecret(itemSubType) and type(itemSubType) == "string" then
             local low = string_lower(itemSubType)
             if string_find(low, "fishing", 1, true) or string_find(itemSubType, "낚싯대", 1, true) then
                 return true
@@ -154,24 +156,65 @@ function Profession:OnWorldMouseDown(mouseButton)
     end
 end
 
-function Profession:SyncFishingSoundBoost()
-    if ns.InCombat() then
-        return
+local function RestoreSingleSoundCVar(cvarName)
+    local pending = ns.ProfileManager.accountDB and ns.ProfileManager.accountDB.pendingCVarRestores
+    local hadPending = type(pending) == "table" and pending[cvarName] ~= nil
+    if not hadPending then
+        return true
     end
-    local wantBoost = self.active
-        and (not ns.IsFeatureYielded("fishing"))
-        and ns.ProfileManager:Get("profession", "fishingSoundBoost")
-        and self:IsFishingPoleEquipped()
+    return ns.ProfileManager:RestoreTemporaryCVar(cvarName) and true or false
+end
 
-    if wantBoost and not self.soundBoostActive then
-        ns.ProfileManager:ApplyTemporaryCVar("Sound_SFXVolume", "1.0")
-        ns.ProfileManager:ApplyTemporaryCVar("Sound_MusicVolume", "0.2")
-        self.soundBoostActive = true
-    elseif (not wantBoost) and self.soundBoostActive then
-        ns.ProfileManager:RestoreTemporaryCVar("Sound_SFXVolume")
-        ns.ProfileManager:RestoreTemporaryCVar("Sound_MusicVolume")
-        self.soundBoostActive = false
+local function RestoreSoundCVarsIfAllowed(self)
+    if not ns.ProfileManager:CanWrite() then
+        return false
     end
+    local okSfx = RestoreSingleSoundCVar("Sound_SFXVolume")
+    local okMus = RestoreSingleSoundCVar("Sound_MusicVolume")
+    self.sfxBoostApplied = false
+    self.musicBoostApplied = false
+    self.soundBoostActive = false
+    return okSfx and okMus
+end
+
+function Profession:RestoreFishingSoundBoost()
+    local ok = false
+    ns.CombatQueue:RunOrDefer("profession:soundBoost", function()
+        ok = RestoreSoundCVarsIfAllowed(self)
+    end)
+    return ok
+end
+
+function Profession:SyncFishingSoundBoost()
+    local ok = false
+    ns.CombatQueue:RunOrDefer("profession:soundBoost", function()
+        if not ns.ProfileManager:CanWrite() then
+            return
+        end
+        local wantBoost = self.active
+            and (not ns.IsFeatureYielded("fishing"))
+            and ns.ProfileManager:Get("profession", "fishingSoundBoost")
+            and self:IsFishingPoleEquipped()
+        if wantBoost then
+            if not self.sfxBoostApplied then
+                self.sfxBoostApplied = ns.ProfileManager:ApplyTemporaryCVar("Sound_SFXVolume", "1.0") and true or false
+            end
+            if not self.musicBoostApplied then
+                self.musicBoostApplied = ns.ProfileManager:ApplyTemporaryCVar("Sound_MusicVolume", "0.2") and true or false
+            end
+            self.soundBoostActive = (self.sfxBoostApplied or self.musicBoostApplied) and true or false
+            ok = self.sfxBoostApplied and self.musicBoostApplied
+        else
+            local pending = ns.ProfileManager.accountDB and ns.ProfileManager.accountDB.pendingCVarRestores
+            local hasAnyPending = type(pending) == "table" and (pending["Sound_SFXVolume"] ~= nil or pending["Sound_MusicVolume"] ~= nil)
+            if self.soundBoostActive or hasAnyPending then
+                ok = RestoreSoundCVarsIfAllowed(self)
+            else
+                ok = true
+            end
+        end
+    end)
+    return ok
 end
 
 function Profession:OnCombatEntering()
@@ -278,7 +321,11 @@ function Profession:CheckGatheringTracking()
     if not (C_Minimap and C_Minimap.GetNumTrackingTypes and C_Minimap.GetTrackingInfo) then
         return
     end
-    local count = C_Minimap.GetNumTrackingTypes() or 0
+    local rawCount = C_Minimap.GetNumTrackingTypes()
+    if ns.IsSecret(rawCount) or type(rawCount) ~= "number" or rawCount <= 0 then
+        return
+    end
+    local count = rawCount
     local hasGatherSkill = false
     local anyGatherActive = false
 
@@ -372,11 +419,7 @@ function Profession:OnEnable(ctx)
 
     ctx:AddCleanup(function()
         Profession:ClearFishingBindingSafe()
-        if Profession.soundBoostActive then
-            ns.ProfileManager:RestoreTemporaryCVar("Sound_SFXVolume")
-            ns.ProfileManager:RestoreTemporaryCVar("Sound_MusicVolume")
-            Profession.soundBoostActive = false
-        end
+        Profession:RestoreFishingSoundBoost()
     end)
 
     self:SyncFishingSoundBoost()
@@ -385,11 +428,7 @@ end
 function Profession:OnDisable()
     self.active = false
     self:ClearFishingBindingSafe()
-    if self.soundBoostActive then
-        ns.ProfileManager:RestoreTemporaryCVar("Sound_SFXVolume")
-        ns.ProfileManager:RestoreTemporaryCVar("Sound_MusicVolume")
-        self.soundBoostActive = false
-    end
+    self:RestoreFishingSoundBoost()
 end
 
 ns.ModuleManager:Register("Profession", Profession)

@@ -86,22 +86,44 @@ function Utility:CleanActionBarsNow()
     return true
 end
 
+local function IsUtilityModuleActive()
+    if not ns.ModuleManager or type(ns.ModuleManager.GetModule) ~= "function" then
+        return false
+    end
+    local rec = ns.ModuleManager:GetModule("Utility")
+    local enabledState = (ns.ModuleManager.STATES and ns.ModuleManager.STATES.ENABLED) or "ENABLED"
+    return rec ~= nil and rec.state == enabledState
+end
+
 function Utility:ApplyQoLCVars()
-    if not ns.ProfileManager:Get("utility", "applyQoLCVars") then
-        return
-    end
-    if ns.ProfileManager:ApplyTemporaryCVar("countdownForCooldowns", "1") then
-        self.qolApplied = true
-    else
-        ns.SafeSetCVar("countdownForCooldowns", "1")
-    end
+    local applied = false
+    ns.CombatQueue:RunOrDefer("utility:qolCVars", function()
+        if not IsUtilityModuleActive()
+            or not ns.ProfileManager:CanWrite()
+            or not ns.ProfileManager:Get("utility", "applyQoLCVars") then
+            return
+        end
+        applied = ns.ProfileManager:ApplyTemporaryCVar("countdownForCooldowns", "1") and true or false
+        self.qolApplied = applied
+    end)
+    return applied
 end
 
 function Utility:RestoreQoLCVars()
-    if self.qolApplied then
-        ns.ProfileManager:RestoreTemporaryCVar("countdownForCooldowns")
-        self.qolApplied = false
-    end
+    local ok = false
+    ns.CombatQueue:RunOrDefer("utility:qolCVars", function()
+        if not ns.ProfileManager:CanWrite() then
+            return
+        end
+        local pending = ns.ProfileManager.accountDB and ns.ProfileManager.accountDB.pendingCVarRestores
+        local hadPending = type(pending) == "table" and pending["countdownForCooldowns"] ~= nil
+        local restored = ns.ProfileManager:RestoreTemporaryCVar("countdownForCooldowns")
+        if restored or not hadPending then
+            self.qolApplied = false
+            ok = true
+        end
+    end)
+    return ok
 end
 
 function Utility:HandleProtectCommand(rawArg)
