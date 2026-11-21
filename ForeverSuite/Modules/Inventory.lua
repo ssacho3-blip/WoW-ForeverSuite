@@ -22,13 +22,15 @@ local COMMON_QUALITY = (_G.Enum and _G.Enum.ItemQuality and _G.Enum.ItemQuality.
 local QUEST_CLASS_ID = (_G.Enum and _G.Enum.ItemClass and _G.Enum.ItemClass.Questitem) or 12
 local DEFAULT_CHEAP_LIMIT = 5
 local MAX_CHEAP_LIMIT = 10
+local LOW_BAG_ALERT_THRESHOLD = 2
+local LOW_BAG_ALERT_COOLDOWN = 60
 local tooltipHooked = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local tooltipState = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 
 local Inventory = {
     title = "가방 및 아이템 정보 (Inventory)",
     priority = "P1",
-    description = "Baganator/BetterBags 공존, 여유 슬롯·골드 원장 HUD, 툴팁 상점가·묶음가·보호 표시",
+    description = "Baganator/BetterBags 공존, 여유 슬롯·골드 원장 HUD, 최저가 안내(/fs cheap), 툴팁 상점가·묶음가·보호 표시",
     yieldTo = {},
     hudFrame = nil,
     hudText = nil,
@@ -37,6 +39,8 @@ local Inventory = {
     active = false,
     lastFreeSlots = 0,
     lastTotalSlots = 0,
+    lowBagAlertActive = false,
+    lastLowBagAlertAt = -999,
 }
 
 function Inventory:ScanBagCapacity()
@@ -439,13 +443,57 @@ function Inventory:EnsureTooltipHook()
     end
 end
 
+function Inventory:CheckLowBagSlotsNotice(freeSlots, totalSlots, incomplete)
+    if incomplete or type(totalSlots) ~= "number" or totalSlots <= 0 or type(freeSlots) ~= "number" or freeSlots < 0 then
+        return false
+    end
+    if freeSlots > LOW_BAG_ALERT_THRESHOLD then
+        self.lowBagAlertActive = false
+        return false
+    end
+    local now = ns.GetNow()
+    if self.lowBagAlertActive or (now - self.lastLowBagAlertAt) < LOW_BAG_ALERT_COOLDOWN then
+        return false
+    end
+
+    local items, scanIncomplete = self:FindCheapestSellableItems(1)
+    if scanIncomplete then
+        return false
+    end
+    self.lowBagAlertActive = true
+    self.lastLowBagAlertAt = now
+
+    if #items >= 1 then
+        local cheapest = items[1]
+        local stackText = cheapest.stackCount > 1 and (" x" .. tostring(cheapest.stackCount)) or ""
+        ns.Print(string_format(
+            "가방 여유 %d칸 — 최저가 추천: [가방 %d-%d] %s%s (%s) | 전체 보기: /fs cheap",
+            freeSlots, cheapest.bag, cheapest.slot, cheapest.label, stackText, ns.FormatMoney(cheapest.totalValue)
+        ))
+        return true
+    end
+    ns.Print(string_format("가방 여유 %d칸 — 정리 가능한 회색/일반 잡템이 없습니다.", freeSlots))
+    return true
+end
+
 function Inventory:OnBagBucket()
     self:UpdateHUD()
+    local freeSlots, totalSlots, incomplete
+    if ns.IsFeatureYielded("bagHud") or not ns.ProfileManager:Get("inventory", "showFreeSlotsHUD") or not self.hudText then
+        freeSlots, totalSlots, incomplete = self:ScanBagCapacity()
+    else
+        freeSlots = self.lastFreeSlots
+        totalSlots = self.lastTotalSlots
+        incomplete = (freeSlots == nil or totalSlots == nil)
+    end
+    self:CheckLowBagSlotsNotice(freeSlots, totalSlots, incomplete)
 end
 
 function Inventory:OnEnable(ctx)
     self.active = true
     self.hudHovered = false
+    self.lowBagAlertActive = false
+    self.lastLowBagAlertAt = -999
     local hud = ctx:CreateFrame("Frame", "ForeverSuiteBagHUD", _G.UIParent)
     if hud then
         if not hud._fsInitialized then

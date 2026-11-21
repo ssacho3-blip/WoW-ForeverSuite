@@ -4,7 +4,7 @@
 ## Notes: 갓존슨 통합 애드온(v5.236+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
 ## Notes-koKR: 갓존슨 통합 애드온(v5.236+) 비파괴 개인화 오버라이드 및 ForeverSuite 단일 소유자(YIELDED) 중재 브리지
 ## Author: Youngseo Cho (AI-Driven Personal Edition)
-## Version: 0.4.0
+## Version: 0.5.0
 ## IconTexture: 134063
 ## Category: 갓존슨 통합 애드온
 ## Group: GodJohnsonGoldBorder

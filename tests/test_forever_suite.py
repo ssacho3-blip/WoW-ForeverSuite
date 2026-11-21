@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.4.0"
+    assert ns["VERSION"] == "0.5.0"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.4.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.5.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.4.0"
+    assert ns["VERSION"] == "0.5.0"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -2283,6 +2283,7 @@ def test_v040_session_xp_tracker_rollover_eta_secret_gap_and_tooltip() -> None:
     "case_name",
     [
         "level_up_before_xp_wrap",
+        "level_up_with_new_max_before_xp_wrap",
         "xp_wrap_before_level_up_with_new_max",
         "xp_wrap_before_level_up_with_stale_max",
     ],
@@ -2300,6 +2301,12 @@ def test_v040_xp_levelup_event_orderings_never_stall_or_double_count(case_name: 
         rt.fire_event("PLAYER_LEVEL_UP", 25)
         rt.player_xp = 200
         rt.player_xp_max = 1200
+        rt.fire_event("PLAYER_XP_UPDATE")
+    elif case_name == "level_up_with_new_max_before_xp_wrap":
+        rt.player_level = 25
+        rt.player_xp_max = 1200
+        rt.fire_event("PLAYER_LEVEL_UP", 25)
+        rt.player_xp = 200
         rt.fire_event("PLAYER_XP_UPDATE")
     elif case_name == "xp_wrap_before_level_up_with_new_max":
         rt.player_xp = 200
@@ -2321,6 +2328,127 @@ def test_v040_xp_levelup_event_orderings_never_stall_or_double_count(case_name: 
     rt.player_xp = 250
     rt.fire_event("PLAYER_XP_UPDATE")
     assert util["xpState"]["sessionGained"] == 350
+
+
+def test_v050_low_bag_auto_cheap_notice_edge_cooldown_and_baganator_coexistence() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons.add("Baganator")
+    # Configure 5 bags of 1 slot each -> total 5 slots; fill 3 slots so 2 remain free (<= threshold 2)
+    for b in range(5):
+        rt.bags[b] = {"num_slots": 1, "items": {}}
+    rt.bags[0]["items"] = {1: {"itemID": 9001, "quality": 0, "stackCount": 1, "hyperlink": "|Hitem:9001|h[깨진 늑대 송곳니]|h"}}
+    rt.bags[1]["items"] = {1: {"itemID": 9002, "quality": 0, "stackCount": 2, "hyperlink": "|Hitem:9002|h[낡은 가죽 조각]|h"}}
+    rt.bags[2]["items"] = {1: {"itemID": 2001, "quality": 2, "stackCount": 1}}
+    ns = rt.boot_session()
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("bagHud",))[0] is True
+    rt.chat_messages.clear()
+
+    # BAG_UPDATE_DELAYED bucket fires -> low bag (2 free) emits exactly 1 line with cheapest item
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    notices = [m for m in rt.chat_messages if "가방 여유 2칸" in m]
+    assert len(notices) == 1
+    assert "깨진 늑대 송곳니" in notices[0] and "/fs cheap" in notices[0]
+
+    # Repeated BAG_UPDATE_DELAYED while still <=2 free slots MUST NOT spam
+    rt.chat_messages.clear()
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    assert not any("가방 여유" in m for m in rt.chat_messages)
+
+    # Free up slots (>2), drop back within 60s cooldown -> MUST stay suppressed
+    rt.bags[2]["items"] = {}
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    rt.bags[2]["items"] = {1: {"itemID": 2001, "quality": 2, "stackCount": 1}}
+    rt.chat_messages.clear()
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    assert not any("가방 여유" in m for m in rt.chat_messages)
+
+    # Free up slots (>2), wait cooldown >=60s, drop back to <=2 with a secret slot -> fail-closed silent & NOT latched!
+    rt.bags[2]["items"] = {}
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    rt.advance_time(65.0)
+    rt.bags[2]["items"] = {1: {"itemID": SecretValue("secItem"), "quality": 0, "stackCount": 1}}
+    rt.chat_messages.clear()
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    assert not any("가방 여유" in m for m in rt.chat_messages)
+
+    # Once secret slot resolves to clean item, notice fires immediately (proves incomplete scan did not latch)
+    rt.bags[2]["items"] = {1: {"itemID": 2001, "quality": 2, "stackCount": 1}}
+    rt.chat_messages.clear()
+    rt.fire_event("BAG_UPDATE_DELAYED")
+    rt.advance_time(0.25)
+    assert any("가방 여유 2칸" in m for m in rt.chat_messages)
+
+
+def test_v050_scale_command_bounds_combat_deferral_and_reset() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.cvars["useUiScale"] = "0"
+    rt.cvars["uiScale"] = "1"
+    rt.boot_session()
+
+    # Query current scale (clean + Zero Fabricated Status when CVar is secret/nil)
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "scale")
+    assert any("현재 UI 스케일: 1.00 (사용: 꺼짐(자동))" in m for m in rt.chat_messages)
+
+    rt.cvars["useUiScale"] = SecretValue("secUseScale")
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "scale")
+    assert any("사용: —" in m for m in rt.chat_messages)
+    rt.cvars["useUiScale"] = "0"
+
+    # Secret rawArg and invalid/NaN/non-decimal inputs rejected
+    for bad in ("0.40", "nan", "0x1"):
+        rt.chat_messages.clear()
+        rt.run_slash("FOREVERSUITE", f"scale {bad}")
+        assert any("사용법: /fs scale [0.64~1.00 | reset]" in m for m in rt.chat_messages)
+    assert rt.cvars["useUiScale"] == "0"
+
+    # Partial failure rollback: if uiScale write fails after useUiScale=1, useUiScale rolls back to "0"
+    orig_set_cvar = rt.vm.G["C_CVar"]["SetCVar"]
+
+    def _fail_uiscale_only(name: str, val: str) -> bool:
+        if name == "uiScale":
+            return False
+        return bool(orig_set_cvar(name, val))
+
+    rt.vm.G["C_CVar"]["SetCVar"] = _fail_uiscale_only
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "scale 0.75")
+    assert rt.cvars["useUiScale"] == "0"
+    assert any("적용에 실패" in m for m in rt.chat_messages)
+    rt.vm.G["C_CVar"]["SetCVar"] = orig_set_cvar
+
+    # Valid scale applied out-of-combat
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "scale 0.75")
+    assert rt.cvars["useUiScale"] == "1"
+    assert rt.cvars["uiScale"] == "0.75"
+    assert any("UI 스케일 적용 완료: 0.75" in m for m in rt.chat_messages)
+
+    # Combat deferral via CombatQueue (scale and reset)
+    rt.combat_lockdown = True
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "scale 0.70")
+    assert rt.cvars["uiScale"] == "0.75"
+    assert any("전투 종료 후 UI 스케일(0.70)" in m for m in rt.chat_messages)
+
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.cvars["uiScale"] == "0.70"
+
+    rt.combat_lockdown = True
+    rt.run_slash("FOREVERSUITE", "scale reset")
+    assert rt.cvars["useUiScale"] == "1"
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.cvars["useUiScale"] == "0"
+
 
 
 

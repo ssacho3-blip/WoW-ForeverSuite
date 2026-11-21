@@ -624,10 +624,12 @@ function ns.HandleSlashCommand(rawMsg)
         end
     elseif cmd == "move" then
         HandleMoveCommand(rest)
+    elseif cmd == "scale" then
+        ns.HandleScaleCommand(rest)
     elseif route then
         DispatchModuleMethod(route[1], route[2], route[3] and rest or nil)
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | cheap | xp | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | cheap | xp | scale | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
     end
 end
 

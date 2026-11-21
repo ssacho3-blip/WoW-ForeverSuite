@@ -39,7 +39,7 @@ local function SafeGetAddOnMetadata(addonName, field)
 end
 
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.4.0"
+    local ver = "0.5.0"
     local clientVer = "1.60.1"
     local targetToc = 16001
     local rawV = SafeGetAddOnMetadata(addonName, "Version")
@@ -181,6 +181,81 @@ function ns.SafeSetCVar(name, value)
         return false
     end
     return CVarValuesMatch(ns.SafeGetCVar(name), strVal)
+end
+
+local MIN_UI_SCALE = 0.64
+local MAX_UI_SCALE = 1.00
+
+function ns.HandleScaleCommand(rawArg)
+    local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
+    local trimmed = string_match(clean, "^%s*(.-)%s*$") or ""
+    local sub = string.lower(trimmed)
+
+    if trimmed == "" then
+        local rawUse = ns.SafeGetCVar("useUiScale")
+        local rawScale = ns.SafeGetCVar("uiScale")
+        local useLabel = "—"
+        if rawUse ~= nil and not ns.IsSecret(rawUse) then
+            local useStr = tostring(rawUse)
+            if useStr == "1" then
+                useLabel = "켜짐"
+            elseif useStr == "0" then
+                useLabel = "꺼짐(자동)"
+            end
+        end
+        local scaleNum = (not ns.IsSecret(rawScale)) and tonumber(rawScale) or nil
+        local scaleLabel = scaleNum and string_format("%.2f", scaleNum) or "—"
+        ns.Print(string_format("현재 UI 스케일: %s (사용: %s) | 변경: /fs scale 0.75 | 기본값: /fs scale reset", scaleLabel, useLabel))
+        return true
+    end
+
+    if sub == "reset" or sub == "auto" or sub == "기본" then
+        local wasInCombat = ns.InCombat()
+        local applied = false
+        ns.CombatQueue:RunOrDefer("core:uiScale", function()
+            applied = ns.SafeSetCVar("useUiScale", "0") and true or false
+            if applied then
+                ns.Print("UI 스케일을 블리자드 자동 기본값(useUiScale=0)으로 복구했습니다.")
+            else
+                ns.Warn("UI 스케일 기본값 복구에 실패했습니다.")
+            end
+        end)
+        if wasInCombat then
+            ns.Print("전투 종료 후 UI 스케일 기본값 복구를 적용합니다.")
+            return true
+        end
+        return applied
+    end
+
+    local parsed = string_match(trimmed, "^%d*%.?%d+$") and tonumber(trimmed) or nil
+    if type(parsed) ~= "number" or parsed ~= parsed or parsed < MIN_UI_SCALE or parsed > MAX_UI_SCALE then
+        ns.Warn("사용법: /fs scale [0.64~1.00 | reset] (예: /fs scale 0.75)")
+        return false
+    end
+
+    local formatted = string_format("%.2f", parsed)
+    local wasInCombat = ns.InCombat()
+    local applied = false
+    ns.CombatQueue:RunOrDefer("core:uiScale", function()
+        local prevUse = ns.SafeGetCVar("useUiScale")
+        local prevUseClean = (prevUse ~= nil and not ns.IsSecret(prevUse)) and tostring(prevUse) or nil
+        local okUse = ns.SafeSetCVar("useUiScale", "1")
+        local okScale = okUse and ns.SafeSetCVar("uiScale", formatted) or false
+        applied = (okUse and okScale) and true or false
+        if applied then
+            ns.Print("UI 스케일 적용 완료: " .. formatted .. " (복구: /fs scale reset)")
+        else
+            if okUse and not okScale and prevUseClean ~= nil and prevUseClean ~= "1" then
+                ns.SafeSetCVar("useUiScale", prevUseClean)
+            end
+            ns.Warn("UI 스케일(" .. formatted .. ") 적용에 실패했습니다.")
+        end
+    end)
+    if wasInCombat then
+        ns.Print("전투 종료 후 UI 스케일(" .. formatted .. ")을 적용합니다.")
+        return true
+    end
+    return applied
 end
 
 function ns.IsExternalAddonLoaded(addonName)

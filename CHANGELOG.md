@@ -2,6 +2,16 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.5.0] - 2026-11-21
+
+### Added & Hardened (`FS-V050-SMART-QOL`)
+- **Low-Bag Auto-Cheap Notice (`ForeverSuite/Modules/Inventory.lua`)**:
+  - Automatically emits a single non-spamming chat line (`가방 여유 N칸 — 최저가 추천: ... | 전체 보기: /fs cheap`) on `BAG_UPDATE_DELAYED` whenever free bag slots drop to `<= 2` (edge-triggered with 60s cooldown), including full coexistence when `Baganator` yields `bagHud` and fail-closed silence on incomplete/`C_Secrets` scans.
+- **Combat-Safe UI Scale Command (`/fs scale [0.64~1.00 | reset]`) (`ForeverSuite/Core/Init.lua`, `UI/SettingsPanel.lua`)**:
+  - Prints live `useUiScale` / `uiScale` state, applies validated scale bounds (`0.64..1.00`) or resets to Blizzard auto-scaling (`useUiScale=0`) through `CombatQueue:RunOrDefer` with readback verification so MacBook Pro Retina and Mac Studio displays can switch scales with one command.
+- **4th Level-Up Event Ordering Guard (`ForeverSuite/Modules/Utility.lua`)**:
+  - Hardened `SyncSessionXP()` wait condition to defer once whenever `lvl == lastLevel + 1` and `xp == lastXP` even if `maxXP` already updated before `UnitXP` wrapped (`159 passed`).
+
 ## [0.4.0] - 2026-11-21
 
 ### Added (`FS-V040-CHEAP-XP`)

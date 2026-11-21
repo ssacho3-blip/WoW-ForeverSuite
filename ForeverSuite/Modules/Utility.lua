@@ -519,7 +519,7 @@ function Utility:SyncSessionXP()
             s.pendingLevelUp = false
             s.waitCount = 0
             delta = math_max(0, xp - s.lastXP)
-        elseif lvl == s.lastLevel + 1 and xp >= s.lastXP and maxXP == s.lastMaxXP and s.waitCount < 1 then
+        elseif lvl == s.lastLevel + 1 and (xp == s.lastXP or (xp > s.lastXP and maxXP == s.lastMaxXP)) and s.waitCount < 1 then
             -- PLAYER_LEVEL_UP can fire once before UnitXP wraps to the new level; wait at most once.
             s.waitCount = s.waitCount + 1
             return 0
