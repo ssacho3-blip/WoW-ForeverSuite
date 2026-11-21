@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.7"
+    assert ns["VERSION"] == "0.3.8"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.7 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.3.8 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.7"
+    assert ns["VERSION"] == "0.3.8"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -1780,6 +1780,210 @@ def test_v036_quest_watch_only_and_failed_alpha_restore() -> None:
     rt2.vm._invoke_callable(ns2["QuestTracker"]["SyncDefaultTrackerVisibility"], (ns2["QuestTracker"],))
     assert obj["_shown"] is True
     assert obj["_alpha"] == 1.0
+
+
+def test_v038_temp_enchant_icon_cvar_apply_combat_deferral_restore_and_readonly() -> None:
+    """Verify displayTemporaryEnchantIcon CVar replaces weapon texture with enchant spell icon safely."""
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_class = "SHAMAN"
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+
+    # 1. Boot applies displayTemporaryEnchantIcon="1" and snapshots original "0" for crash-safe restore
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert combat["tempEnchantIconApplied"] is True
+    assert rt.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+
+    # 2. Toggling off in SettingsPanel during combat defers CVar restore via CombatQueue (zero taint/block)
+    sp = ns["SettingsPanel"]
+    rt.run_slash("FOREVERSUITE", "ui")
+    rt.vm._invoke_callable(sp["SelectTab"], (sp, "modules"))
+    rt.vm._invoke_callable(sp["SelectDetailModule"], (sp, "Combat"))
+    enchant_cb = sp["drawerCheckboxes"][4]
+    assert enchant_cb["_fsSpec"]["key"] == "showTempEnchantIcon"
+
+    rt.combat_lockdown = True
+    rt._fire_widget_script(enchant_cb, "OnClick", "LeftButton")
+    assert rt.addon_action_blocked_count == 0
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "1"
+
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert combat["tempEnchantIconApplied"] is False
+    assert rt.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("displayTemporaryEnchantIcon") is None
+
+    # 3. Toggling back on restores enchant icon display; disabling Combat module restores original CVar
+    rt._fire_widget_script(enchant_cb, "OnClick", "LeftButton")
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert combat["tempEnchantIconApplied"] is True
+
+    rt.run_slash("FOREVERSUITE", "disable Combat")
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert combat["tempEnchantIconApplied"] is False
+
+    # 4. Pre-existing user "1" value is preserved on disable instead of forcing "0"
+    rt_user = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_user.cvars["displayTemporaryEnchantIcon"] = "1"
+    rt_user.boot_session()
+    assert rt_user.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "1"
+    rt_user.run_slash("FOREVERSUITE", "disable Combat")
+    assert rt_user.cvars["displayTemporaryEnchantIcon"] == "1"
+
+    # 5. Read-Only future schema fails closed without mutating CVar or pendingCVarRestores
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 99,
+            "account": LuaTable({"combat": LuaTable({"showTempEnchantIcon": True})}),
+            "pendingCVarRestores": LuaTable({"displayTemporaryEnchantIcon": "1"}),
+        }
+    )
+    ns_ro = rt_ro.boot_session()
+    assert ns_ro["ProfileManager"]["readOnly"] is True
+    assert rt_ro.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert rt_ro.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "1"
+
+    # Also verify read-only when showTempEnchantIcon=False does NOT execute pending restore
+    rt_ro_off = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro_off.cvars["displayTemporaryEnchantIcon"] = "0"
+    rt_ro_off.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 99,
+            "account": LuaTable({"combat": LuaTable({"showTempEnchantIcon": False})}),
+            "pendingCVarRestores": LuaTable({"displayTemporaryEnchantIcon": "1"}),
+        }
+    )
+    rt_ro_off.boot_session()
+    assert rt_ro_off.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert rt_ro_off.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "1"
+
+
+def test_v038_startup_cvar_recovery_defers_in_combat_and_rejected_writes_fail_closed() -> None:
+    """Codex P1 regressions: boot recovery defers under InCombatLockdown; rejected SetCVar never fakes success or drops ledger."""
+    # 1. Boot under InCombatLockdown with a pending restore must NOT call SetCVar until PLAYER_REGEN_ENABLED
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.combat_lockdown = True
+    rt.cvars["displayTemporaryEnchantIcon"] = "1"
+    set_calls: list[tuple[str, str]] = []
+    orig_set_cvar = rt.vm.G["C_CVar"]["SetCVar"]
+
+    def spy_set_cvar(k: object, v: object) -> bool:
+        set_calls.append((str(k), str(v)))
+        return orig_set_cvar(k, v)
+
+    rt.vm.G["C_CVar"]["SetCVar"] = spy_set_cvar
+    rt.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 2,
+            "account": LuaTable({"combat": LuaTable({"showTempEnchantIcon": False})}),
+            "pendingCVarRestores": LuaTable({"displayTemporaryEnchantIcon": "0"}),
+        }
+    )
+    rt.boot_session()
+    enchant_calls = [c for c in set_calls if c[0] == "displayTemporaryEnchantIcon"]
+    assert enchant_calls == [], f"SetCVar(displayTemporaryEnchantIcon) must not run during InCombatLockdown boot: {enchant_calls}"
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert rt.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+
+    # Leaving combat flushes startup recovery first and restores original "0"
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert ("displayTemporaryEnchantIcon", "0") in set_calls
+    assert rt.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert rt.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("displayTemporaryEnchantIcon") is None
+
+    # 2. Boot under InCombatLockdown with showTempEnchantIcon=True recovers "0" first, then re-applies "1"
+    rt_on = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_on.combat_lockdown = True
+    rt_on.cvars["displayTemporaryEnchantIcon"] = "1"
+    rt_on.vm.G["ForeverSuiteDB"] = LuaTable(
+        {
+            "schemaVersion": 2,
+            "account": LuaTable({"combat": LuaTable({"showTempEnchantIcon": True})}),
+            "pendingCVarRestores": LuaTable({"displayTemporaryEnchantIcon": "0"}),
+        }
+    )
+    ns_on = rt_on.boot_session()
+    assert rt_on.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+    rt_on.combat_lockdown = False
+    rt_on.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt_on.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert rt_on.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+    assert ns_on["ModuleManager"]["modules"]["Combat"]["definition"]["tempEnchantIconApplied"] is True
+
+    # 3. Rejected SetCVar on apply returns False, does not report applied, and does not pollute ledger
+    rt_rej = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_rej.vm.G["C_CVar"]["SetCVar"] = lambda _k, _v: False
+    ns_rej = rt_rej.boot_session()
+    combat_rej = ns_rej["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert rt_rej.cvars["displayTemporaryEnchantIcon"] == "0"
+    assert combat_rej["tempEnchantIconApplied"] is False
+    assert rt_rej.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("displayTemporaryEnchantIcon") is None
+
+    # 4. Rejected SetCVar on restore/disable preserves saved original value in pendingCVarRestores
+    rt_rej_res = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_rej_res = rt_rej_res.boot_session()
+    combat_rej_res = ns_rej_res["ModuleManager"]["modules"]["Combat"]["definition"]
+    assert rt_rej_res.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert rt_rej_res.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+
+    rt_rej_res.vm.G["C_CVar"]["SetCVar"] = lambda _k, _v: False
+    rt_rej_res.run_slash("FOREVERSUITE", "disable Combat")
+    assert rt_rej_res.cvars["displayTemporaryEnchantIcon"] == "1"
+    assert combat_rej_res["tempEnchantIconApplied"] is True
+    assert rt_rej_res.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+
+    # 5. Setter returns True while readback GetCVar returns nil -> fails closed and preserves snapshot
+    rt_nil_rb = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_nil_rb = rt_nil_rb.boot_session()
+    rt_nil_rb.vm.G["C_CVar"]["SetCVar"] = lambda _k, _v: True
+    rt_nil_rb.vm.G["C_CVar"]["GetCVar"] = lambda _k: None
+    assert rt_nil_rb.vm._invoke_callable(ns_nil_rb["SafeSetCVar"], ("displayTemporaryEnchantIcon", "0"))[0] is False
+    pm_nil_rb = ns_nil_rb["ProfileManager"]
+    assert rt_nil_rb.vm._invoke_callable(pm_nil_rb["RestoreTemporaryCVar"], (pm_nil_rb, "displayTemporaryEnchantIcon"))[0] is False
+    assert rt_nil_rb.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+
+    # 6. Clamped client CVar write (e.g. nameplateMaxDistance="41" clamped to "40"): preserves original snapshot "20" for restore
+    rt_clamp = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_clamp.vm.G["ForeverSuiteDB"] = LuaTable(
+        {"schemaVersion": 2, "account": LuaTable({"combat": LuaTable({"enhanceNameplates": False})})}
+    )
+    ns_clamp = rt_clamp.boot_session()
+    pm_clamp = ns_clamp["ProfileManager"]
+    orig_set_clamp = rt_clamp.vm.G["C_CVar"]["SetCVar"]
+
+    def clamped_set_cvar(k: object, v: object) -> bool:
+        if str(k) == "nameplateMaxDistance" and str(v) == "41":
+            rt_clamp.cvars["nameplateMaxDistance"] = "40"
+            return True
+        return orig_set_clamp(k, v)
+
+    rt_clamp.vm.G["C_CVar"]["SetCVar"] = clamped_set_cvar
+    assert rt_clamp.vm._invoke_callable(pm_clamp["ApplyTemporaryCVar"], (pm_clamp, "nameplateMaxDistance", "41"))[0] is False
+    assert rt_clamp.cvars["nameplateMaxDistance"] == "40"
+    assert rt_clamp.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["nameplateMaxDistance"] == "20"
+    assert rt_clamp.vm._invoke_callable(pm_clamp["RestoreTemporaryCVar"], (pm_clamp, "nameplateMaxDistance"))[0] is True
+    assert rt_clamp.cvars["nameplateMaxDistance"] == "20"
+    assert rt_clamp.vm.G["ForeverSuiteDB"]["pendingCVarRestores"].get("nameplateMaxDistance") is None
+
+    # 7. RestoreTempEnchantIconCVar reports accurate boolean status (False when deferred/rejected even if flag already False, True when restored)
+    rt_ret = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_ret = rt_ret.boot_session()
+    combat_ret = ns_ret["ModuleManager"]["modules"]["Combat"]["definition"]
+    rt_ret.combat_lockdown = True
+    assert rt_ret.vm._invoke_callable(combat_ret["RestoreTempEnchantIconCVar"], (combat_ret,))[0] is False
+    rt_ret.combat_lockdown = False
+    orig_set_ret = rt_ret.vm.G["C_CVar"]["SetCVar"]
+    combat_ret["tempEnchantIconApplied"] = False
+    rt_ret.vm.G["C_CVar"]["SetCVar"] = lambda _k, _v: False
+    assert rt_ret.vm._invoke_callable(combat_ret["RestoreTempEnchantIconCVar"], (combat_ret,))[0] is False
+    assert rt_ret.vm.G["ForeverSuiteDB"]["pendingCVarRestores"]["displayTemporaryEnchantIcon"] == "0"
+    rt_ret.vm.G["C_CVar"]["SetCVar"] = orig_set_ret
+    assert rt_ret.vm._invoke_callable(combat_ret["RestoreTempEnchantIconCVar"], (combat_ret,))[0] is True
+    assert rt_ret.cvars["displayTemporaryEnchantIcon"] == "0"
+
+
 
 
 

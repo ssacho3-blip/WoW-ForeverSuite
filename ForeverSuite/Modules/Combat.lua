@@ -1,8 +1,8 @@
 -- Module: Modules/Combat.lua
 -- Responsibility: 9-class out-of-combat spell-family/weapon-enchant buff reminder and C_Secrets-safe low-health alert HUD.
 -- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/Framework.lua.
--- Public API: Combat (CLASS_BUFF_FAMILIES, EvaluatePlayerHealth, CheckOutOfCombatBuffs, ApplyAlertAnchor, SyncAlertLockState, SyncNameplatePreset, HandleNameplateSlash).
--- Combat/Secret Safety: Zero combat automation; strict ns.IsSecret guards on health/auras/enchants; defers nameplate CVar writes via CombatQueue.
+-- Public API: Combat (CLASS_BUFF_FAMILIES, EvaluatePlayerHealth, CheckOutOfCombatBuffs, ApplyAlertAnchor, SyncAlertLockState, SyncNameplatePreset, SyncTempEnchantIconCVar, HandleNameplateSlash).
+-- Combat/Secret Safety: Zero combat automation; strict ns.IsSecret guards on health/auras/enchants; defers nameplate/temp-enchant CVar writes via CombatQueue.
 local _, ns = ...
 
 local type = type
@@ -125,7 +125,10 @@ local Combat = {
     lastBuffMissing = false,
     nameplatesApplied = false,
     nameplateOwner = nil,
+    tempEnchantIconApplied = false,
 }
+
+local TEMP_ENCHANT_ICON_CVAR = "displayTemporaryEnchantIcon"
 
 local EXTERNAL_NAMEPLATE_ADDONS = {
     "Platynator",
@@ -237,6 +240,45 @@ function Combat:SyncNameplatePreset()
         return self:ApplyNameplatePreset()
     end
     return self:RestoreNameplatePreset()
+end
+
+function Combat:ApplyTempEnchantIconCVar()
+    local executedNow = ns.CombatQueue:RunOrDefer("combat:tempEnchantIcon", function()
+        if not IsCombatModuleActive()
+            or not ns.ProfileManager:CanWrite()
+            or not ns.ProfileManager:Get("combat", "showTempEnchantIcon") then
+            return
+        end
+        self.tempEnchantIconApplied = ns.ProfileManager:ApplyTemporaryCVar(TEMP_ENCHANT_ICON_CVAR, "1") and true or false
+    end)
+    if executedNow then
+        return self.tempEnchantIconApplied == true
+    end
+    return false
+end
+
+function Combat:RestoreTempEnchantIconCVar()
+    local ok = false
+    ns.CombatQueue:RunOrDefer("combat:tempEnchantIcon", function()
+        if not ns.ProfileManager:CanWrite() then
+            return
+        end
+        local pending = ns.ProfileManager.accountDB and ns.ProfileManager.accountDB.pendingCVarRestores
+        local hadPending = type(pending) == "table" and pending[TEMP_ENCHANT_ICON_CVAR] ~= nil
+        local restored = ns.ProfileManager:RestoreTemporaryCVar(TEMP_ENCHANT_ICON_CVAR)
+        if restored or not hadPending then
+            self.tempEnchantIconApplied = false
+            ok = true
+        end
+    end)
+    return ok
+end
+
+function Combat:SyncTempEnchantIconCVar()
+    if ns.ProfileManager:Get("combat", "showTempEnchantIcon") then
+        return self:ApplyTempEnchantIconCVar()
+    end
+    return self:RestoreTempEnchantIconCVar()
 end
 
 function Combat:HandleNameplateSlash(rawArg)
@@ -596,6 +638,7 @@ function Combat:OnEnable(ctx)
     self:EvaluatePlayerHealth()
     self:CheckOutOfCombatBuffs()
     self:SyncNameplatePreset()
+    self:SyncTempEnchantIconCVar()
 end
 
 function Combat:OnAddonLoaded(_, loadedAddonName)
@@ -612,6 +655,7 @@ end
 
 function Combat:OnDisable()
     self:RestoreNameplatePreset()
+    self:RestoreTempEnchantIconCVar()
     self.alertFrame = nil
     self.alertLabel = nil
     self.lastShownPct = nil

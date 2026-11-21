@@ -118,6 +118,6 @@
       "file_count": 8
     }
   },
-  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.3.7.zip",
-  "patch_zip_sha256": "9346fbb2f25b559b2699436b45b75b1d79c5d3e19ef60e6bebf2534f3edf0b83"
+  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.3.8.zip",
+  "patch_zip_sha256": "6af01762a8f6a5f1c19e233100e20b35e614d9326a3e963aa7fa1cffbef9e890"
 }

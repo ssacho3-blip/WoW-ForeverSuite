@@ -56,6 +56,7 @@ local MODULE_OPTION_SPECS = {
         { section = "combat", key = "remindMissingClassBuff", label = "9직업 비전투 버프 체크" },
         { section = "combat", key = "lowHealthAlert", label = "생명력 위험 경고 배너" },
         { section = "combat", key = "enhanceNameplates", label = "이름표 가독성·겹침방지" },
+        { section = "combat", key = "showTempEnchantIcon", label = "무기 강화 버프 아이콘 표시" },
         { section = "ui", key = "hudUnlocked", label = "HUD 이동 잠금해제" },
     },
 }
@@ -168,6 +169,8 @@ local function ApplyPostToggleSideEffects(section, key)
                 end
             elseif key == "enhanceNameplates" then
                 if comb.definition.SyncNameplatePreset then comb.definition:SyncNameplatePreset() end
+            elseif key == "showTempEnchantIcon" then
+                if comb.definition.SyncTempEnchantIconCVar then comb.definition:SyncTempEnchantIconCVar() end
             end
         end
     elseif section == "map" then

@@ -72,6 +72,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         remindMissingClassBuff = true,
         lowHealthAlert = true,
         enhanceNameplates = true,
+        showTempEnchantIcon = true,
         lowHealthThreshold = 0.30,
     },
     ui = {
@@ -635,19 +636,18 @@ end
 
 -- Crash-Safe Temporary CVar Override Ledger (Contract Taint/CVar Rule #3)
 function ProfileManager:ApplyTemporaryCVar(cvarName, tempValue)
-    if not self:CanWrite() then
-        return false
-    end
+    if not self:CanWrite() then return false end
     local current = ns.SafeGetCVar(cvarName)
-    if current == nil then
-        return false
+    if current == nil then return false end
+    local origStr = tostring(current)
+    local pending = self.accountDB and type(self.accountDB.pendingCVarRestores) == "table" and self.accountDB.pendingCVarRestores or nil
+    local hadSaved = pending ~= nil and pending[cvarName] ~= nil
+    if pending and not hadSaved then pending[cvarName] = origStr end
+    if ns.SafeSetCVar(cvarName, tempValue) then return true end
+    if pending and not hadSaved and ns.CVarValuesMatch(ns.SafeGetCVar(cvarName), origStr) then
+        pending[cvarName] = nil
     end
-    if self.accountDB and type(self.accountDB.pendingCVarRestores) == "table" then
-        if self.accountDB.pendingCVarRestores[cvarName] == nil then
-            self.accountDB.pendingCVarRestores[cvarName] = tostring(current)
-        end
-    end
-    return ns.SafeSetCVar(cvarName, tempValue)
+    return false
 end
 
 function ProfileManager:RestoreTemporaryCVar(cvarName)
@@ -666,18 +666,22 @@ function ProfileManager:RestoreTemporaryCVar(cvarName)
 end
 
 function ProfileManager:RecoverPendingCVars()
-    if not self:CanWrite() then
-        return 0
-    end
-    if not self.accountDB or type(self.accountDB.pendingCVarRestores) ~= "table" then
+    local pending = self:CanWrite() and self.accountDB and self.accountDB.pendingCVarRestores or nil
+    if type(pending) ~= "table" or next(pending) == nil then
         return 0
     end
     local restored = 0
-    for cvarName, origVal in pairs(self.accountDB.pendingCVarRestores) do
-        if ns.SafeSetCVar(cvarName, origVal) then
-            restored = restored + 1
-            self.accountDB.pendingCVarRestores[cvarName] = nil
+    ns.CombatQueue:RunOrDefer("profile:recoverPendingCVars", function()
+        local tbl = self:CanWrite() and self.accountDB and self.accountDB.pendingCVarRestores or nil
+        if type(tbl) ~= "table" then
+            return
         end
-    end
+        for cvarName, origVal in pairs(tbl) do
+            if ns.SafeSetCVar(cvarName, origVal) then
+                restored = restored + 1
+                tbl[cvarName] = nil
+            end
+        end
+    end)
     return restored
 end

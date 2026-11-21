@@ -39,7 +39,7 @@ local function SafeGetAddOnMetadata(addonName, field)
 end
 
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.3.7"
+    local ver = "0.3.8"
     local clientVer = "1.60.1"
     local targetToc = 16001
     local rawV = SafeGetAddOnMetadata(addonName, "Version")
@@ -155,16 +155,32 @@ function ns.SafeGetCVar(name)
     return nil
 end
 
+local function CVarValuesMatch(actual, expected)
+    if actual == nil then
+        return false
+    end
+    if tostring(actual) == expected then
+        return true
+    end
+    local na, ne = tonumber(actual), tonumber(expected)
+    return na ~= nil and ne ~= nil and math_abs(na - ne) < 1e-4
+end
+ns.CVarValuesMatch = CVarValuesMatch
+
 function ns.SafeSetCVar(name, value)
     local strVal = tostring(value)
+    local ok, applied
     if C_CVar and C_CVar.SetCVar then
-        local ok = pcall(C_CVar.SetCVar, name, strVal)
-        return ok and true or false
+        ok, applied = pcall(C_CVar.SetCVar, name, strVal)
     elseif _G.SetCVar then
-        local ok = pcall(_G.SetCVar, name, strVal)
-        return ok and true or false
+        ok, applied = pcall(_G.SetCVar, name, strVal)
+    else
+        return false
     end
-    return false
+    if not ok or applied == false then
+        return false
+    end
+    return CVarValuesMatch(ns.SafeGetCVar(name), strVal)
 end
 
 function ns.IsExternalAddonLoaded(addonName)

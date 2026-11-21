@@ -71,7 +71,7 @@ def _validate_manifest_security(manifest: dict) -> tuple[str, str, str, str]:
     return url, sha, ver, fname
 
 
-def read_suite_version(repo_root: pathlib.Path, default: str = "0.3.7") -> str:
+def read_suite_version(repo_root: pathlib.Path, default: str = "0.3.8") -> str:
     toc_path = repo_root / "ForeverSuite" / "ForeverSuite.toc"
     if toc_path.is_file():
         m = re.search(r"^##\s*Version:\s*([\w.\-]+)", toc_path.read_text(encoding="utf-8"), re.MULTILINE)
@@ -80,7 +80,7 @@ def read_suite_version(repo_root: pathlib.Path, default: str = "0.3.7") -> str:
     return default
 
 
-def build_embedded_ps1_script(manifest: dict, embedded_zip_b64: str, suite_version: str = "0.3.7") -> str:
+def build_embedded_ps1_script(manifest: dict, embedded_zip_b64: str, suite_version: str = "0.3.8") -> str:
     """Generate the PowerShell one-click installer script embedded inside ForeverSuite_Installer.exe."""
     upstream_url, upstream_sha256, upstream_version, upstream_filename = _validate_manifest_security(manifest)
     _assert_valid_ver_and_fname(suite_version, f"ForeverSuite-v{suite_version}.zip")

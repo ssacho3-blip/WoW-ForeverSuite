@@ -2,6 +2,14 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.3.8] - 2026-11-21
+
+### Fixed (`FS-TEMP-ENCHANT-ICON`)
+- **Weapon Enchant Buff Icon Display (`ForeverSuite/Modules/Combat.lua`, `Core/ProfileManager.lua`, `UI/SettingsPanel.lua`)**:
+  - Added `combat.showTempEnchantIcon` (default `true`, toggleable in `/fs` → `Combat` detail drawer as `무기 강화 버프 아이콘 표시`) managing WoW Forever `1.60.1`'s verified `displayTemporaryEnchantIcon` CVar via `CombatQueue:RunOrDefer` without ever mutating Blizzard's `BuffFrame` (zero taint on EditMode / protected `CancelUnitBuff`), so Shaman weapon imbues (e.g., Rockbiter Weapon) and Rogue poisons display their enchant spell icon instead of the equipped weapon texture.
+- **Fail-Closed CVar Verification & Combat-Safe Startup Recovery (`ForeverSuite/Core/Init.lua`, `Core/ProfileManager.lua`)**:
+  - Hardened `ns.SafeSetCVar` with `applied == false` and live readback verification (`ns.CVarValuesMatch`), preserved original `pendingCVarRestores` entries on clamped client writes or failed readback, and routed `ProfileManager:RecoverPendingCVars()` through `CombatQueue:RunOrDefer("profile:recoverPendingCVars", ...)` for combat-reload safety (`150 passed`).
+
 ## [0.3.7] - 2026-11-19
 
 ### Fixed (`FS-BUFF-RANK-FIX`)

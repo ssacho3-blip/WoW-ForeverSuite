@@ -121,6 +121,7 @@ class WoWForeverMockRuntime:
         self.cvars: dict[str, str] = {
             "autoLootDefault": "1",
             "countdownForCooldowns": "0",
+            "displayTemporaryEnchantIcon": "0",
             "Sound_SFXVolume": "0.5",
             "Sound_MusicVolume": "0.6",
             "nameplateShowEnemies": "0",
@@ -642,11 +643,15 @@ class WoWForeverMockRuntime:
                 "GetAddOnMetric": lambda _name, _metric: self.profiler_avg_ms,
             },
         )
+        def set_cvar(k: Any, v: Any) -> bool:
+            self.cvars[str(k)] = str(v)
+            return True
+
         G["C_CVar"] = StrictCNamespaceTable(
             "C_CVar",
             {
                 "GetCVar": lambda k: self.cvars.get(str(k)),
-                "SetCVar": lambda k, v: self.cvars.__setitem__(str(k), str(v)),
+                "SetCVar": set_cvar,
             },
         )
 
