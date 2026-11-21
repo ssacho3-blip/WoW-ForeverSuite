@@ -108,6 +108,10 @@ class WoWForeverMockRuntime:
         self.realm_name: str = "ForeverKR"
         self.player_class: str = "MAGE"
         self.player_level: Any = 24
+        self.player_xp: Any = 2500
+        self.player_xp_max: Any = 10000
+        self.player_xp_exhaustion: Any = 0
+        self.max_player_level: Any = 60
         self.real_zone_text: Any = "엘윈 숲"
         self.zone_text: Any = "엘윈 숲"
         self.player_hp: Any = 1000
@@ -478,6 +482,7 @@ class WoWForeverMockRuntime:
         G["Enum"] = LuaTable(
             {
                 "ItemQuality": LuaTable({"Poor": 0, "Common": 1, "Uncommon": 2, "Rare": 3, "Epic": 4}),
+                "ItemClass": LuaTable({"Questitem": 12}),
                 "TooltipDataType": LuaTable({"Item": 0}),
                 "AddOnProfilerMetric": LuaTable({"RecentAverageTime": 1}),
             }
@@ -535,6 +540,10 @@ class WoWForeverMockRuntime:
         G["GetRealmName"] = lambda: self.realm_name
         G["UnitClass"] = lambda _u: MultiReturn((self.player_class.title(), self.player_class))
         G["UnitLevel"] = lambda _u: self.player_level
+        G["UnitXP"] = lambda _u: self.player_xp
+        G["UnitXPMax"] = lambda _u: self.player_xp_max
+        G["GetXPExhaustion"] = lambda: self.player_xp_exhaustion
+        G["GetMaxPlayerLevel"] = lambda: self.max_player_level
         G["GetRealZoneText"] = lambda: self.real_zone_text
         G["GetZoneText"] = lambda: self.zone_text
         G["UnitHealth"] = lambda _u: self.player_hp

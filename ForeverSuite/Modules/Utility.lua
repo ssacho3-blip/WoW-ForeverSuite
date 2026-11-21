@@ -1,8 +1,8 @@
 -- Module: Modules/Utility.lua
--- Responsibility: Auto-repair (guild -> personal fallback), 12-item buyback-capped junk seller, /fs protect, /fs sell, fast loot, QoL CVars.
+-- Responsibility: Auto-repair (guild -> personal fallback), 12-item buyback-capped junk seller, /fs protect, /fs sell, /fs xp session XP/h tracker, fast loot, QoL CVars.
 -- Dependencies: Core/Init.lua, Core/MoneyLedgerQueue.lua, Core/ProfileManager.lua, Core/ModuleManager.lua.
--- Public API: Utility (TryAutoRepair, TryAutoSellJunk, ManualSellBatch, HandleProtectCommand, CleanActionBarsNow).
--- Combat/Secret Safety: Zero ActionBar frame/CVar auto-touch; caps each batch at <=12 items without auto-looping; guards secret prices.
+-- Public API: Utility (TryAutoRepair, TryAutoSellJunk, ManualSellBatch, HandleProtectCommand, CleanActionBarsNow, ResetSessionXP, SyncSessionXP, GetSessionXPStats, FormatXPCompactLine, HandleXPCommand).
+-- Combat/Secret Safety: Zero ActionBar frame/CVar auto-touch; caps each batch at <=12 items without auto-looping; guards secret prices and XP values.
 local _, ns = ...
 
 local type = type
@@ -14,6 +14,8 @@ local table_sort = table.sort
 local math_min = math.min
 local math_max = math.max
 local math_floor = math.floor
+local string_format = string.format
+local string_sub = string.sub
 local string_lower = string.lower
 local string_match = string.match
 
@@ -24,13 +26,25 @@ local BUYBACK_HARD_CAP = 12
 local Utility = {
     title = "편의 및 상점 자동화 (Utility)",
     priority = "P1",
-    description = "자동 수리(길드→개인), 회색템 판매(12개 한도·/fs sell·보호목록), 고속 루팅",
+    description = "자동 수리(길드→개인), 회색템 판매(12개 한도·/fs sell·보호목록), 세션 XP/시간(/fs xp), 고속 루팅",
     yieldTo = { "Leatrix_Plus" },
     merchantOpen = false,
     qolApplied = false,
     lastResidualCount = 0,
     reusableSellQueue = {},
     reusableSellEntryPool = {},
+    xpState = {
+        initialized = false,
+        startedAt = 0,
+        lastLevel = 0,
+        lastXP = 0,
+        lastMaxXP = 0,
+        sessionGained = 0,
+        lastGain = 0,
+        secretGap = false,
+        pendingLevelUp = false,
+        waitCount = 0,
+    },
 }
 
 local function IsShiftBypassActive()
@@ -43,6 +57,16 @@ function Utility:OnInitialize()
     self.lastResidualCount = 0
     ns.WipeTable(self.reusableSellQueue)
     ns.WipeTable(self.reusableSellEntryPool)
+    self.xpState.initialized = false
+    self.xpState.startedAt = 0
+    self.xpState.lastLevel = 0
+    self.xpState.lastXP = 0
+    self.xpState.lastMaxXP = 0
+    self.xpState.sessionGained = 0
+    self.xpState.lastGain = 0
+    self.xpState.secretGap = false
+    self.xpState.pendingLevelUp = false
+    self.xpState.waitCount = 0
 end
 
 function Utility:RevertExtraActionBarsIfNeeded(markFinal)
@@ -374,18 +398,284 @@ function Utility:OnLootReady()
     end
 end
 
+local function ReadCleanUnitXP()
+    if type(_G.UnitXP) ~= "function" or type(_G.UnitXPMax) ~= "function" or type(_G.UnitLevel) ~= "function" then
+        return nil, nil, nil, false
+    end
+    local okXP, xp = pcall(_G.UnitXP, "player")
+    local okMax, maxXP = pcall(_G.UnitXPMax, "player")
+    local okLvl, lvl = pcall(_G.UnitLevel, "player")
+    if not (okXP and okMax and okLvl) then
+        return nil, nil, nil, false
+    end
+    if type(xp) ~= "number" or ns.IsSecret(xp) or xp < 0
+        or type(maxXP) ~= "number" or ns.IsSecret(maxXP) or maxXP < 0
+        or type(lvl) ~= "number" or ns.IsSecret(lvl) or lvl < 1 then
+        return nil, nil, nil, false
+    end
+    return math_floor(xp), math_floor(maxXP), math_floor(lvl), true
+end
+
+local function FormatDuration(seconds)
+    if type(seconds) ~= "number" or ns.IsSecret(seconds) or seconds < 0 then
+        return "—"
+    end
+    local sec = math_floor(seconds + 0.5)
+    if sec < 60 then
+        return string_format("%d초", sec)
+    end
+    if sec < 3600 then
+        return string_format("%d분 %d초", math_floor(sec / 60), sec % 60)
+    end
+    return string_format("%d시간 %d분", math_floor(sec / 3600), math_floor((sec % 3600) / 60))
+end
+
+local function FormatNumberWithCommas(val)
+    if type(val) ~= "number" or ns.IsSecret(val) then
+        return "—"
+    end
+    local n = math_floor(val + 0.5)
+    local sign = ""
+    if n < 0 then
+        sign = "-"
+        n = -n
+    end
+    local s = tostring(n)
+    local len = #s
+    if len <= 3 then
+        return sign .. s
+    end
+    local out = ""
+    local rem = len % 3
+    if rem > 0 then
+        out = string_sub(s, 1, rem)
+    end
+    for i = rem + 1, len, 3 do
+        if out ~= "" then
+            out = out .. ","
+        end
+        out = out .. string_sub(s, i, i + 2)
+    end
+    return sign .. out
+end
+
+function Utility:ResetSessionXP()
+    local s = self.xpState
+    s.startedAt = ns.GetNow()
+    s.sessionGained = 0
+    s.lastGain = 0
+    s.pendingLevelUp = false
+    s.waitCount = 0
+    local xp, maxXP, lvl, ok = ReadCleanUnitXP()
+    if ok then
+        s.initialized = true
+        s.lastXP = xp
+        s.lastMaxXP = maxXP
+        s.lastLevel = lvl
+        s.secretGap = false
+    else
+        s.initialized = false
+        s.lastXP = 0
+        s.lastMaxXP = 0
+        s.lastLevel = 0
+        s.secretGap = true
+    end
+    return s.initialized
+end
+
+function Utility:SyncSessionXP()
+    local s = self.xpState
+    local xp, maxXP, lvl, ok = ReadCleanUnitXP()
+    if not ok then
+        s.secretGap = true
+        return 0
+    end
+    if not s.initialized then
+        s.initialized = true
+        s.startedAt = ns.GetNow()
+        s.lastXP = xp
+        s.lastMaxXP = maxXP
+        s.lastLevel = lvl
+        s.sessionGained = 0
+        s.lastGain = 0
+        s.secretGap = false
+        s.pendingLevelUp = false
+        s.waitCount = 0
+        return 0
+    end
+    if s.secretGap then
+        s.lastXP = xp
+        s.lastMaxXP = maxXP
+        s.lastLevel = lvl
+        s.secretGap = false
+        s.pendingLevelUp = false
+        s.waitCount = 0
+        return 0
+    end
+
+    local delta = 0
+    if lvl > s.lastLevel then
+        if s.pendingLevelUp then
+            s.pendingLevelUp = false
+            s.waitCount = 0
+            delta = math_max(0, xp - s.lastXP)
+        elseif lvl == s.lastLevel + 1 and xp >= s.lastXP and maxXP == s.lastMaxXP and s.waitCount < 1 then
+            -- PLAYER_LEVEL_UP can fire once before UnitXP wraps to the new level; wait at most once.
+            s.waitCount = s.waitCount + 1
+            return 0
+        else
+            s.waitCount = 0
+            delta = math_max(0, (s.lastMaxXP - s.lastXP) + xp)
+        end
+    elseif lvl == s.lastLevel then
+        s.waitCount = 0
+        if xp >= s.lastXP then
+            delta = xp - s.lastXP
+        else
+            -- Classic/Forever PLAYER_XP_UPDATE can wrap XP before UnitLevel increments.
+            delta = math_max(0, (s.lastMaxXP - s.lastXP) + xp)
+            s.pendingLevelUp = true
+        end
+    else
+        s.waitCount = 0
+        s.pendingLevelUp = false
+    end
+
+    s.lastLevel = lvl
+    s.lastXP = xp
+    s.lastMaxXP = maxXP
+    if delta > 0 then
+        s.sessionGained = s.sessionGained + delta
+        s.lastGain = delta
+    end
+    return delta
+end
+
+function Utility:GetSessionXPStats()
+    local xp, maxXP, lvl, ok = ReadCleanUnitXP()
+    if not ok then
+        return nil
+    end
+    local s = self.xpState
+    if not s.initialized then
+        self:ResetSessionXP()
+    end
+
+    local maxLvl = nil
+    if type(_G.GetMaxPlayerLevel) == "function" then
+        local okMaxLvl, rawMaxLvl = pcall(_G.GetMaxPlayerLevel)
+        if okMaxLvl and type(rawMaxLvl) == "number" and not ns.IsSecret(rawMaxLvl) and rawMaxLvl > 0 then
+            maxLvl = rawMaxLvl
+        end
+    end
+    local isMaxLevel = (maxXP <= 0) or (maxLvl ~= nil and lvl >= maxLvl)
+    local elapsedSec = math_max(0, ns.GetNow() - s.startedAt)
+    local remainingXP = isMaxLevel and 0 or math_max(0, maxXP - xp)
+    local pct = (not isMaxLevel and maxXP > 0) and ((xp / maxXP) * 100) or 100
+    local xpPerHour = (s.sessionGained > 0 and elapsedSec >= 1) and math_floor((s.sessionGained / elapsedSec) * 3600 + 0.5) or nil
+    local etaSec = (not isMaxLevel and xpPerHour and xpPerHour > 0 and remainingXP > 0) and math_floor((remainingXP / xpPerHour) * 3600 + 0.5) or nil
+
+    local restedXP = 0
+    if type(_G.GetXPExhaustion) == "function" then
+        local okRest, rawRest = pcall(_G.GetXPExhaustion)
+        if okRest and type(rawRest) == "number" and not ns.IsSecret(rawRest) and rawRest > 0 then
+            restedXP = math_floor(rawRest)
+        end
+    end
+
+    return {
+        level = lvl,
+        xp = xp,
+        maxXP = maxXP,
+        remainingXP = remainingXP,
+        pct = pct,
+        isMaxLevel = isMaxLevel,
+        sessionGained = s.sessionGained,
+        elapsedSec = elapsedSec,
+        xpPerHour = xpPerHour,
+        etaSec = etaSec,
+        restedXP = restedXP,
+        secretGap = s.secretGap,
+    }
+end
+
+function Utility:FormatXPCompactLine()
+    local st = self:GetSessionXPStats()
+    if not st or st.isMaxLevel then
+        return nil
+    end
+    if not st.xpPerHour then
+        return "|cff64748b—|r"
+    end
+    local etaText = st.etaSec and (" (예상 " .. FormatDuration(st.etaSec) .. ")") or ""
+    return "|cff38bdf8" .. FormatNumberWithCommas(st.xpPerHour) .. "/h|r" .. etaText
+end
+
+function Utility:HandleXPCommand(rawArg)
+    local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
+    local sub = string_lower(string_match(clean, "^%s*(%S*)") or "")
+    if sub == "reset" or sub == "초기화" then
+        self:ResetSessionXP()
+        ns.Print("세션 XP 통계를 초기화했습니다.")
+        return true
+    end
+
+    self:SyncSessionXP()
+    local st = self:GetSessionXPStats()
+    if not st then
+        ns.Warn("현재 경험치 정보를 읽을 수 없습니다.")
+        return false
+    end
+    if st.isMaxLevel then
+        ns.Print(string_format("최고 레벨(Lv.%d) 상태입니다. (세션 경과: %s)", st.level, FormatDuration(st.elapsedSec)))
+        return true
+    end
+
+    local rateStr = st.xpPerHour and (FormatNumberWithCommas(st.xpPerHour) .. " XP/시간") or "—"
+    local etaStr = st.etaSec and FormatDuration(st.etaSec) or "—"
+    local restedStr = (st.restedXP and st.restedXP > 0) and (" | 휴식 XP: " .. FormatNumberWithCommas(st.restedXP)) or ""
+    ns.Print(string_format(
+        "세션 XP: +%s XP (%s 경과) | 속도: %s | Lv.%d까지 %s XP (%.1f%%, 예상 %s)%s",
+        FormatNumberWithCommas(st.sessionGained),
+        FormatDuration(st.elapsedSec),
+        rateStr,
+        st.level + 1,
+        FormatNumberWithCommas(st.remainingXP),
+        st.pct,
+        etaStr,
+        restedStr
+    ))
+    return true
+end
+
+function Utility:OnXPUpdate()
+    self:SyncSessionXP()
+    local invRec = ns.ModuleManager and ns.ModuleManager:GetModule("Inventory")
+    if invRec and invRec.state == "ENABLED" and invRec.definition and invRec.definition.RefreshHoveredGoldTooltip then
+        invRec.definition:RefreshHoveredGoldTooltip()
+    end
+end
+
 function Utility:OnPlayerEnteringWorld()
     self:RevertExtraActionBarsIfNeeded(true)
+    if not self.xpState.initialized then
+        self:ResetSessionXP()
+    end
 end
 
 function Utility:OnEnable(ctx)
     self.ctx = ctx
     self:ApplyQoLCVars()
     self:RevertExtraActionBarsIfNeeded(true)
+    if not self.xpState.initialized then
+        self:ResetSessionXP()
+    end
     ctx:RegisterEvent("PLAYER_ENTERING_WORLD", Utility.OnPlayerEnteringWorld)
     ctx:RegisterEvent("MERCHANT_SHOW", Utility.OnMerchantShow)
     ctx:RegisterEvent("MERCHANT_CLOSED", Utility.OnMerchantClosed)
     ctx:RegisterEvent("LOOT_READY", Utility.OnLootReady)
+    ctx:RegisterEvent("PLAYER_XP_UPDATE", Utility.OnXPUpdate)
+    ctx:RegisterEvent("PLAYER_LEVEL_UP", Utility.OnXPUpdate)
     ctx:AddCleanup(function()
         Utility:RestoreQoLCVars()
     end)

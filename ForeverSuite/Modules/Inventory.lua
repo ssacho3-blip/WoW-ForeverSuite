@@ -1,7 +1,7 @@
 -- Module: Modules/Inventory.lua
--- Responsibility: Bag free-slot HUD (draggable when unlocked + live session gold tooltip) and item tooltip vendor/stack/protection enrichment.
+-- Responsibility: Bag free-slot HUD (draggable when unlocked + live session gold/XP tooltip), /fs cheap lowest-value bag guide, and item tooltip vendor/stack/protection enrichment.
 -- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/Framework.lua.
--- Public API: Inventory (ScanBagCapacity, UpdateHUD, ApplyHUDAnchor, SyncHUDLockState, RefreshHoveredGoldTooltip, EnrichItemTooltip).
+-- Public API: Inventory (ScanBagCapacity, FindCheapestSellableItems, HandleCheapCommand, UpdateHUD, ApplyHUDAnchor, SyncHUDLockState, RefreshHoveredGoldTooltip, EnrichItemTooltip).
 -- Combat/Secret Safety: Uses BAG_UPDATE_DELAYED 0.20s bucket (never raw BAG_UPDATE); guards secret item/stack/price fields.
 local _, ns = ...
 
@@ -9,11 +9,19 @@ local type = type
 local pcall = pcall
 local select = select
 local tonumber = tonumber
+local tostring = tostring
 local setmetatable = setmetatable
+local table_sort = table.sort
 local math_floor = math.floor
 local string_format = string.format
+local string_match = string.match
 
 local NUM_TOTAL_BAGS = 4
+local POOR_QUALITY = (_G.Enum and _G.Enum.ItemQuality and _G.Enum.ItemQuality.Poor) or 0
+local COMMON_QUALITY = (_G.Enum and _G.Enum.ItemQuality and _G.Enum.ItemQuality.Common) or 1
+local QUEST_CLASS_ID = (_G.Enum and _G.Enum.ItemClass and _G.Enum.ItemClass.Questitem) or 12
+local DEFAULT_CHEAP_LIMIT = 5
+local MAX_CHEAP_LIMIT = 10
 local tooltipHooked = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local tooltipState = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 
@@ -135,8 +143,148 @@ function Inventory:RenderGoldTooltip()
         gt:AddDoubleLine("|cff94a3b8퀘스트 보상|r", ns.FormatMoney(econ.ledger.quest))
         gt:AddDoubleLine("|cff94a3b8기타 수지|r", ns.FormatMoney(econ.ledger.other))
     end
-    gt:AddLine("이동: /fs move  |  초기화: /fs move reset", 0.62, 0.68, 0.76)
+    local utilRec = ns.ModuleManager:GetModule("Utility")
+    if utilRec and utilRec.state == "ENABLED" and utilRec.definition and utilRec.definition.FormatXPCompactLine then
+        local xpLine = utilRec.definition:FormatXPCompactLine()
+        if type(xpLine) == "string" and xpLine ~= "" then
+            gt:AddDoubleLine("|cff94a3b8세션 XP/시간|r", xpLine)
+        end
+    end
+    gt:AddLine("이동: /fs move  |  최저가: /fs cheap  |  XP: /fs xp", 0.62, 0.68, 0.76)
     gt:Show()
+end
+
+local function IsCleanFlagTrue(val)
+    return (not ns.IsSecret(val)) and (val == true)
+end
+
+function Inventory:FindCheapestSellableItems(limit)
+    local cap = DEFAULT_CHEAP_LIMIT
+    if type(limit) == "number" and not ns.IsSecret(limit) and limit >= 1 then
+        cap = math_floor(limit)
+        if cap > MAX_CHEAP_LIMIT then
+            cap = MAX_CHEAP_LIMIT
+        end
+    end
+    if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo and C_Item and C_Item.GetItemInfo) then
+        return {}, true
+    end
+
+    local candidates = {}
+    local incomplete = false
+    for bag = 0, NUM_TOTAL_BAGS do
+        local okSlots, numSlots = pcall(C_Container.GetContainerNumSlots, bag)
+        if not okSlots or type(numSlots) ~= "number" or ns.IsSecret(numSlots) or numSlots < 0 then
+            incomplete = true
+        else
+            for slot = 1, numSlots do
+                local okInfo, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+                if not okInfo then
+                    incomplete = true
+                elseif type(info) == "table" then
+                    if ns.IsSecret(info.itemID) or ns.IsSecret(info.quality) or ns.IsSecret(info.stackCount)
+                        or ns.IsSecret(info.isLocked) or ns.IsSecret(info.hasNoValue) or ns.IsSecret(info.isRefundable) then
+                        incomplete = true
+                    else
+                        local itemID = info.itemID
+                        local quality = info.quality
+                        if type(itemID) == "number" and itemID > 0
+                            and (quality == POOR_QUALITY or quality == COMMON_QUALITY)
+                            and not IsCleanFlagTrue(info.isLocked)
+                            and not IsCleanFlagTrue(info.hasNoValue)
+                            and not IsCleanFlagTrue(info.isRefundable)
+                            and not ns.ProfileManager:IsProtectedItem(itemID) then
+                            local okItem, name, link, _, _, _, itemType, _, _, _, _, sellPrice, classID = pcall(C_Item.GetItemInfo, itemID)
+                            if not okItem or name == nil or ns.IsSecret(sellPrice) or ns.IsSecret(classID) or ns.IsSecret(itemType) then
+                                incomplete = true
+                            elseif type(sellPrice) == "number" and sellPrice > 0
+                                and classID ~= QUEST_CLASS_ID
+                                and itemType ~= "퀘스트"
+                                and itemType ~= "Quest" then
+                                local stackCount = (type(info.stackCount) == "number" and info.stackCount >= 1) and math_floor(info.stackCount) or 1
+                                local label = "#" .. tostring(itemID)
+                                if type(info.hyperlink) == "string" and not ns.IsSecret(info.hyperlink) and info.hyperlink ~= "" then
+                                    label = info.hyperlink
+                                elseif type(link) == "string" and not ns.IsSecret(link) and link ~= "" then
+                                    label = link
+                                elseif type(name) == "string" and not ns.IsSecret(name) and name ~= "" then
+                                    label = name
+                                end
+                                candidates[#candidates + 1] = {
+                                    bag = bag,
+                                    slot = slot,
+                                    itemID = itemID,
+                                    label = label,
+                                    quality = quality,
+                                    stackCount = stackCount,
+                                    unitPrice = sellPrice,
+                                    totalValue = sellPrice * stackCount,
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table_sort(candidates, function(a, b)
+        if a.totalValue ~= b.totalValue then
+            return a.totalValue < b.totalValue
+        end
+        if a.quality ~= b.quality then
+            return a.quality < b.quality
+        end
+        if a.bag ~= b.bag then
+            return a.bag < b.bag
+        end
+        return a.slot < b.slot
+    end)
+
+    local results = {}
+    local count = #candidates < cap and #candidates or cap
+    for i = 1, count do
+        results[i] = candidates[i]
+    end
+    return results, incomplete
+end
+
+function Inventory:HandleCheapCommand(rawArg)
+    local clean = ns.IsSecret(rawArg) and "" or tostring(rawArg or "")
+    local trimmed = string_match(clean, "^%s*(.-)%s*$") or ""
+    local requested = DEFAULT_CHEAP_LIMIT
+    if trimmed ~= "" then
+        local parsed = tonumber(trimmed)
+        if not parsed or parsed < 1 then
+            ns.Warn("사용법: /fs cheap [1~10] (안내 전용 · 자동 삭제/판매하지 않음)")
+            return false
+        end
+        requested = parsed
+    end
+
+    local items, incomplete = self:FindCheapestSellableItems(requested)
+    if #items == 0 then
+        if incomplete then
+            ns.Warn("가방 슬롯 또는 아이템 캐시 정보를 완전히 읽지 못해 최저가 정리 안내를 건너뜁니다.")
+            return false
+        end
+        ns.Print("정리 추천 대상(보호 제외·상점가 있는 회색/일반 아이템)이 없습니다.")
+        return true
+    end
+
+    local suffix = incomplete and " (일부 슬롯 스캔 제한됨)" or ""
+    ns.Print(string_format("가방 최저가 정리 추천 TOP %d%s — 슬롯 1칸 손실 최소순:", #items, suffix))
+    for i = 1, #items do
+        local item = items[i]
+        local stackText = item.stackCount > 1 and (" x" .. tostring(item.stackCount)) or ""
+        local unitText = item.stackCount > 1 and (" (개당 " .. ns.FormatMoney(item.unitPrice) .. ")") or ""
+        ns.Print(string_format(
+            " #%d [가방 %d-%d] %s%s — 총 %s%s",
+            i, item.bag, item.slot, item.label, stackText, ns.FormatMoney(item.totalValue), unitText
+        ))
+    end
+    ns.Print("안내 전용(자동 삭제·판매 안 함) | 보호 지정: /fs protect <아이템링크> | 상점 판매: /fs sell")
+    return true
 end
 
 function Inventory:RefreshHoveredGoldTooltip()

@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.9"
+    assert ns["VERSION"] == "0.4.0"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.3.9 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.4.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.3.9"
+    assert ns["VERSION"] == "0.4.0"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -2139,6 +2139,190 @@ def test_v039_preemptive_audit_zero_taint_tooltip_cvar_combat_secrets_and_weapon
     rt_sh.advance_time(0.35)
     assert combat_sh["lastBuffMissing"] is True
     assert any("비전투 버프 누락 알림" in m for m in rt_sh.chat_messages)
+
+
+def test_v040_cheap_bag_guide_ranking_exclusions_and_secret_safety() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    # Add a quest item (classID=12) and a common item matching poor item value for tie-break
+    rt.item_db[9500] = ("수상한 퀘스트 쪽지", "|Hitem:9500|h[수상한 퀘스트 쪽지]|h", 1, 1, 1, "퀘스트", "퀘스트", 1, "", 134000, 1, 12, 0)
+    rt.item_db[9501] = ("싸구려 흰템", "|Hitem:9501|h[싸구려 흰템]|h", 1, 1, 1, "기타", "기타", 20, "", 134000, 125, 15, 0)
+    ns = rt.boot_session()
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+
+    # Populate bag 0 with varied items:
+    # slot 1: Common copper ore (15c x 2 = 30c) -> cheapest overall
+    # slot 2: Poor wolf fang (125c x 1 = 125c) -> ties with slot 3 (125c), Poor must rank before Common!
+    # slot 3: Common cheap item (125c x 1 = 125c)
+    # slot 4: Poor leather scrap (200c x 3 = 600c)
+    # slot 5: Protected poor ring (500c x 1) -> MUST be excluded via /fs protect
+    # slot 6: Quest item (1c x 1, classID=12) -> MUST be excluded
+    # slot 7: Uncommon staff (quality=2) -> MUST be excluded
+    # slot 8: Locked poor item -> MUST be excluded
+    # slot 9: hasNoValue poor item -> MUST be excluded
+    rt.bags[0]["items"] = {
+        1: {"itemID": 2770, "quality": 1, "stackCount": 2, "hyperlink": "|Hitem:2770|h[구리 광석]|h"},
+        2: {"itemID": 9001, "quality": 0, "stackCount": 1, "hyperlink": "|Hitem:9001|h[깨진 늑대 송곳니]|h"},
+        3: {"itemID": 9501, "quality": 1, "stackCount": 1, "hyperlink": "|Hitem:9501|h[싸구려 흰템]|h"},
+        4: {"itemID": 9002, "quality": 0, "stackCount": 3, "hyperlink": "|Hitem:9002|h[낡은 가죽 조각]|h"},
+        5: {"itemID": 9099, "quality": 0, "stackCount": 1, "hyperlink": "|Hitem:9099|h[추억의 회색 반지]|h"},
+        6: {"itemID": 9500, "quality": 1, "stackCount": 1, "hyperlink": "|Hitem:9500|h[수상한 퀘스트 쪽지]|h"},
+        7: {"itemID": 2001, "quality": 2, "stackCount": 1, "hyperlink": "|Hitem:2001|h[수습생의 지팡이]|h"},
+        8: {"itemID": 9001, "quality": 0, "stackCount": 1, "isLocked": True},
+        9: {"itemID": 9001, "quality": 0, "stackCount": 1, "hasNoValue": True},
+    }
+    rt.run_slash("FOREVERSUITE", "protect 9099")
+    rt.chat_messages.clear()
+
+    items, incomplete = rt.vm._invoke_callable(inv["FindCheapestSellableItems"], (inv, 10))
+    assert incomplete is False
+    ordered_ids = [items[i]["itemID"] for i in range(1, items.lua_len() + 1)]
+    assert ordered_ids == [2770, 9001, 9501, 9002]
+    assert items[1]["totalValue"] == 30
+    assert items[4]["totalValue"] == 600
+
+    # /fs cheap 2 prints top 2 only
+    rt.run_slash("FOREVERSUITE", "cheap 2")
+    cheap_lines = [m for m in rt.chat_messages if "[가방 " in m]
+    assert len(cheap_lines) == 2
+    assert "구리 광석" in cheap_lines[0] and "x2" in cheap_lines[0]
+    assert "깨진 늑대 송곳니" in cheap_lines[1]
+
+    # Invalid / non-positive count prints usage warning instead of silently defaulting
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "cheap 0")
+    assert any("사용법: /fs cheap [1~10]" in m for m in rt.chat_messages)
+
+    # Uncached item (C_Item.GetItemInfo returns nil) fails closed with incomplete=True
+    rt.bags[0]["items"] = {
+        1: {"itemID": 999999, "quality": 0, "stackCount": 1},
+    }
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "cheap")
+    assert any("최저가 정리 안내를 건너뜁니다" in m for m in rt.chat_messages)
+
+    # Fail-closed under C_Secrets in bag slot fields
+    rt.bags[0]["items"] = {
+        1: {"itemID": SecretValue("secretItem"), "quality": 0, "stackCount": 1},
+    }
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "cheap")
+    assert any("최저가 정리 안내를 건너뜁니다" in m for m in rt.chat_messages)
+
+
+def test_v040_session_xp_tracker_rollover_eta_secret_gap_and_tooltip() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_level = 24
+    rt.player_xp = 9500
+    rt.player_xp_max = 10000
+    rt.player_xp_exhaustion = 1200
+    ns = rt.boot_session()
+    util = ns["ModuleManager"]["modules"]["Utility"]["definition"]
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+
+    # Zero Fabricated Status: before XP gain, xpPerHour and etaSec are nil -> "—"
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "xp")
+    assert any("속도: —" in m and "예상 —" in m and "휴식 XP: 1,200" in m for m in rt.chat_messages)
+
+    # Simulate 600s (10 min) elapsed + level-up where PLAYER_LEVEL_UP fires BEFORE UnitXP wraps,
+    # followed immediately by PLAYER_XP_UPDATE with wrapped XP (300 / 12000) -> exact +800 XP (no double count!)
+    rt.advance_time(600.0)
+    rt.player_level = 25
+    rt.fire_event("PLAYER_LEVEL_UP", 25)
+    assert util["xpState"]["sessionGained"] == 0
+
+    rt.player_xp = 300
+    rt.player_xp_max = 12000
+    rt.fire_event("PLAYER_XP_UPDATE")
+    assert util["xpState"]["sessionGained"] == 800
+
+    # Additional +1200 XP in same level -> total +2000 XP in 600s = 12,000 XP/h
+    rt.player_xp = 1500
+    rt.fire_event("PLAYER_XP_UPDATE")
+    assert util["xpState"]["sessionGained"] == 2000
+
+    stats = rt.vm._invoke_callable(util["GetSessionXPStats"], (util,))[0]
+    assert stats["xpPerHour"] == 12000
+    assert stats["remainingXP"] == 10500
+    assert stats["etaSec"] == 3150  # 10500 / 12000 * 3600 = 3150s (52m 30s)
+
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "xp")
+    assert any("+2,000 XP" in m and "12,000 XP/시간" in m and "52분 30초" in m for m in rt.chat_messages)
+
+    # BagHUD tooltip includes live session XP/h line
+    rt.vm._invoke_callable(inv["RenderGoldTooltip"], (inv,))
+    tip_lines = rt.vm.G["GameTooltip"]["_lines"]
+    assert any("세션 XP/시간" in str(line) and "12,000/h" in str(line) for line in tip_lines)
+
+    # C_Secrets gap resilience: secret UnitXP does not crash or fabricate delta upon recovery
+    rt.player_xp = SecretValue("secretXP")
+    rt.fire_event("PLAYER_XP_UPDATE")
+    assert util["xpState"]["secretGap"] is True
+    rt.player_xp = 2100
+    rt.fire_event("PLAYER_XP_UPDATE")
+    assert util["xpState"]["secretGap"] is False
+    assert util["xpState"]["sessionGained"] == 2000  # resynced cleanly without guessed delta
+
+    # /fs xp reset clears accumulated session stats
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "xp reset")
+    assert util["xpState"]["sessionGained"] == 0
+    assert any("초기화" in m for m in rt.chat_messages)
+
+    # Max level prints max-level status cleanly
+    rt.player_level = 60
+    rt.player_xp = 0
+    rt.player_xp_max = 0
+    rt.chat_messages.clear()
+    rt.run_slash("FOREVERSUITE", "xp")
+    assert any("최고 레벨(Lv.60)" in m for m in rt.chat_messages)
+
+
+@pytest.mark.parametrize(
+    "case_name",
+    [
+        "level_up_before_xp_wrap",
+        "xp_wrap_before_level_up_with_new_max",
+        "xp_wrap_before_level_up_with_stale_max",
+    ],
+)
+def test_v040_xp_levelup_event_orderings_never_stall_or_double_count(case_name: str) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_level = 24
+    rt.player_xp = 900
+    rt.player_xp_max = 1000
+    ns = rt.boot_session()
+    util = ns["ModuleManager"]["modules"]["Utility"]["definition"]
+
+    if case_name == "level_up_before_xp_wrap":
+        rt.player_level = 25
+        rt.fire_event("PLAYER_LEVEL_UP", 25)
+        rt.player_xp = 200
+        rt.player_xp_max = 1200
+        rt.fire_event("PLAYER_XP_UPDATE")
+    elif case_name == "xp_wrap_before_level_up_with_new_max":
+        rt.player_xp = 200
+        rt.player_xp_max = 1200
+        rt.fire_event("PLAYER_XP_UPDATE")
+        rt.player_level = 25
+        rt.fire_event("PLAYER_LEVEL_UP", 25)
+    else:
+        rt.player_xp = 200
+        rt.fire_event("PLAYER_XP_UPDATE")
+        rt.player_level = 25
+        rt.player_xp_max = 1200
+        rt.fire_event("PLAYER_LEVEL_UP", 25)
+
+    assert util["xpState"]["sessionGained"] == 300
+    assert util["xpState"]["pendingLevelUp"] is False
+
+    # Subsequent +50 XP gain in the new level MUST keep accumulating (never stall!)
+    rt.player_xp = 250
+    rt.fire_event("PLAYER_XP_UPDATE")
+    assert util["xpState"]["sessionGained"] == 350
+
+
 
 
 

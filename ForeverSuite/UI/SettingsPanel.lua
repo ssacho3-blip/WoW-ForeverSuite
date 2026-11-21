@@ -70,6 +70,9 @@ local HUD_RESET_DEFAULTS = {
 local SLASH_MODULE_DISPATCH = {
     protect = { "Utility", "HandleProtectCommand", true },
     sell = { "Utility", "ManualSellBatch", false },
+    cheap = { "Inventory", "HandleCheapCommand", true },
+    junk = { "Inventory", "HandleCheapCommand", true },
+    xp = { "Utility", "HandleXPCommand", true },
     gold = { "Economy", "PrintLedgerSummary", false },
     yield = { "Profession", "PrintSessionYield", false },
     gather = { "Profession", "PrintSessionYield", false },
@@ -624,7 +627,7 @@ function ns.HandleSlashCommand(rawMsg)
     elseif route then
         DispatchModuleMethod(route[1], route[2], route[3] and rest or nil)
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | cheap | xp | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
     end
 end
 

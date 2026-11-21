@@ -2,6 +2,16 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.4.0] - 2026-11-21
+
+### Added (`FS-V040-CHEAP-XP`)
+- **Lowest-Value Bag Guide (`/fs cheap [1~10]`, alias `/fs junk`) (`ForeverSuite/Modules/Inventory.lua`, `UI/SettingsPanel.lua`)**:
+  - Scans bags `0..4` with full `pcall` + `C_Secrets` + item-cache fail-closed guards and ranks unprotected, non-quest Poor/Common sellable items by lowest total stack vendor value (`sellPrice * stackCount`, Poor before Common tie-break) so players know which single slot loses the least gold when bags are full.
+  - Guidance-only (zero `DeleteCursorItem` / auto-sell calls); rejects non-positive limits cleanly and flags uncached `C_Item.GetItemInfo == nil` slots as incomplete.
+- **Session XP/Hour & Level-Up ETA Tracker (`/fs xp [reset]` + BagHUD Tooltip) (`ForeverSuite/Modules/Utility.lua`, `Modules/Inventory.lua`)**:
+  - Tracks session XP gained across `PLAYER_XP_UPDATE` and `PLAYER_LEVEL_UP` with full classic/forever event-ordering resilience (`pendingLevelUp` + bounded `waitCount`, zero stall or double-count across level rollovers), rested XP readout, max-level detection, `C_Secrets` gap resync without fabricated deltas, and Zero Fabricated Status (`—` before XP gain or `< 1s` elapsed).
+  - Surfaces live `세션 XP/시간` in the BagHUD tooltip when enabled and adds manifest `patch_zip_url` version parity test (`156 passed`).
+
 ## [0.3.9] - 2026-11-21
 
 ### Hardened (`FS-PREEMPTIVE-AUDIT-V039`)

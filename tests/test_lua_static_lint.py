@@ -79,6 +79,7 @@ def test_luacheck_config_and_optional_binary_gate() -> None:
 
 
 def test_suite_version_parity_across_toc_lua_and_builder() -> None:
+    import json
     import re
 
     fs_toc = (REPO_ROOT / "ForeverSuite" / "ForeverSuite.toc").read_text(encoding="utf-8")
@@ -86,6 +87,7 @@ def test_suite_version_parity_across_toc_lua_and_builder() -> None:
     init_lua = (REPO_ROOT / "ForeverSuite" / "Core" / "Init.lua").read_text(encoding="utf-8")
     state_lua = (REPO_ROOT / "ForeverSuite_GJBridge" / "State.lua").read_text(encoding="utf-8")
     builder_py = (REPO_ROOT / "scripts" / "build_win_exe.py").read_text(encoding="utf-8")
+    manifest = json.loads((REPO_ROOT / "pinned_upstream.json").read_text(encoding="utf-8"))
 
     fs_ver = re.search(r"^##\s*Version:\s*([\w.\-]+)", fs_toc, re.MULTILINE).group(1)
     gj_ver = re.search(r"^##\s*Version:\s*([\w.\-]+)", gj_toc, re.MULTILINE).group(1)
@@ -93,8 +95,11 @@ def test_suite_version_parity_across_toc_lua_and_builder() -> None:
     state_ver = re.search(r'ns\.VERSION\s*=\s*"([\w.\-]+)"', state_lua).group(1)
     b_read_ver = re.search(r'def\s+read_suite_version\([^)]*default:\s*str\s*=\s*"([\w.\-]+)"', builder_py).group(1)
     b_ps1_ver = re.search(r'def\s+build_embedded_ps1_script\([^)]*suite_version:\s*str\s*=\s*"([\w.\-]+)"', builder_py).group(1)
+    patch_url = str(manifest.get("patch_zip_url", ""))
+    m_patch = re.search(r"ForeverSuite-v([\w.\-]+)\.zip$", patch_url)
+    patch_ver = m_patch.group(1) if m_patch else None
 
-    assert len({fs_ver, gj_ver, init_ver, state_ver, b_read_ver, b_ps1_ver}) == 1, (
+    assert len({fs_ver, gj_ver, init_ver, state_ver, b_read_ver, b_ps1_ver, patch_ver}) == 1, (
         f"Version mismatch: fs_toc={fs_ver}, gj_toc={gj_ver}, init={init_ver}, state={state_ver}, "
-        f"read_default={b_read_ver}, ps1_default={b_ps1_ver}"
+        f"read_default={b_read_ver}, ps1_default={b_ps1_ver}, manifest_patch={patch_ver}"
     )
