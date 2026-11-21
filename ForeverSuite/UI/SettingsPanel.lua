@@ -248,8 +248,8 @@ local function BuildBridgeStatusText()
     end
     local ext = type(bridge.externalCoexistence) == "table" and bridge.externalCoexistence or nil
     if ext then
-        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보) 3종]|r"
-        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips" }) do
+        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보·연동) 4종]|r"
+        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips", "baganatorBadges" }) do
             out = out .. string_format("\n • %-17s : %s", k, tostring(ext[k] or "—"))
         end
     end

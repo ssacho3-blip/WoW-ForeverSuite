@@ -2,6 +2,16 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.5.2] - 2026-11-21
+
+### Added (`FS-V052-BAGANATOR-WIDGETS`)
+- **`Baganator` Corner Widget Bridge for GodJohnson Labels (`ForeverSuite_GJBridge/Bridge.lua`, `State.lua`, `ForeverSuite/UI/SettingsPanel.lua`)**:
+  - Automatically registers two idempotent `Baganator.API.RegisterCornerWidget` overlays without modifying upstream `GodJohnsonGoldBorder` or `Baganator`:
+    - `fsgj_material` (`bottom_left`): renders localized profession material labels (`요리`, `약초`, `가죽`, `광석`, `천`, `생선`, `마부`, `재료`, etc.) using GodJohnson's `BagMaterialMatch` and configured `reagentColors` / `UIFontPath` (11pt `OUTLINE`).
+    - `fsgj_badge` (`top_right`): renders `다크문`, `평판`, `책`, and `버프` consumable/event badges via `DarkmoonGoods`, `BagReputationItem`, `BagLibraryBookInfo471`, and `BagBuffItem`.
+- **One-Time `Auctionator` Auto-Scan Seed (`ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Seeds `Auctionator` `autoscan_2 = true` and `replicate_scan_3 = true` once on `PLAYER_LOGIN` (persisted via `ForeverSuiteDB.gjBridge.auctionatorAutoscanSeeded`) so Auction House price databases refresh automatically while respecting subsequent user preference changes (`163 passed`).
+
 ## [0.5.1] - 2026-11-21
 
 ### Added & Fixed (`FS-V051-EXTERNAL-COEXISTENCE`)

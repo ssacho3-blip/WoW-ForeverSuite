@@ -162,6 +162,150 @@ function ns.ReconcileExternalCoexistence(C)
     return changed
 end
 
+local function CreateBaganatorBadgeText(itemButton)
+    local text = itemButton:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    local C = _G.GJCompanion
+    local fontPath = (type(C) == "table" and type(C.UIFontPath) == "string" and C.UIFontPath ~= "" and C.UIFontPath)
+        or _G.STANDARD_TEXT_FONT
+    if type(fontPath) == "string" and fontPath ~= "" and type(text.SetFont) == "function" then
+        pcall(text.SetFont, text, fontPath, 11, "OUTLINE")
+    end
+    text.sizeFont = true
+    return text
+end
+
+local function ResolveMaterialColor(C, kind)
+    if type(C.BagMaterialSettings) == "function" then
+        local okCfg, cfg = pcall(C.BagMaterialSettings)
+        if okCfg and type(cfg) == "table" and type(cfg.reagentColors) == "table" and type(cfg.reagentColors[kind]) == "table" then
+            local col = cfg.reagentColors[kind]
+            if type(col[1]) == "number" and type(col[2]) == "number" and type(col[3]) == "number" then
+                return col[1], col[2], col[3]
+            end
+        end
+    end
+    if type(C.ProfessionMaterialGroups) == "table" and type(C.ProfessionMaterialGroups[kind]) == "table" then
+        local col = C.ProfessionMaterialGroups[kind][2]
+        if type(col) == "table" and type(col[1]) == "number" and type(col[2]) == "number" and type(col[3]) == "number" then
+            return col[1], col[2], col[3]
+        end
+    end
+    return 1, 0.86, 0.4
+end
+
+local function UpdateBaganatorMaterialCorner(labelObj, details)
+    local C = _G.GJCompanion
+    if type(C) ~= "table" or type(C.BagMaterialMatch) ~= "function" then
+        return false
+    end
+    if type(details) ~= "table" or type(details.itemID) ~= "number" or details.itemID <= 0 then
+        return false
+    end
+    local ok, matches, kind, label = pcall(C.BagMaterialMatch, details.itemID)
+    if not ok or not matches or type(label) ~= "string" or label == "" then
+        return false
+    end
+    local r, g, b = ResolveMaterialColor(C, kind)
+    labelObj:SetText(label)
+    labelObj:SetTextColor(r, g, b)
+    return true
+end
+
+local function UpdateBaganatorBadgeCorner(labelObj, details)
+    local C = _G.GJCompanion
+    if type(C) ~= "table" or type(details) ~= "table" or type(details.itemID) ~= "number" or details.itemID <= 0 then
+        return false
+    end
+    local itemID = details.itemID
+    local caption, r, g, b = nil, 1, 1, 1
+    if type(C.DarkmoonGoods) == "table" and C.DarkmoonGoods[itemID] then
+        caption, r, g, b = "다크문", 1, 0.55, 1
+    elseif type(C.BagReputationItem) == "function" then
+        local okRep, isRep = pcall(C.BagReputationItem, itemID)
+        if okRep and isRep then
+            caption, r, g, b = "평판", 1, 0.79, 0.32
+        end
+    end
+    if not caption and type(C.BagLibraryBookInfo471) == "function" then
+        local okBook, book = pcall(C.BagLibraryBookInfo471, itemID)
+        if okBook and book then
+            caption, r, g, b = "책", 1, 0.82, 0.25
+        end
+    end
+    if not caption and type(C.BagBuffItem) == "function" then
+        local okBuff, isBuff = pcall(C.BagBuffItem, itemID, details.itemLink)
+        if okBuff and isBuff then
+            caption, r, g, b = "버프", 0.74, 0.65, 1
+        end
+    end
+    if not caption then
+        return false
+    end
+    labelObj:SetText(caption)
+    labelObj:SetTextColor(r, g, b)
+    return true
+end
+
+function ns.RegisterBaganatorWidgets()
+    if ns._baganatorWidgetsRegistered then
+        ns.externalCoexistence.baganatorBadges = "REGISTERED"
+        return true
+    end
+    local bagApi = type(_G.Baganator) == "table" and _G.Baganator.API or nil
+    if type(bagApi) ~= "table" or type(bagApi.RegisterCornerWidget) ~= "function" then
+        ns.externalCoexistence.baganatorBadges = "UNAVAILABLE"
+        return false
+    end
+    local okMat = pcall(
+        bagApi.RegisterCornerWidget,
+        "갓존슨 재료 (요리·약초·가죽)",
+        "fsgj_material",
+        UpdateBaganatorMaterialCorner,
+        CreateBaganatorBadgeText,
+        { corner = "bottom_left", priority = 1 },
+        true
+    )
+    local okBadge = pcall(
+        bagApi.RegisterCornerWidget,
+        "갓존슨 배지 (버프·평판·다크문·책)",
+        "fsgj_badge",
+        UpdateBaganatorBadgeCorner,
+        CreateBaganatorBadgeText,
+        { corner = "top_right", priority = 1 },
+        true
+    )
+    if okMat or okBadge then
+        ns._baganatorWidgetsRegistered = true
+        ns.externalCoexistence.baganatorBadges = "REGISTERED"
+        return true
+    end
+    ns.externalCoexistence.baganatorBadges = "FAILED"
+    return false
+end
+
+function ns._SeedAuctionatorAutoscanOnce(store)
+    if type(store) ~= "table" or store.auctionatorAutoscanSeeded or ns._IsForeverSuiteReadOnly() then
+        return false
+    end
+    local auct = _G.Auctionator
+    local cfg = type(auct) == "table" and auct.Config or nil
+    local opts = type(cfg) == "table" and cfg.Options or nil
+    if type(cfg) ~= "table" or type(cfg.Set) ~= "function" or type(opts) ~= "table" then
+        return false
+    end
+    local seeded = false
+    if type(opts.AUTOSCAN) == "string" and pcall(cfg.Set, opts.AUTOSCAN, true) then
+        seeded = true
+    end
+    if type(opts.REPLICATE_SCAN) == "string" and pcall(cfg.Set, opts.REPLICATE_SCAN, true) then
+        seeded = true
+    end
+    if seeded then
+        store.auctionatorAutoscanSeeded = true
+    end
+    return seeded
+end
+
 local function EvaluateGJBooleanSetting(getterFn)
     if type(getterFn) ~= "function" then
         return true, "GJ_UNREADABLE_FAILSAFE"
@@ -322,6 +466,7 @@ function ns.SanitizeLiveGJSettings(allowStandaloneStoreCreate)
     ns._ReconcileStarterLootDefault(C, store)
     ns._ReconcileNavRangeLayout(C, store, false)
     ns.ReconcileExternalCoexistence(C)
+    ns._SeedAuctionatorAutoscanOnce(store)
 
     local ct = nil
     if type(C.DB) == "function" then
@@ -354,7 +499,7 @@ function ns.PrintStatus()
     for _, key in ipairs(OWNERSHIP_KEYS_ALL) do
         ns.Print("  기능 소유권 [" .. key .. "] = " .. tostring(ns.ownership[key]))
     end
-    for _, key in ipairs({ "auction", "nameplates", "inventoryTooltips" }) do
+    for _, key in ipairs({ "auction", "nameplates", "inventoryTooltips", "baganatorBadges" }) do
         ns.Print("  외부 공존 [" .. key .. "] = " .. tostring(ns.externalCoexistence[key]))
     end
 end
@@ -439,6 +584,7 @@ function ns.Initialize()
     ns.status = "ACTIVE"
     ns._ApplyBrandingOverrides(C)
     ns._ReconcileNavRangeLayout(C, ns._GetBridgeStore(false), false)
+    ns.RegisterBaganatorWidgets()
     ns.SyncOwnership()
     return true
 end
@@ -450,6 +596,7 @@ if type(_G.SlashCmdList) == "table" then
         cmd = string_lower(cmd)
         if cmd == "sync" then
             ns.ReconcileExternalCoexistence(_G.GJCompanion)
+            ns.RegisterBaganatorWidgets()
             ns.SyncOwnership()
             ns.TrySkinLauncher()
             ns.Print("단일 소유권·외부 공존 및 런처 상태 재동기화 완료.")
@@ -479,6 +626,9 @@ if _G.CreateFrame then
             if event == "ADDON_LOADED" then
                 if type(arg1) == "string" and EXTERNAL_COEXISTENCE_WATCH[arg1] then
                     ns.ReconcileExternalCoexistence(_G.GJCompanion)
+                    if arg1 == "Baganator" then
+                        ns.RegisterBaganatorWidgets()
+                    end
                     ns.SyncOwnership()
                 end
                 return
@@ -499,6 +649,7 @@ if _G.CreateFrame then
                     evFrame:UnregisterEvent("PLAYER_LOGIN")
                 end
                 SyncBridgeNavHooks(type(_G.GJCompanion) == "table")
+                ns.RegisterBaganatorWidgets()
                 ns.SanitizeLiveGJSettings(true)
                 ns.SyncOwnership()
             elseif event ~= "PLAYER_ENTERING_WORLD" or arg1 ~= false or arg2 ~= false then

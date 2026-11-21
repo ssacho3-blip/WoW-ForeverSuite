@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.5.1)" in ps1
+    assert "(v0.5.2)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1725,6 +1725,143 @@ def test_v051_external_coexistence_preserves_gj_when_no_external_addons_or_reado
     )
     load_bridge(rt_ro)
     assert rt_ro.vm.run_chunk("return GJCompanion._auction.enabled, GJCompanion._np.enabled")[0:2] == (True, True)
+
+
+def test_v052_baganator_corner_widgets_surface_gj_material_and_buff_badges() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Baganator"}
+    rt.boot_session()
+
+    rt.vm.run_chunk(
+        """
+        _G._registeredWidgets = {}
+        _G._registerCount = 0
+        Baganator = {
+            API = {
+                RegisterCornerWidget = function(label, id, onUpdate, onInit, defaultPosition, isFast)
+                    _G._registerCount = _G._registerCount + 1
+                    _G._registeredWidgets[id] = {
+                        label = label,
+                        onUpdate = onUpdate,
+                        onInit = onInit,
+                        defaultPosition = defaultPosition,
+                        isFast = isFast,
+                    }
+                end,
+            },
+        }
+        GJCompanion = {
+            version = "5.278",
+            UIFontPath = "Fonts\\\\2002.TTF",
+            DarkmoonGoods = { [9901] = { 5, 1 } },
+            ProfessionMaterialGroups = {
+                food = { "요리", { 1, 0.8, 0.5 } },
+                herb = { "약초", { 0.3, 1, 0.45 } },
+            },
+            BagMaterialSettings = function()
+                return { reagentColors = { food = { 1, 0.8, 0.5 } } }
+            end,
+            BagMaterialMatch = function(itemID)
+                if itemID == 2886 then
+                    return true, "food", "요리"
+                end
+                if itemID == 2449 then
+                    return true, "herb", "약초"
+                end
+                return false
+            end,
+            BagReputationItem = function(itemID)
+                return itemID == 9902
+            end,
+            BagLibraryBookInfo471 = function(itemID)
+                return itemID == 9903 and { title = "고서" } or nil
+            end,
+            BagBuffItem = function(itemID, link)
+                return itemID == 2458 and type(link) == "string"
+            end,
+        }
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert bridge.get("externalCoexistence").get("baganatorBadges") == "REGISTERED"
+    assert rt.vm.run_chunk("return _G._registerCount")[0] == 2
+
+    # Idempotent: calling RegisterBaganatorWidgets again must not double-register
+    rt.vm.run_chunk("ForeverSuite_GJBridge.RegisterBaganatorWidgets()")
+    assert rt.vm.run_chunk("return _G._registerCount")[0] == 2
+
+    # Verify default positions, onInit font, and material/badge updates
+    res = rt.vm.run_chunk(
+        """
+        local mat = _G._registeredWidgets["fsgj_material"]
+        local bdg = _G._registeredWidgets["fsgj_badge"]
+        local fakeBtn = {
+            CreateFontString = function(self, name, layer, template)
+                local fs = {
+                    _text = "",
+                    _font = nil,
+                    _r = 0, _g = 0, _b = 0,
+                    SetFont = function(s, path, size, flags) s._font = path .. ":" .. tostring(size) .. ":" .. tostring(flags) end,
+                    SetText = function(s, t) s._text = t end,
+                    SetTextColor = function(s, r, g, b) s._r, s._g, s._b = r, g, b end,
+                }
+                return fs
+            end,
+        }
+        local matFs = mat.onInit(fakeBtn)
+        local bdgFs = bdg.onInit(fakeBtn)
+
+        local okFood = mat.onUpdate(matFs, { itemID = 2886, itemLink = "|Hitem:2886|h[멧돼지 갈비]|h" })
+        local foodText = matFs._text
+        local okHerb = mat.onUpdate(matFs, { itemID = 2449, itemLink = "|Hitem:2449|h[평온초]|h" })
+        local herbText, herbG = matFs._text, matFs._g
+        local okPlain = mat.onUpdate(matFs, { itemID = 6948, itemLink = "|Hitem:6948|h[귀환석]|h" })
+
+        local okBuff = bdg.onUpdate(bdgFs, { itemID = 2458, itemLink = "|Hitem:2458|h[비약]|h" })
+        local buffText = bdgFs._text
+        local okDmf = bdg.onUpdate(bdgFs, { itemID = 9901, itemLink = "|Hitem:9901|h[축제]|h" })
+        local dmfText = bdgFs._text
+        local okRep = bdg.onUpdate(bdgFs, { itemID = 9902, itemLink = "|Hitem:9902|h[계약서]|h" })
+        local repText = bdgFs._text
+        local okBook = bdg.onUpdate(bdgFs, { itemID = 9903, itemLink = "|Hitem:9903|h[책]|h" })
+        local bookText = bdgFs._text
+        local okNone = bdg.onUpdate(bdgFs, { itemID = 6948, itemLink = "|Hitem:6948|h[귀환석]|h" })
+
+        return mat.defaultPosition.corner, bdg.defaultPosition.corner,
+               matFs.sizeFont, matFs._font,
+               okFood, foodText, okHerb, herbText, herbG, okPlain,
+               okBuff, buffText, okDmf, dmfText, okRep, repText, okBook, bookText, okNone
+        """
+    )
+    assert res[0:4] == ("bottom_left", "top_right", True, "Fonts\\2002.TTF:11:OUTLINE")
+    assert res[4:10] == (True, "요리", True, "약초", 1, False)
+    assert res[10:19] == (True, "버프", True, "다크문", True, "평판", True, "책", False)
+
+    # One-time Auctionator autoscan + replicate scan seed respects user override afterward
+    rt_auct = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_auct.loaded_external_addons = {"Auctionator"}
+    rt_auct.boot_session()
+    rt_auct.vm.run_chunk(
+        """
+        _G._auctCfg = { autoscan_2 = false, replicate_scan_3 = false }
+        Auctionator = {
+            Config = {
+                Options = { AUTOSCAN = "autoscan_2", REPLICATE_SCAN = "replicate_scan_3" },
+                Set = function(k, v) _G._auctCfg[k] = v end,
+            },
+        }
+        GJCompanion = { version = "5.278" }
+        """
+    )
+    load_bridge(rt_auct)
+    rt_auct.fire_event("PLAYER_LOGIN")
+    assert rt_auct.vm.run_chunk("return _G._auctCfg.autoscan_2, _G._auctCfg.replicate_scan_3")[0:2] == (True, True)
+    # If user later turns off autoscan manually, subsequent reloads must NOT override it
+    rt_auct.vm.run_chunk("_G._auctCfg.autoscan_2 = false")
+    rt_auct.fire_event("PLAYER_ENTERING_WORLD", True, False)
+    assert rt_auct.vm.run_chunk("return _G._auctCfg.autoscan_2")[0] is False
+
 
 
 
