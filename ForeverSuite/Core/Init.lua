@@ -39,7 +39,7 @@ local function SafeGetAddOnMetadata(addonName, field)
 end
 
 local function ResolveRuntimeVersionMetadata(addonName)
-    local ver = "0.5.0"
+    local ver = "0.5.1"
     local clientVer = "1.60.1"
     local targetToc = 16001
     local rawV = SafeGetAddOnMetadata(addonName, "Version")
@@ -314,6 +314,7 @@ local FEATURE_YIELD_RULES = {
     { key = "fastLoot", addons = { "Plumber" } },
     { key = "questAutoDialog", addons = { "DialogueUI" } },
     { key = "questTrackerHud", addons = { "!KalielsTracker", "KalielsTracker" } },
+    { key = "tooltipVendorPrice", addons = { "Auctionator" } },
 }
 
 function ns.SyncExternalFeatureYields()

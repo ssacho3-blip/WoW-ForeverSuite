@@ -367,7 +367,9 @@ function Inventory:EnrichItemTooltip(tooltip, itemID, itemLink, stackCount)
 
     local isProtected = ns.ProfileManager:IsProtectedItem(itemID)
     local showPrice = ns.ProfileManager:Get("inventory", "showTooltipVendorPrice")
+        and not (ns.IsFeatureYielded and ns.IsFeatureYielded("tooltipVendorPrice"))
     local showIlvl = ns.ProfileManager:Get("inventory", "showTooltipItemLevel")
+        and not (ns.IsFeatureYielded and ns.IsFeatureYielded("tooltipItemLevel"))
     if not isProtected and not showPrice and not showIlvl then
         return
     end

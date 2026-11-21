@@ -241,10 +241,17 @@ local function BuildBridgeStatusText()
     for _, k in ipairs({ "sayPrefix", "youtubeLink", "homeScreen", "launcherIcon", "tradeWhisper", "questSound", "navRangeLayout" }) do
         out = out .. string_format("\n • %-14s : %s", k, tostring(targets[k] or "—"))
     end
-    out = out .. "\n\n|cffffd23f[단일 소유자 중재 (Single-Owner Arbitration) 6종]|r"
+    out = out .. "\n\n|cffffd23f[단일 소유자 중재 (Single-Owner Arbitration) 7종]|r"
     local own = type(bridge.ownership) == "table" and bridge.ownership or {}
-    for _, k in ipairs({ "repair", "sell", "questAutoAccept", "questAutoTurnIn", "fishing", "way" }) do
-        out = out .. string_format("\n • %-15s : %s", k, tostring(own[k] or "—"))
+    for _, k in ipairs({ "repair", "sell", "questAutoAccept", "questAutoTurnIn", "fishing", "tooltipItemLevel", "way" }) do
+        out = out .. string_format("\n • %-16s : %s", k, tostring(own[k] or "—"))
+    end
+    local ext = type(bridge.externalCoexistence) == "table" and bridge.externalCoexistence or nil
+    if ext then
+        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보) 3종]|r"
+        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips" }) do
+            out = out .. string_format("\n • %-17s : %s", k, tostring(ext[k] or "—"))
+        end
     end
     return out
 end

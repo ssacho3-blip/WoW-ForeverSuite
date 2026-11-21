@@ -2,6 +2,15 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.5.1] - 2026-11-21
+
+### Added & Fixed (`FS-V051-EXTERNAL-COEXISTENCE`)
+- **External Specialist Addon Coexistence (`ForeverSuite_GJBridge/Bridge.lua`, `State.lua`, `Branding.lua`, `ForeverSuite/UI/SettingsPanel.lua`)**:
+  - Added `ReconcileExternalCoexistence(C)` to automatically yield overlapping `GodJohnsonGoldBorder` features without modifying upstream files: `auctionHelper` (`enabled`/`tooltips`/`autoScan`) yields to `Auctionator`, `enemyNameplates` (`enabled`/`replaceNative`) yields to `Platynator`/`Plater`/`Kui_Nameplates`/`TidyPlates_ThreatPlates` (with combat-safe `PLAYER_REGEN_ENABLED` refresh deferral), and `altInventory.tooltips`/`bankMaterials.tooltips` yield to `Syndicator`/`Baganator`.
+  - Preserves coexistence across `PLAYER_LOGIN`, late `ADDON_LOADED`, `/fsgj sync`, and `ApplyAuthorPreset`, with re-entrancy guards and strict future-schema read-only protection.
+- **Zero-Duplicate Item Tooltips (`ForeverSuite/Core/Init.lua`, `Modules/Inventory.lua`, `ForeverSuite_GJBridge/Bridge.lua`)**:
+  - Added `tooltipVendorPrice` (`Auctionator`) and `tooltipItemLevel` (`GodJohnsonGoldBorder`) `FeatureYield` arbitration so vendor price and item-level lines never duplicate while `[판매 보호됨]` badges and `/fs cheap` remain active (`162 passed`).
+
 ## [0.5.0] - 2026-11-21
 
 ### Added & Hardened (`FS-V050-SMART-QOL`)

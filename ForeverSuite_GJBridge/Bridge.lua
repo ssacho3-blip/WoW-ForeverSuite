@@ -16,6 +16,7 @@ local OWNERSHIP_KEYS_GJ = {
     "questAutoAccept",
     "questAutoTurnIn",
     "fishing",
+    "tooltipItemLevel",
 }
 
 local OWNERSHIP_KEYS_ALL = {
@@ -24,8 +25,142 @@ local OWNERSHIP_KEYS_ALL = {
     "questAutoAccept",
     "questAutoTurnIn",
     "fishing",
+    "tooltipItemLevel",
     "way",
 }
+
+local EXTERNAL_NAMEPLATE_ADDONS = {
+    "Platynator",
+    "Plater",
+    "Kui_Nameplates",
+    "TidyPlates_ThreatPlates",
+}
+
+local EXTERNAL_INVENTORY_TOOLTIP_ADDONS = {
+    "Syndicator",
+    "Baganator",
+}
+
+local function FindLoadedExternalAddon(candidates)
+    local FS = _G.ForeverSuite
+    if type(FS) ~= "table" or type(FS.IsExternalAddonLoaded) ~= "function" then
+        return nil
+    end
+    for i = 1, #candidates do
+        local name = candidates[i]
+        local ok, loaded = pcall(FS.IsExternalAddonLoaded, name)
+        if ok and loaded then
+            return name
+        end
+    end
+    return nil
+end
+
+local EXTERNAL_COEXISTENCE_WATCH = {
+    Auctionator = true,
+    Platynator = true,
+    Plater = true,
+    Kui_Nameplates = true,
+    TidyPlates_ThreatPlates = true,
+    Syndicator = true,
+    Baganator = true,
+}
+
+function ns.ReconcileExternalCoexistence(C)
+    C = C or _G.GJCompanion
+    if ns._reconcilingCoexistence or type(C) ~= "table" or ns._IsForeverSuiteReadOnly() then
+        return false
+    end
+    ns._reconcilingCoexistence = true
+
+    local changed = false
+    local needsCommit = false
+
+    local auctionOwner = FindLoadedExternalAddon({ "Auctionator" })
+    if auctionOwner and type(C.AuctionSettings) == "function" then
+        local ok, s = pcall(C.AuctionSettings)
+        if ok and type(s) == "table" then
+            if s.enabled ~= false or s.tooltips ~= false or s.autoScan ~= false then
+                s.enabled = false
+                s.tooltips = false
+                s.autoScan = false
+                changed = true
+                if type(C.ApplyAuctionSettings) == "function" then
+                    pcall(C.ApplyAuctionSettings)
+                else
+                    if type(C.CancelAuctionPriceScan) == "function" then
+                        pcall(C.CancelAuctionPriceScan, "Auctionator 공존을 위해 갓존슨 시세 갱신을 중지했습니다.")
+                    end
+                    needsCommit = true
+                end
+            end
+        end
+        ns.externalCoexistence.auction = "YIELDED_TO_" .. auctionOwner
+    else
+        ns.externalCoexistence.auction = "OWNED_BY_GJ"
+    end
+
+    local npOwner = FindLoadedExternalAddon(EXTERNAL_NAMEPLATE_ADDONS)
+    if npOwner and type(C.EnemyNameplateSettings) == "function" then
+        local ok, d = pcall(C.EnemyNameplateSettings)
+        if ok and type(d) == "table" then
+            local npChanged = false
+            if d.enabled ~= false then
+                d.enabled = false
+                npChanged = true
+            end
+            if d.replaceNative ~= nil and d.replaceNative ~= false then
+                d.replaceNative = false
+                npChanged = true
+            end
+            if npChanged then
+                changed = true
+                needsCommit = true
+                local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+                if inCombat then
+                    ns._pendingNameplateRefresh = true
+                else
+                    ns._pendingNameplateRefresh = false
+                    if type(C.RefreshEnemyNameplates) == "function" then
+                        pcall(C.RefreshEnemyNameplates)
+                    end
+                end
+            end
+        end
+        ns.externalCoexistence.nameplates = "YIELDED_TO_" .. npOwner
+    else
+        ns.externalCoexistence.nameplates = "OWNED_BY_GJ"
+    end
+
+    local invOwner = FindLoadedExternalAddon(EXTERNAL_INVENTORY_TOOLTIP_ADDONS)
+    if invOwner then
+        if type(C.AltInventorySettings) == "function" then
+            local ok, alt = pcall(C.AltInventorySettings)
+            if ok and type(alt) == "table" and alt.tooltips ~= false then
+                alt.tooltips = false
+                changed = true
+                needsCommit = true
+            end
+        end
+        if type(C.BankMaterialSettings) == "function" then
+            local ok, bank = pcall(C.BankMaterialSettings)
+            if ok and type(bank) == "table" and bank.tooltips ~= false then
+                bank.tooltips = false
+                changed = true
+                needsCommit = true
+            end
+        end
+        ns.externalCoexistence.inventoryTooltips = "YIELDED_TO_" .. invOwner
+    else
+        ns.externalCoexistence.inventoryTooltips = "OWNED_BY_GJ"
+    end
+
+    if needsCommit and type(C.CommitSettings) == "function" then
+        pcall(C.CommitSettings)
+    end
+    ns._reconcilingCoexistence = false
+    return changed
+end
 
 local function EvaluateGJBooleanSetting(getterFn)
     if type(getterFn) ~= "function" then
@@ -129,6 +264,16 @@ function ns.SyncOwnership()
     FS.SetFeatureYield("fishing", yieldFishing, reasonFishing)
     ns.ownership.fishing = yieldFishing and ("YIELDED (" .. tostring(reasonFishing) .. ")") or "OWNED_BY_FS"
 
+    local yieldIlvl = false
+    if type(C.ItemLevelSettings) == "function" then
+        local okIlvl, ilvlCfg = pcall(C.ItemLevelSettings)
+        if okIlvl and type(ilvlCfg) == "table" and ilvlCfg.tooltipLevel == true then
+            yieldIlvl = true
+        end
+    end
+    FS.SetFeatureYield("tooltipItemLevel", yieldIlvl, yieldIlvl and "GodJohnsonGoldBorder" or nil)
+    ns.ownership.tooltipItemLevel = yieldIlvl and "YIELDED (GodJohnsonGoldBorder)" or "OWNED_BY_FS"
+
     if type(FS.IsFeatureYielded) == "function" and FS.IsFeatureYielded("way") then
         local owner = (type(FS.GetFeatureYieldOwner) == "function") and FS.GetFeatureYieldOwner("way") or nil
         ns.ownership.way = "YIELDED (" .. tostring(owner) .. ")"
@@ -176,6 +321,7 @@ function ns.SanitizeLiveGJSettings(allowStandaloneStoreCreate)
     end
     ns._ReconcileStarterLootDefault(C, store)
     ns._ReconcileNavRangeLayout(C, store, false)
+    ns.ReconcileExternalCoexistence(C)
 
     local ct = nil
     if type(C.DB) == "function" then
@@ -207,6 +353,9 @@ function ns.PrintStatus()
     end
     for _, key in ipairs(OWNERSHIP_KEYS_ALL) do
         ns.Print("  기능 소유권 [" .. key .. "] = " .. tostring(ns.ownership[key]))
+    end
+    for _, key in ipairs({ "auction", "nameplates", "inventoryTooltips" }) do
+        ns.Print("  외부 공존 [" .. key .. "] = " .. tostring(ns.externalCoexistence[key]))
     end
 end
 
@@ -278,6 +427,9 @@ function ns.Initialize()
         for k in pairs(ns.targets) do
             ns.targets[k] = "UNAVAILABLE"
         end
+        for k in pairs(ns.externalCoexistence) do
+            ns.externalCoexistence[k] = "UNAVAILABLE"
+        end
         SyncBridgeNavHooks(false)
         ns.SyncOwnership()
         return false
@@ -297,9 +449,10 @@ if type(_G.SlashCmdList) == "table" then
         local cmd = string_match(tostring(msg or ""), "^%s*(%S*)") or ""
         cmd = string_lower(cmd)
         if cmd == "sync" then
+            ns.ReconcileExternalCoexistence(_G.GJCompanion)
             ns.SyncOwnership()
             ns.TrySkinLauncher()
-            ns.Print("단일 소유권 및 런처 상태 재동기화 완료.")
+            ns.Print("단일 소유권·외부 공존 및 런처 상태 재동기화 완료.")
         elseif cmd == "layout" or cmd == "fixlayout" then
             local C = _G.GJCompanion
             local store = ns._GetBridgeStore(true)
@@ -321,10 +474,24 @@ if _G.CreateFrame then
         evFrame:RegisterEvent("PLAYER_LOGIN")
         evFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
         evFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-        evFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
-            if event == "PLAYER_REGEN_ENABLED" then
+        evFrame:RegisterEvent("ADDON_LOADED")
+        evFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+            if event == "ADDON_LOADED" then
+                if type(arg1) == "string" and EXTERNAL_COEXISTENCE_WATCH[arg1] then
+                    ns.ReconcileExternalCoexistence(_G.GJCompanion)
+                    ns.SyncOwnership()
+                end
+                return
+            elseif event == "PLAYER_REGEN_ENABLED" then
                 if ns.targets.navRangeLayout == "PENDING" then
                     ns._ReconcileNavRangeLayout(_G.GJCompanion, ns._GetBridgeStore(false), false)
+                end
+                if ns._pendingNameplateRefresh then
+                    local C = _G.GJCompanion
+                    if type(C) == "table" and type(C.RefreshEnemyNameplates) == "function" then
+                        ns._pendingNameplateRefresh = false
+                        pcall(C.RefreshEnemyNameplates)
+                    end
                 end
                 return
             elseif event == "PLAYER_LOGIN" then
@@ -334,7 +501,7 @@ if _G.CreateFrame then
                 SyncBridgeNavHooks(type(_G.GJCompanion) == "table")
                 ns.SanitizeLiveGJSettings(true)
                 ns.SyncOwnership()
-            elseif event ~= "PLAYER_ENTERING_WORLD" or isInitialLogin ~= false or isReloadingUi ~= false then
+            elseif event ~= "PLAYER_ENTERING_WORLD" or arg1 ~= false or arg2 ~= false then
                 ns.SanitizeLiveGJSettings(false)
                 ns.SyncOwnership()
             end

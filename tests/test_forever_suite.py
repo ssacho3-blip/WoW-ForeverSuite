@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.0"
+    assert ns["VERSION"] == "0.5.1"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.5.0 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.5.1 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.0"
+    assert ns["VERSION"] == "0.5.1"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -2448,6 +2448,38 @@ def test_v050_scale_command_bounds_combat_deferral_and_reset() -> None:
     rt.combat_lockdown = False
     rt.fire_event("PLAYER_REGEN_ENABLED")
     assert rt.cvars["useUiScale"] == "0"
+
+
+def test_v051_tooltip_feature_yields_prevent_duplicate_vendor_and_ilvl_lines() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Auctionator"}
+    ns = rt.boot_session()
+
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("tooltipVendorPrice",))[0] is True
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("tooltipItemLevel",))[0] is False
+
+    inv = ns["ModuleManager"]["modules"]["Inventory"]["definition"]
+    pm = ns["ProfileManager"]
+    rt.vm._invoke_callable(pm["SetProtectedItem"], (pm, 9001, True))
+
+    gt = rt.vm.G["GameTooltip"]
+    rt.vm._invoke_callable(gt["ClearLines"], (gt,))
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    lines = list(gt["_lines"])
+    # Protected badge and item level still render; vendor price is yielded to Auctionator
+    assert any("[판매 보호됨]" in ln for ln in lines)
+    assert any("아이템 레벨" in ln for ln in lines)
+    assert not any("상점 판매가" in ln or "묶음 판매가" in ln for ln in lines)
+
+    # Yielding tooltipItemLevel (e.g. to GodJohnsonGoldBorder) removes duplicate item level while keeping protection badge
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("tooltipItemLevel", True, "GodJohnsonGoldBorder"))
+    rt.vm._invoke_callable(gt["ClearLines"], (gt,))
+    rt.vm._invoke_callable(inv["EnrichItemTooltip"], (inv, gt, 9001, "|Hitem:9001|h[깨진 늑대 송곳니]|h", 5))
+    lines2 = list(gt["_lines"])
+    assert any("[판매 보호됨]" in ln for ln in lines2)
+    assert not any("아이템 레벨" in ln for ln in lines2)
+    assert not any("상점 판매가" in ln or "묶음 판매가" in ln for ln in lines2)
+
 
 
 

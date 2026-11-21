@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.5.0)" in ps1
+    assert "(v0.5.1)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1571,6 +1571,161 @@ def test_v035_quest_nav_sync_unpauses_gj_and_preserves_checkpoints() -> None:
     bridge.get("Initialize")()
     assert ns.get("SyncExternalQuestNavigation") is None
     assert ns.get("ShouldPreserveActiveNavigation") is None
+
+
+def test_v051_external_coexistence_yields_duplicate_gj_auction_nameplates_and_tooltips() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Auctionator", "Platynator", "Syndicator", "Baganator"}
+    ns = rt.boot_session()
+
+    rt.vm.run_chunk(
+        """
+        _G._applyAuctionCalls = 0
+        _G._refreshNpCalls = 0
+        _G._commitCalls = 0
+        _G._inCombat = true
+        InCombatLockdown = function() return _G._inCombat end
+        GJCompanion = {
+            version = "5.278",
+            _auction = { enabled = true, tooltips = true, autoScan = true, savePrices = true },
+            _np = { enabled = true, replaceNative = true },
+            _alt = { tooltips = true, sameRealm = true },
+            _bank = { tooltips = true, crafting = false },
+            _ilvl = { tooltipLevel = true, sources = true },
+            AuctionSettings = function() return GJCompanion._auction end,
+            ApplyAuctionSettings = function() _G._applyAuctionCalls = _G._applyAuctionCalls + 1 end,
+            EnemyNameplateSettings = function() return GJCompanion._np end,
+            RefreshEnemyNameplates = function() _G._refreshNpCalls = _G._refreshNpCalls + 1 end,
+            AltInventorySettings = function() return GJCompanion._alt end,
+            BankMaterialSettings = function() return GJCompanion._bank end,
+            ItemLevelSettings = function() return GJCompanion._ilvl end,
+            CommitSettings = function() _G._commitCalls = _G._commitCalls + 1 end,
+            ApplyAuthorPreset = function()
+                GJCompanion._auction.enabled = true
+                GJCompanion._auction.tooltips = true
+                GJCompanion._auction.autoScan = true
+                GJCompanion._np.enabled = true
+                GJCompanion._alt.tooltips = true
+                GJCompanion._bank.tooltips = true
+                return true
+            end,
+        }
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert bridge.get("status") == "ACTIVE"
+    assert rt.vm.run_chunk("return GJCompanion._auction.enabled, GJCompanion._auction.tooltips, GJCompanion._auction.autoScan")[0:3] == (
+        False,
+        False,
+        False,
+    )
+    assert rt.vm.run_chunk("return GJCompanion._np.enabled, GJCompanion._np.replaceNative")[0:2] == (False, False)
+    assert rt.vm.run_chunk("return GJCompanion._alt.tooltips, GJCompanion._bank.tooltips")[0:2] == (False, False)
+    assert rt.vm.run_chunk("return _G._applyAuctionCalls, _G._refreshNpCalls")[0:2] == (1, 0)
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("tooltipItemLevel")')[0] is True
+    ext = bridge.get("externalCoexistence")
+    assert ext.get("auction") == "YIELDED_TO_Auctionator"
+    assert ext.get("nameplates") == "YIELDED_TO_Platynator"
+    assert ext.get("inventoryTooltips") == "YIELDED_TO_Syndicator"
+
+    # Leaving combat flushes the deferred nameplate refresh cleanly
+    rt.vm.run_chunk("_G._inCombat = false")
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.vm.run_chunk("return _G._refreshNpCalls")[0] == 1
+
+    # Running GodJohnson ApplyAuthorPreset must re-apply external coexistence immediately
+    assert rt.vm.run_chunk("return GJCompanion.ApplyAuthorPreset()")[0] is True
+    assert rt.vm.run_chunk("return GJCompanion._auction.enabled, GJCompanion._np.enabled, GJCompanion._alt.tooltips, GJCompanion._bank.tooltips")[0:4] == (
+        False,
+        False,
+        False,
+        False,
+    )
+    assert rt.vm.run_chunk("return _G._applyAuctionCalls, _G._refreshNpCalls")[0:2] == (2, 2)
+
+    # Late ADDON_LOADED reconciles newly loaded external specialist addons cleanly
+    rt_late = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_late.loaded_external_addons = set()
+    rt_late.boot_session()
+    rt_late.vm.run_chunk(
+        """
+        _G._lateRefresh = 0
+        GJCompanion = {
+            version = "5.278",
+            _np = { enabled = true, replaceNative = true },
+            EnemyNameplateSettings = function() return GJCompanion._np end,
+            RefreshEnemyNameplates = function() _G._lateRefresh = _G._lateRefresh + 1 end,
+        }
+        """
+    )
+    bridge_late = load_bridge(rt_late)
+    assert bridge_late.get("externalCoexistence").get("nameplates") == "OWNED_BY_GJ"
+    rt_late.loaded_external_addons.add("Platynator")
+    rt_late.fire_event("ADDON_LOADED", "Platynator")
+    assert rt_late.vm.run_chunk("return GJCompanion._np.enabled, GJCompanion._np.replaceNative, _G._lateRefresh")[0:3] == (
+        False,
+        False,
+        1,
+    )
+    assert bridge_late.get("externalCoexistence").get("nameplates") == "YIELDED_TO_Platynator"
+
+
+def test_v051_external_coexistence_preserves_gj_when_no_external_addons_or_readonly() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = set()
+    rt.boot_session()
+
+    rt.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.278",
+            _auction = { enabled = true, tooltips = true, autoScan = true, savePrices = true },
+            _np = { enabled = true, replaceNative = true },
+            _alt = { tooltips = true },
+            _bank = { tooltips = true },
+            _ilvl = { tooltipLevel = false },
+            AuctionSettings = function() return GJCompanion._auction end,
+            EnemyNameplateSettings = function() return GJCompanion._np end,
+            AltInventorySettings = function() return GJCompanion._alt end,
+            BankMaterialSettings = function() return GJCompanion._bank end,
+            ItemLevelSettings = function() return GJCompanion._ilvl end,
+        }
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert rt.vm.run_chunk("return GJCompanion._auction.enabled, GJCompanion._np.enabled, GJCompanion._alt.tooltips, GJCompanion._bank.tooltips")[0:4] == (
+        True,
+        True,
+        True,
+        True,
+    )
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("tooltipItemLevel")')[0] is False
+    ext = bridge.get("externalCoexistence")
+    assert ext.get("auction") == "OWNED_BY_GJ"
+    assert ext.get("nameplates") == "OWNED_BY_GJ"
+    assert ext.get("inventoryTooltips") == "OWNED_BY_GJ"
+
+    # Read-only future schema must NEVER mutate GJ settings even when Auctionator/Platynator are loaded
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.loaded_external_addons = {"Auctionator", "Platynator", "Syndicator"}
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 999})
+    rt_ro.boot_session()
+    rt_ro.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.278",
+            _auction = { enabled = true, tooltips = true, autoScan = true },
+            _np = { enabled = true },
+            AuctionSettings = function() return GJCompanion._auction end,
+            EnemyNameplateSettings = function() return GJCompanion._np end,
+        }
+        """
+    )
+    load_bridge(rt_ro)
+    assert rt_ro.vm.run_chunk("return GJCompanion._auction.enabled, GJCompanion._np.enabled")[0:2] == (True, True)
+
 
 
 

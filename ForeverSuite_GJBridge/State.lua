@@ -12,7 +12,7 @@ local setmetatable = setmetatable
 local math_abs = math.abs
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.5.0"
+ns.VERSION = "0.5.1"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
@@ -76,8 +76,15 @@ ns.ownership = {
     questAutoAccept = "OWNED_BY_FS",
     questAutoTurnIn = "OWNED_BY_FS",
     fishing = "OWNED_BY_FS",
+    tooltipItemLevel = "OWNED_BY_FS",
     way = "OWNED_BY_FS",
 }
+ns.externalCoexistence = {
+    auction = "OWNED_BY_GJ",
+    nameplates = "OWNED_BY_GJ",
+    inventoryTooltips = "OWNED_BY_GJ",
+}
+ns._pendingNameplateRefresh = false
 
 local function PrintBridge(msg)
     local text = "|cffd4af37[FS-GJBridge]|r " .. tostring(msg or "")

@@ -189,6 +189,9 @@ local function WrapAuthorPresetIfPresent(C)
             end
             ns._ResetNavRangeLayoutSeed(postStore)
             ns._ReconcileNavRangeLayout(C, postStore, false)
+            if type(ns.ReconcileExternalCoexistence) == "function" then
+                ns.ReconcileExternalCoexistence(C)
+            end
             if type(C.CommitSettings) == "function" then
                 pcall(C.CommitSettings)
             end
