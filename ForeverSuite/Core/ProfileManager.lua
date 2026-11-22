@@ -61,6 +61,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
     profession = {
         doubleClickFishing = true,
         fishingSoundBoost = true,
+        showFishingTargetHUD = true,
         trackGatherYield = true,
         remindMissingTracking = true,
     },
@@ -85,6 +86,7 @@ local DEFAULT_ACCOUNT_SETTINGS = {
         healthAlertRelPoint = "CENTER",
         healthAlertX = 0,
         healthAlertY = 140,
+        fishHudPoint = "BOTTOMRIGHT", fishHudRelPoint = "BOTTOMRIGHT", fishHudX = -16, fishHudY = 86,
     },
 }
 

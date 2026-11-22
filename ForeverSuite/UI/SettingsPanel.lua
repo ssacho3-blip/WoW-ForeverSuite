@@ -45,6 +45,7 @@ local MODULE_OPTION_SPECS = {
     Profession = {
         { section = "profession", key = "doubleClickFishing", label = "더블 우클릭 낚시" },
         { section = "profession", key = "fishingSoundBoost", label = "낚시 효과음 부스트" },
+        { section = "profession", key = "showFishingTargetHUD", label = "현재 지역 낚시 대상어 HUD" },
         { section = "profession", key = "trackGatherYield", label = "채집·전리품 집계" },
         { section = "profession", key = "remindMissingTracking", label = "채집 추적 누락 알림" },
     },
@@ -65,6 +66,7 @@ local HUD_RESET_DEFAULTS = {
     { "hudUnlocked", false }, { "bagHudPoint", "BOTTOMRIGHT" }, { "bagHudRelPoint", "BOTTOMRIGHT" },
     { "bagHudX", -16 }, { "bagHudY", 46 }, { "healthAlertPoint", "CENTER" },
     { "healthAlertRelPoint", "CENTER" }, { "healthAlertX", 0 }, { "healthAlertY", 140 },
+    { "fishHudPoint", "BOTTOMRIGHT" }, { "fishHudRelPoint", "BOTTOMRIGHT" }, { "fishHudX", -16 }, { "fishHudY", 86 },
 }
 
 local SLASH_MODULE_DISPATCH = {
@@ -76,6 +78,8 @@ local SLASH_MODULE_DISPATCH = {
     gold = { "Economy", "PrintLedgerSummary", false },
     yield = { "Profession", "PrintSessionYield", false },
     gather = { "Profession", "PrintSessionYield", false },
+    fish = { "Profession", "HandleFishSlash", true },
+    fishing = { "Profession", "HandleFishSlash", true },
     bars = { "Utility", "CleanActionBarsNow", false },
     cleanbars = { "Utility", "CleanActionBarsNow", false },
     actionbars = { "Utility", "CleanActionBarsNow", false },
@@ -158,6 +162,7 @@ local function ApplyPostToggleSideEffects(section, key)
     if section == "ui" and key == "hudUnlocked" then
         if inv and inv.definition and inv.definition.SyncHUDLockState then inv.definition:SyncHUDLockState() end
         if comb and comb.definition and comb.definition.SyncAlertLockState then comb.definition:SyncAlertLockState() end
+        if ns.FishingTargetHud and ns.FishingTargetHud.SyncLockState then ns.FishingTargetHud:SyncLockState() end
     elseif section == "inventory" and key == "showFreeSlotsHUD" then
         if inv and inv.definition and inv.definition.UpdateHUD then inv.definition:UpdateHUD() end
     elseif section == "combat" then
@@ -197,6 +202,8 @@ local function ApplyPostToggleSideEffects(section, key)
                 if pRec.definition.ClearFishingBindingSafe then pRec.definition:ClearFishingBindingSafe() end
             elseif key == "fishingSoundBoost" and pRec.definition.SyncFishingSoundBoost then
                 pRec.definition:SyncFishingSoundBoost()
+            elseif key == "showFishingTargetHUD" and pRec.definition.SyncFishingTargetHUD then
+                pRec.definition:SyncFishingTargetHUD()
             end
         end
     elseif section == "quest" then
@@ -636,7 +643,7 @@ function ns.HandleSlashCommand(rawMsg)
     elseif route then
         DispatchModuleMethod(route[1], route[2], route[3] and rest or nil)
     else
-        ns.Print("명령어: /fs [ui | status | perf | probe | quest | nameplate | layer | gold | gather | cheap | xp | scale | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
+        ns.Print("명령어: /fs [ui | status | perf | probe | quest | fish | nameplate | layer | gold | gather | cheap | xp | scale | protect | sell | move | bars | enable <모듈> | disable <모듈>]")
     end
 end
 

@@ -266,7 +266,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
     assert meta["SavedVariables"] == "ForeverSuiteDB"
     assert meta["SavedVariablesPerCharacter"] == "ForeverSuiteCharDB"
     assert meta["AddonCompartmentFunc"] == "ForeverSuite_OnAddonCompartmentClick"
-    assert len(files) == 18
+    assert len(files) == 20
 
     all_c_calls: set[str] = set()
     for lua_file in files:
@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.2"
+    assert ns["VERSION"] == "0.5.3"
 
     allowed_globals = {
         "ForeverSuite",
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.5.2 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.5.3 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1014,7 +1014,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
 def test_v030_ac4_module_contract_headers_and_ui_line_budget() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     _, toc_files = rt.parse_toc_files()
-    assert len(toc_files) == 18
+    assert len(toc_files) == 20
 
     required_headers = ("-- Responsibility:", "-- Dependencies:", "-- Public API:", "-- Combat/Secret Safety:")
     for lua_path in toc_files:
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.2"
+    assert ns["VERSION"] == "0.5.3"
     assert ns["TARGET_TOC"] == 16001
 
 

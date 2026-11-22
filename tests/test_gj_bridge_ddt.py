@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.5.2)" in ps1
+    assert "(v0.5.3)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(

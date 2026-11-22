@@ -1,7 +1,7 @@
 -- Module: Modules/Profession.lua
--- Responsibility: Combat-safe double-right-click fishing (dual release), crash-safe sound boost, and classID gather vs general loot yield tracker.
--- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua.
--- Public API: Profession (IsFishingPoleEquipped, ClearFishingBindingSafe, ReconcilePendingLoot, PrintSessionYield).
+-- Responsibility: Combat-safe double-right-click fishing (dual release), crash-safe sound boost, gather yield tracker, and current-zone fishing target HUD.
+-- Dependencies: Core/Init.lua, Core/ProfileManager.lua, Core/ModuleManager.lua, UI/FishingTargetModel.lua, UI/FishingTargetHud.lua.
+-- Public API: Profession (IsFishingPoleEquipped, ClearFishingBindingSafe, ReconcilePendingLoot, PrintSessionYield, SyncFishingTargetHUD, HandleFishSlash).
 -- Combat/Secret Safety: Defers SetOverrideBindingClick/ClearOverrideBindings via CombatQueue; preserves uncached item counts without data loss.
 local _, ns = ...
 
@@ -20,7 +20,7 @@ local TRADE_GOODS_CLASS_ID = 7
 local Profession = {
     title = "전문기술 · 채집 · 낚시 편의 (Profession)",
     priority = "P1",
-    description = "비전투 안전 더블우클릭 낚시(2중 해제), 크래시 복구 사운드 부스트, 채집물 별도 집계",
+    description = "비전투 안전 더블우클릭 낚시, 현재 지역 낚시 대상어 HUD(/fs fish), 사운드 부스트, 채집물 집계",
     yieldTo = { "FishingBuddy" },
     active = false,
     secureBtn = nil,
@@ -227,6 +227,7 @@ function Profession:OnEquipmentChanged(_, slotID)
         if not self:IsFishingPoleEquipped() and self.overrideActive then
             self:ClearFishingBindingSafe()
         end
+        self:SyncFishingTargetHUD()
     end
 end
 
@@ -309,6 +310,11 @@ function Profession:OnLootChatMsg(_, msg)
         self.sessionPendingItems = self.sessionPendingItems + qty
     end
     self:ReconcilePendingLoot()
+    if ns.FishingTargetHud and ns.FishingTargetHud.frame and ns.FishingTargetHud.frame.IsShown and ns.FishingTargetHud.frame:IsShown() then
+        if ns.FishingTargetHud:HasTrackedItem(itemID) then
+            self:SyncFishingTargetHUD()
+        end
+    end
 end
 
 function Profession:CheckGatheringTracking()
@@ -356,6 +362,78 @@ function Profession:CheckGatheringTracking()
     if hasGatherSkill and not anyGatherActive then
         ns.Print("채집 추적(광물/약초/물고기 찾기)이 꺼져 있습니다. 미니맵 추적을 확인하세요.")
     end
+end
+
+function Profession:SyncFishingTargetHUD()
+    if not ns.FishingTargetHud then
+        return nil
+    end
+    if not self.active then
+        ns.FishingTargetHud:Hide()
+        return nil
+    end
+    return ns.FishingTargetHud:Refresh({ poleEquipped = self:IsFishingPoleEquipped() })
+end
+
+function Profession:OnZoneChanged()
+    self:CheckGatheringTracking()
+    self:SyncFishingTargetHUD()
+end
+
+function Profession:HandleFishSlash(rawArg)
+    local sub = string_lower(string_match(tostring(rawArg or ""), "^%s*(%S*)") or "")
+    if sub == "" then
+        if not ns.ProfileManager:Get("profession", "showFishingTargetHUD") then
+            ns.Warn("낚시 대상어 HUD가 꺼져 있습니다. '/fs fish on' 또는 /fs 설정에서 활성화해 주세요.")
+            return false
+        end
+        local pinned = ns.FishingTargetHud and ns.FishingTargetHud:TogglePin() or false
+        local vm = ns.FishingTargetHud and ns.FishingTargetHud.lastViewModel or nil
+        if pinned then
+            ns.Print("낚시 대상어 HUD 고정 표시 (자동 전환: /fs fish auto)")
+            if vm and ns.FishingTargetModel then
+                ns.Print(ns.FishingTargetModel:FormatChatSummary(vm))
+            end
+        else
+            ns.Print("낚시 대상어 HUD 자동 모드 복귀 (낚싯대 장착 시 자동 표시)")
+        end
+        return true
+    elseif sub == "list" or sub == "show" then
+        if ns.FishingTargetModel then
+            local vm = ns.FishingTargetModel:BuildViewModel({ sessionByItemID = self.sessionByItemID })
+            ns.Print(ns.FishingTargetModel:FormatChatSummary(vm))
+        end
+        return true
+    elseif sub == "auto" then
+        if ns.FishingTargetHud then
+            ns.FishingTargetHud:SetAutoMode()
+        end
+        ns.Print("낚시 대상어 HUD 자동 모드: 낚싯대 장착 시 자동으로 표시됩니다.")
+        return true
+    elseif sub == "on" or sub == "off" then
+        if not ns.ProfileManager:CanWrite() then
+            ns.Warn("읽기 전용 프로필(미래 스키마)에서는 낚시 HUD 설정을 변경할 수 없습니다.")
+            return false
+        end
+        local flag = (sub == "on")
+        ns.ProfileManager:Set("profession", "showFishingTargetHUD", flag, "account")
+        self:SyncFishingTargetHUD()
+        ns.Print("현재 지역 낚시 대상어 HUD: " .. (flag and "활성화 (낚싯대 장착 또는 /fs fish)" or "비활성화"))
+        return true
+    elseif sub == "reset" then
+        if not ns.FishingTargetHud then
+            return false
+        end
+        local ok = ns.FishingTargetHud:ResetLayout()
+        if not ok then
+            ns.Warn("읽기 전용 프로필(미래 스키마)에서는 HUD 위치를 초기화할 수 없습니다.")
+            return false
+        end
+        ns.Print("낚시 대상어 HUD 위치를 기본값으로 초기화했습니다.")
+        return true
+    end
+    ns.Print("사용법: /fs fish [list | auto | on | off | reset]")
+    return true
 end
 
 function Profession:PrintSessionYield()
@@ -415,20 +493,31 @@ function Profession:OnEnable(ctx)
     ctx:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", Profession.OnEquipmentChanged)
     ctx:RegisterEvent("CHAT_MSG_LOOT", Profession.OnLootChatMsg)
     ctx:RegisterEvent("GET_ITEM_INFO_RECEIVED", Profession.OnItemInfoReceived)
-    ctx:RegisterBucketEvent("ZONE_CHANGED_NEW_AREA", 0.35, Profession.CheckGatheringTracking)
+    ctx:RegisterBucketEvent("PLAYER_ENTERING_WORLD", 0.50, Profession.SyncFishingTargetHUD)
+    ctx:RegisterBucketEvent("ZONE_CHANGED_NEW_AREA", 0.35, Profession.OnZoneChanged)
+    ctx:RegisterBucketEvent("ZONE_CHANGED", 0.35, Profession.SyncFishingTargetHUD)
+    ctx:RegisterBucketEvent("SKILL_LINES_CHANGED", 0.50, Profession.SyncFishingTargetHUD)
+    ctx:RegisterBucketEvent("QUEST_LOG_UPDATE", 0.50, Profession.SyncFishingTargetHUD)
 
     ctx:AddCleanup(function()
         Profession:ClearFishingBindingSafe()
         Profession:RestoreFishingSoundBoost()
+        if ns.FishingTargetHud then
+            ns.FishingTargetHud:Hide()
+        end
     end)
 
     self:SyncFishingSoundBoost()
+    self:SyncFishingTargetHUD()
 end
 
 function Profession:OnDisable()
     self.active = false
     self:ClearFishingBindingSafe()
     self:RestoreFishingSoundBoost()
+    if ns.FishingTargetHud then
+        ns.FishingTargetHud:Hide()
+    end
 end
 
 ns.ModuleManager:Register("Profession", Profession)

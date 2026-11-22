@@ -2,6 +2,14 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.5.3] - 2026-11-22
+
+### Added (`FS-V053-FISHING-TARGET-HUD`)
+- **Current-Zone Fishing Target Fish HUD (`ForeverSuite/UI/FishingTargetModel.lua`, `UI/FishingTargetHud.lua`, `Modules/Profession.lua`, `Core/ProfileManager.lua`, `UI/SettingsPanel.lua`)**:
+  - Added an MVVM dark-slate & gold HUD (`ForeverSuiteFishingTargetHUD`) that automatically appears when a fishing pole is equipped (or when pinned via `/fs fish` / unlocked via `/fs move`), working seamlessly alongside GodJohnson even when double-click fishing is yielded.
+  - Dynamically reads current-zone fish species, school coordinates, and practical usage notes from `GodJohnsonProfessionData` (`ProfessionData472` + `ProfessionPracticalData5165`) read-only, with a built-in Classic/Forever zone fallback table when standalone.
+  - Displays player fishing skill vs zone recommended skill (`숙련 N / 권장 M`), highlights active fishing quest target fish (`★ [퀘스트]`, including Nat Pagle `#6607` and active quest objective matches), tracks live session catches (`xN`) on tracked fish loot only, and exposes `/fs fish [list | auto | on | off | reset]` + `profession.showFishingTargetHUD` in `/fs` (`169 passed`).
+
 ## [0.5.2] - 2026-11-21
 
 ### Added (`FS-V052-BAGANATOR-WIDGETS`)
