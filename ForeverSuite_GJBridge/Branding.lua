@@ -207,6 +207,28 @@ local function WrapAuthorPresetIfPresent(C)
     C.ApplyAuthorPreset = wrappedPreset
 end
 
+local function WrapAuctionPriceTooltipIfPresent(C)
+    if type(C.AddAuctionPriceTooltip) ~= "function" or ns._wrappedTargets[C.AddAuctionPriceTooltip] then
+        return
+    end
+    local origAddAuctionPriceTooltip = C.AddAuctionPriceTooltip
+    local wrappedAddAuctionPriceTooltip = function(...)
+        if type(C.AuctionSettings) == "function" then
+            local okS, s = pcall(C.AuctionSettings)
+            if okS and type(s) == "table" then
+                if s.enabled == false or s.tooltips == false then
+                    return false
+                end
+            elseif type(ns.externalCoexistence.auction) == "string" and string_sub(ns.externalCoexistence.auction, 1, 11) == "YIELDED_TO_" then
+                return false
+            end
+        end
+        return origAddAuctionPriceTooltip(...)
+    end
+    ns._wrappedTargets[wrappedAddAuctionPriceTooltip] = true
+    C.AddAuctionPriceTooltip = wrappedAddAuctionPriceTooltip
+end
+
 function ns._ApplyBrandingOverrides(C)
     -- 1. sayPrefix override (CompanionCore.lua:84)
     if type(C.Say) == "function" then
@@ -309,8 +331,9 @@ function ns._ApplyBrandingOverrides(C)
     end
     ns.targets.questSound = questSoundApplied and "APPLIED" or "MISSING"
 
-    -- 6. ApplyAuthorPreset pre/post snapshot wrapper
+    -- 6. ApplyAuthorPreset pre/post snapshot wrapper & AuctionPriceTooltip guard
     WrapAuthorPresetIfPresent(C)
+    WrapAuctionPriceTooltipIfPresent(C)
 
     ns.SanitizeLiveGJSettings(false)
 

@@ -210,6 +210,10 @@ local function ApplyPostToggleSideEffects(section, key)
     elseif section == "quest" then
         local qMod = ns.ModuleManager:GetModule("Quest")
         if qMod and qMod.state == "ENABLED" and ns.QuestTracker and ns.QuestTracker.Refresh then ns.QuestTracker:Refresh() end
+        local bridge = _G.ForeverSuite_GJBridge
+        if (key == "trackerEnabled" or key == "hideDefaultTracker") and type(bridge) == "table" and type(bridge.ReconcileExternalCoexistence) == "function" then
+            pcall(bridge.ReconcileExternalCoexistence, _G.GJCompanion)
+        end
     end
 end
 
@@ -256,8 +260,8 @@ local function BuildBridgeStatusText()
     end
     local ext = type(bridge.externalCoexistence) == "table" and bridge.externalCoexistence or nil
     if ext then
-        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보·연동) 5종]|r"
-        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips", "questDialog", "baganatorBadges" }) do
+        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보·연동) 6종]|r"
+        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips", "questDialog", "questTracker", "baganatorBadges" }) do
             out = out .. string_format("\n • %-17s : %s", k, tostring(ext[k] or "—"))
         end
     end
@@ -418,10 +422,11 @@ function SettingsPanel:EnsureFrame()
 
     self.tabPanels.bridge, self.bridgeSummaryLabel = CreateInfoTabPanel(f, "소유권 재동기화 (/fsgj sync)", 186, function()
         local bridge = _G.ForeverSuite_GJBridge
-        if type(bridge) == "table" and type(bridge.SyncOwnership) == "function" then
-            bridge.SyncOwnership()
+        if type(bridge) == "table" then
+            if type(bridge.ReconcileExternalCoexistence) == "function" then bridge.ReconcileExternalCoexistence(_G.GJCompanion) end
+            if type(bridge.SyncOwnership) == "function" then bridge.SyncOwnership() end
             if type(bridge.TrySkinLauncher) == "function" then bridge.TrySkinLauncher() end
-            ns.Print("GJ 브리지 단일 소유권 및 런처 상태 재동기화 완료.")
+            ns.Print("GJ 브리지 단일 소유권·외부 공존 및 런처 상태 재동기화 완료.")
         end
         SettingsPanel:Refresh()
     end)

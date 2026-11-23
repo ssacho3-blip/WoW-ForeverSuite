@@ -15,12 +15,28 @@ ns.QuestTracker = QuestTracker
 
 local hookedDefaultFrames = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local hookedEditModeFrames = setmetatable and setmetatable({}, { __mode = "k" }) or {}
+local editModeRegistryHooked = false
 local hiddenByUs = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 local alphaZeroedByUs = setmetatable and setmetatable({}, { __mode = "k" }) or {}
 
 local function IsEditModeActive()
     local em = _G.EditModeManagerFrame
-    if not ns.IsSecret(em) and type(em) == "table" and not ns.IsSecret(em.editModeActive) and em.editModeActive == true then
+    if em == nil then
+        return false
+    end
+    if ns.IsSecret(em) or type(em) ~= "table" then
+        return true
+    end
+    if type(em.IsEditModeActive) == "function" then
+        local ok, active = pcall(em.IsEditModeActive, em)
+        if not ok or ns.IsSecret(active) or type(active) ~= "boolean" or active == true then
+            return true
+        end
+    end
+    local okProp, propVal = pcall(function()
+        return em.editModeActive
+    end)
+    if not okProp or ns.IsSecret(propVal) or (propVal ~= nil and (type(propVal) ~= "boolean" or propVal == true)) then
         return true
     end
     return false
@@ -71,12 +87,29 @@ local function RestoreDefaultFrame(frame)
 end
 
 local function EnsureEditModeExitHook()
+    local function ScheduleSync()
+        local runSync = function()
+            QuestTracker:SyncDefaultTrackerVisibility()
+        end
+        if not IsEditModeActive() then
+            runSync()
+        elseif type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            pcall(_G.C_Timer.After, 0, runSync)
+        end
+    end
+    local reg = _G.EventRegistry
+    if not editModeRegistryHooked and not ns.IsSecret(reg) and type(reg) == "table" and type(reg.RegisterCallback) == "function" then
+        local okReg = pcall(reg.RegisterCallback, reg, "EditMode.Exit", ScheduleSync, QuestTracker)
+        if okReg then
+            editModeRegistryHooked = true
+        end
+    end
     local em = _G.EditModeManagerFrame
     if not ns.IsSecret(em) and type(em) == "table" and not hookedEditModeFrames[em] and em.HookScript then
-        hookedEditModeFrames[em] = true
-        pcall(em.HookScript, em, "OnHide", function()
-            QuestTracker:SyncDefaultTrackerVisibility()
-        end)
+        local okHook = pcall(em.HookScript, em, "OnHide", ScheduleSync)
+        if okHook then
+            hookedEditModeFrames[em] = true
+        end
     end
 end
 

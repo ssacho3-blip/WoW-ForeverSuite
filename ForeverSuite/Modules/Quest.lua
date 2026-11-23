@@ -22,6 +22,13 @@ local Quest = {
     settingListenerBound = false,
 }
 
+local function NotifyGJBridgeCoexistence()
+    local bridge = _G.ForeverSuite_GJBridge
+    if type(bridge) == "table" and type(bridge.ReconcileExternalCoexistence) == "function" then
+        pcall(bridge.ReconcileExternalCoexistence, _G.GJCompanion)
+    end
+end
+
 local function IsShiftHeld()
     return (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
 end
@@ -265,6 +272,7 @@ function Quest:HandleSlash(rawSub)
             ns.Warn("읽기 전용 프로필(미래 스키마)에서는 설정을 저장할 수 없습니다.")
             return false
         end
+        NotifyGJBridgeCoexistence()
         ns.Print("ForeverSuite 퀘스트 추적창: " .. ((not cur) and "표시" or "숨김"))
         return true
     elseif sub == "show" or sub == "on" then
@@ -273,6 +281,7 @@ function Quest:HandleSlash(rawSub)
             ns.Warn("읽기 전용 프로필(미래 스키마)에서는 설정을 저장할 수 없습니다.")
             return false
         end
+        NotifyGJBridgeCoexistence()
         ns.Print("ForeverSuite 퀘스트 추적창: 표시")
         return true
     elseif sub == "hide" or sub == "off" then
@@ -281,6 +290,7 @@ function Quest:HandleSlash(rawSub)
             ns.Warn("읽기 전용 프로필(미래 스키마)에서는 설정을 저장할 수 없습니다.")
             return false
         end
+        NotifyGJBridgeCoexistence()
         ns.Print("ForeverSuite 퀘스트 추적창: 숨김 (기본 추적기 복원)")
         return true
     elseif sub == "default" or sub == "blizzard" then
@@ -290,6 +300,7 @@ function Quest:HandleSlash(rawSub)
             ns.Warn("읽기 전용 프로필(미래 스키마)에서는 설정을 저장할 수 없습니다.")
             return false
         end
+        NotifyGJBridgeCoexistence()
         ns.Print("기본 퀘스트 추적기 숨김: " .. ((not hideDef) and "켜짐" or "꺼짐 (동시 표시)"))
         return true
     elseif sub == "min" or sub == "minimize" then
@@ -334,6 +345,7 @@ function Quest:OnEnable(ctx)
     if ns.QuestTracker then
         ns.QuestTracker:Enable(ctx)
     end
+    NotifyGJBridgeCoexistence()
 end
 
 function Quest:OnDisable()
@@ -341,6 +353,7 @@ function Quest:OnDisable()
     if ns.QuestTracker then
         ns.QuestTracker:Disable()
     end
+    NotifyGJBridgeCoexistence()
 end
 
 ns.ModuleManager:Register("Quest", Quest)

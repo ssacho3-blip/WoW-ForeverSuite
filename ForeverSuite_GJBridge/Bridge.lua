@@ -103,30 +103,74 @@ local function ReconcileExternalCoexistenceBody(C)
     end
 
     local npOwner = FindLoadedExternalAddon(EXTERNAL_NAMEPLATE_ADDONS)
-    if npOwner and type(C.EnemyNameplateSettings) == "function" then
-        local ok, d = pcall(C.EnemyNameplateSettings)
-        if ok and type(d) == "table" then
-            local npChanged = false
-            if d.enabled ~= false then
-                d.enabled = false
-                npChanged = true
-            end
-            if d.replaceNative ~= nil and d.replaceNative ~= false then
-                d.replaceNative = false
-                npChanged = true
-            end
-            if npChanged then
-                changed = true
-                needsCommit = true
-                local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
-                if inCombat then
-                    ns._pendingNameplateRefresh = true
-                else
-                    ns._pendingNameplateRefresh = false
-                    if type(C.RefreshEnemyNameplates) == "function" then
-                        pcall(C.RefreshEnemyNameplates)
+    if npOwner then
+        local threatChanged = false
+        local hlChanged = false
+        if type(C.EnemyNameplateSettings) == "function" then
+            local ok, d = pcall(C.EnemyNameplateSettings)
+            if ok and type(d) == "table" then
+                local npChanged = false
+                if d.enabled ~= false then
+                    d.enabled = false
+                    npChanged = true
+                end
+                if d.replaceNative ~= nil and d.replaceNative ~= false then
+                    d.replaceNative = false
+                    npChanged = true
+                end
+                if d.nameplateThreatMode ~= nil and d.nameplateThreatMode ~= "off" then
+                    d.nameplateThreatMode = "off"
+                    npChanged = true
+                    threatChanged = true
+                end
+                if npChanged then
+                    changed = true
+                    needsCommit = true
+                    local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+                    if inCombat then
+                        ns._pendingNameplateRefresh = true
+                    else
+                        ns._pendingNameplateRefresh = false
+                        if type(C.RefreshEnemyNameplates) == "function" then
+                            pcall(C.RefreshEnemyNameplates)
+                        end
                     end
                 end
+            end
+        end
+        if type(C.DB) == "function" then
+            local okDb, rawDb = pcall(C.DB)
+            if okDb and type(rawDb) == "table" and type(rawDb.questHighlight) == "table" and rawDb.questHighlight.enabled ~= false then
+                rawDb.questHighlight.enabled = false
+                changed = true
+                needsCommit = true
+                hlChanged = true
+            end
+        end
+        if type(C.QuestStarterSettings) == "function" then
+            local okQs, qs = pcall(C.QuestStarterSettings)
+            if okQs and type(qs) == "table" and qs.enabled ~= false then
+                qs.enabled = false
+                changed = true
+                needsCommit = true
+                hlChanged = true
+            end
+        end
+        local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+        if threatChanged then
+            if inCombat then
+                ns._pendingThreatRefresh = true
+            elseif type(C.RefreshTargetThreat5004) == "function" then
+                ns._pendingThreatRefresh = false
+                pcall(C.RefreshTargetThreat5004)
+            end
+        end
+        if hlChanged then
+            if inCombat then
+                ns._pendingHighlightRefresh = true
+            elseif type(C.RefreshHighlights) == "function" then
+                ns._pendingHighlightRefresh = false
+                pcall(C.RefreshHighlights)
             end
         end
         ns.externalCoexistence.nameplates = "YIELDED_TO_" .. npOwner
@@ -342,7 +386,7 @@ function ns.SyncOwnership()
         if s.enabled == nil and s.doubleClick == nil then
             return nil
         end
-        return (s.enabled == true) and (s.doubleClick == true)
+        return s.enabled == true
     end)
     FS.SetFeatureYield("fishing", yieldFishing, reasonFishing)
     ns.ownership.fishing = yieldFishing and ("YIELDED (" .. tostring(reasonFishing) .. ")") or "OWNED_BY_FS"
@@ -381,6 +425,9 @@ function ns.ApplyLifecycleHooks(C)
         end
         if type(C.CommitSettings) == "function" then
             pcall(_G.hooksecurefunc, C, "CommitSettings", function()
+                if not ns._reconcilingCoexistence then
+                    ns.ReconcileExternalCoexistence(C)
+                end
                 ns.SyncOwnership()
             end)
         end
@@ -588,6 +635,20 @@ if _G.CreateFrame then
                     if type(C) == "table" and type(C.RefreshEnemyNameplates) == "function" then
                         ns._pendingNameplateRefresh = false
                         pcall(C.RefreshEnemyNameplates)
+                    end
+                end
+                if ns._pendingThreatRefresh then
+                    local C = _G.GJCompanion
+                    if type(C) == "table" and type(C.RefreshTargetThreat5004) == "function" then
+                        ns._pendingThreatRefresh = false
+                        pcall(C.RefreshTargetThreat5004)
+                    end
+                end
+                if ns._pendingHighlightRefresh then
+                    local C = _G.GJCompanion
+                    if type(C) == "table" and type(C.RefreshHighlights) == "function" then
+                        ns._pendingHighlightRefresh = false
+                        pcall(C.RefreshHighlights)
                     end
                 end
                 if ns._pendingQuestTrackerRefresh then

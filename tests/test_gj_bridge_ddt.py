@@ -779,7 +779,7 @@ def test_partial_ownership_tables_idempotent_lifecycle_hooks_and_fishing_secure_
     bridge = load_bridge(rt)
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoAccept")')[0] is True
     assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("questAutoTurnIn")')[0] is False
-    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is False
+    assert rt.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is True
     hooks_first = rt.vm.G.get("_hookCount")
     assert hooks_first > 0
 
@@ -2093,13 +2093,15 @@ def test_v054_gj_owned_quest_tracker_302_yields_to_foreversuite() -> None:
         InCombatLockdown = function() return _G._inCombat end
         _G._qtCombatRefresh = 0
         local qrs = { style = "Oak" }
+        local combatTrackerOn = true
         GJCompanion = {
             version = "5.312",
             _qrs = qrs,
             QuestRegionSettings248 = function() return qrs end,
-            GodJohnsonTrackerEnabled299 = function() return true end,
+            GodJohnsonTrackerEnabled299 = function() return combatTrackerOn end,
             RefreshQuestTrackerSelection300 = function()
                 _G._qtCombatRefresh = _G._qtCombatRefresh + 1
+                if qrs.useNativeTracker299 == true then combatTrackerOn = false end
             end,
             CommitSettings = function() end,
         }
@@ -2130,13 +2132,15 @@ def test_v054_gj_owned_quest_tracker_302_yields_to_foreversuite() -> None:
             end,
         }
         local qrs = { style = "Oak" }
+        local editTrackerOn = true
         GJCompanion = {
             version = "5.312",
             _qrs = qrs,
             QuestRegionSettings248 = function() return qrs end,
-            GodJohnsonTrackerEnabled299 = function() return true end,
+            GodJohnsonTrackerEnabled299 = function() return editTrackerOn end,
             RefreshQuestTrackerSelection300 = function()
                 _G._qtEditRefresh = _G._qtEditRefresh + 1
+                if qrs.useNativeTracker299 == true then editTrackerOn = false end
             end,
             CommitSettings = function() end,
         }
@@ -2191,6 +2195,135 @@ def test_v054_gj_owned_quest_tracker_302_yields_to_foreversuite() -> None:
     )
     load_bridge(rt_ro)
     assert rt_ro.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299")[0] is None
+
+
+def test_v055_carbon_audit_p0_p1_coexistence_hardening() -> None:
+    from wow_forever_mock import SecretValue
+
+    # 1. P0-1: Silent no-op in RefreshQuestTrackerSelection300 retains _pendingQuestTrackerRefresh and retries via C_Timer.After
+    rt_p0 = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_p0.boot_session()
+    rt_p0.vm.run_chunk(
+        """
+        _G._timers = {}
+        C_Timer = {
+            After = function(delay, fn)
+                _G._timers[#_G._timers + 1] = { delay = delay, fn = fn }
+            end,
+        }
+        _G._attempts = 0
+        _G._gjStillOn = true
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return _G._gjStillOn end,
+            RefreshQuestTrackerSelection300 = function()
+                _G._attempts = _G._attempts + 1
+                if _G._attempts >= 2 then
+                    _G._gjStillOn = false
+                end
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_p0 = load_bridge(rt_p0)
+    assert bridge_p0.get("_pendingQuestTrackerRefresh") is True
+    assert rt_p0.vm.run_chunk("return _G._attempts, #_G._timers, _G._timers[1].delay") == (1, 1, 0.15)
+    rt_p0.vm.run_chunk("_G._timers[1].fn()")
+    assert bridge_p0.get("_pendingQuestTrackerRefresh") is False
+    assert rt_p0.vm.run_chunk("return _G._attempts, GJCompanion.GodJohnsonTrackerEnabled299()") == (2, False)
+
+    # 2. P1-1 (CommitSettings re-reconcile without recursion) + P1-3 (Platynator threat/highlight/starter) + P1-4 (AddAuctionPriceTooltip guard) + P1-5 (fishing enabled=true, doubleClick=false)
+    rt_co = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_co.loaded_external_addons = {"Platynator", "Auctionator"}
+    rt_co.boot_session()
+    rt_co.vm.run_chunk(
+        """
+        _G._origAuctionCalls = 0
+        _G._threatRefreshes = 0
+        _G._hlRefreshes = 0
+        local rawDb = { questHighlight = { enabled = true } }
+        local qsCfg = { enabled = true }
+        local npCfg = { enabled = true, replaceNative = true, nameplateThreatMode = "combat" }
+        local aucCfg = { enabled = true, tooltips = true, autoScan = true }
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _rawDb = rawDb,
+            _qsCfg = qsCfg,
+            _npCfg = npCfg,
+            _aucCfg = aucCfg,
+            _qrs = qrs,
+            DB = function() return rawDb end,
+            EnemyNameplateSettings = function() return npCfg end,
+            QuestStarterSettings = function() return qsCfg end,
+            AuctionSettings = function() return aucCfg end,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return qrs.useNativeTracker299 ~= true end,
+            RefreshQuestTrackerSelection300 = function() end,
+            RefreshTargetThreat5004 = function() _G._threatRefreshes = _G._threatRefreshes + 1 end,
+            RefreshHighlights = function() _G._hlRefreshes = _G._hlRefreshes + 1 end,
+            AddAuctionPriceTooltip = function()
+                _G._origAuctionCalls = _G._origAuctionCalls + 1
+                return true
+            end,
+            FishingSettings = function() return { enabled = true, doubleClick = false } end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    load_bridge(rt_co)
+    assert rt_co.vm.run_chunk(
+        "return GJCompanion._npCfg.nameplateThreatMode, GJCompanion._rawDb.questHighlight.enabled, GJCompanion._qsCfg.enabled, _G._threatRefreshes, _G._hlRefreshes"
+    ) == ("off", False, False, 1, 1)
+    assert rt_co.vm.run_chunk("return GJCompanion.AddAuctionPriceTooltip(), _G._origAuctionCalls") == (False, 0)
+    assert rt_co.vm.run_chunk('return ForeverSuite.IsFeatureYielded("fishing")')[0] is True
+
+    # Simulate GJEXPORT2 import flipping useNativeTracker299 = false and calling CommitSettings()
+    rt_co.vm.run_chunk("GJCompanion._qrs.useNativeTracker299 = false; GJCompanion.CommitSettings()")
+    assert rt_co.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299")[0] is True
+
+    # 3. P1-5 Profession:OnWorldMouseDown guards (channeling / mouselook / LootFrame)
+    rt_fish = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_fish = rt_fish.boot_session()
+    prof = ns_fish["ModuleManager"]["modules"]["Profession"]["definition"]
+    rt_fish.vm.run_chunk(
+        """
+        _G._overrideSetCalls = 0
+        SetOverrideBindingClick = function() _G._overrideSetCalls = _G._overrideSetCalls + 1 end
+        IsMouselooking = function() return false end
+        UnitChannelInfo = function() return "낚시" end
+        LootFrame = { IsShown = function() return false end }
+        """
+    )
+    prof["IsFishingPoleEquipped"] = lambda *_a: True
+    rt_fish.now = 10.0
+    rt_fish.vm._invoke_callable(prof["OnWorldMouseDown"], (prof, "RightButton"))
+    rt_fish.now = 10.15
+    rt_fish.vm._invoke_callable(prof["OnWorldMouseDown"], (prof, "RightButton"))
+    assert rt_fish.vm.G.get("_overrideSetCalls") == 0
+
+    # 4. P1-6 DefaultTrackerSync Fail-Closed on Secret editModeActive
+    rt_sec = WoWForeverMockRuntime(ADDON_ROOT)
+    ns_sec = rt_sec.boot_session()
+    rt_sec.vm.G["_secretEditVal"] = SecretValue("secret_edit")
+    rt_sec.vm.run_chunk(
+        """
+        _G._objHidden = false
+        ObjectiveTrackerFrame = {
+            IsShown = function() return true end,
+            SetAlpha = function() end,
+            Hide = function() _G._objHidden = true end,
+        }
+        EditModeManagerFrame = { editModeActive = _G._secretEditVal }
+        """
+    )
+    qt_sec = ns_sec["QuestTracker"]
+    rt_sec.vm._invoke_callable(qt_sec["SyncDefaultTrackerVisibility"], (qt_sec,))
+    assert rt_sec.vm.G.get("_objHidden") is False
 
 
 

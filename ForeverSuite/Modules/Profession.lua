@@ -139,6 +139,28 @@ function Profession:OnWorldMouseDown(mouseButton)
     if ns.InCombat() or not self.secureBtn or not self:IsFishingPoleEquipped() then
         return
     end
+    if type(_G.IsMouselooking) == "function" then
+        local okMl, ml = pcall(_G.IsMouselooking)
+        if not okMl or ns.IsSecret(ml) or ml == true then
+            return
+        end
+    end
+    if type(_G.UnitChannelInfo) == "function" then
+        local okCh, ch = pcall(_G.UnitChannelInfo, "player")
+        if not okCh or ns.IsSecret(ch) or ch ~= nil then
+            return
+        end
+    end
+    local lf = _G.LootFrame
+    if ns.IsSecret(lf) then
+        return
+    end
+    if type(lf) == "table" and type(lf.IsShown) == "function" then
+        local okLf, shown = pcall(lf.IsShown, lf)
+        if not okLf or ns.IsSecret(shown) or shown == true then
+            return
+        end
+    end
 
     local now = ns.GetNow()
     local delta = now - self.lastRightClickAt

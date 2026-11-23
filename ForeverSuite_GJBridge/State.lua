@@ -90,6 +90,8 @@ ns.externalCoexistence = {
     baganatorBadges = "UNAVAILABLE",
 }
 ns._pendingNameplateRefresh = false
+ns._pendingThreatRefresh = false
+ns._pendingHighlightRefresh = false
 ns._pendingQuestTrackerRefresh = false
 ns._baganatorWidgetsRegistered = false
 
@@ -503,12 +505,41 @@ function ns.RegisterBaganatorWidgets()
     return false
 end
 
+local function IsQuestTrackerPreLoginIntended(FS)
+    if type(FS.ModuleManager) ~= "table" or type(FS.ModuleManager.GetModule) ~= "function" then
+        return false
+    end
+    local okMod, qMod = pcall(FS.ModuleManager.GetModule, FS.ModuleManager, "Quest")
+    if not okMod or type(qMod) ~= "table" or qMod.state ~= "REGISTERED" then
+        return false
+    end
+    if type(FS.IsExternalAddonLoaded) ~= "function" then
+        return false
+    end
+    for _, ext in ipairs({ "Questie", "!KalielsTracker", "KalielsTracker" }) do
+        local okExt, loaded = pcall(FS.IsExternalAddonLoaded, ext)
+        if not okExt or IsSecretBridgeValue(loaded) or loaded ~= false then
+            return false
+        end
+    end
+    local db = _G.ForeverSuiteDB
+    local acct = type(db) == "table" and type(db.account) == "table" and db.account or nil
+    if type(acct) == "table" then
+        local qModCfg = type(acct.modules) == "table" and type(acct.modules.Quest) == "table" and acct.modules.Quest or nil
+        if type(qModCfg) == "table" and qModCfg.enabled == false then
+            return false
+        end
+        local qCfg = type(acct.quest) == "table" and acct.quest or nil
+        if type(qCfg) == "table" and (qCfg.trackerEnabled == false or qCfg.hideDefaultTracker == false) then
+            return false
+        end
+    end
+    return true
+end
+
 function ns._IsForeverSuiteQuestTrackerActive()
     local FS = _G.ForeverSuite
     if type(FS) ~= "table" or type(FS.ProfileManager) ~= "table" or type(FS.ProfileManager.Get) ~= "function" then
-        return false
-    end
-    if type(FS.QuestTracker) ~= "table" or FS.QuestTracker.active ~= true then
         return false
     end
     if type(FS.IsFeatureYielded) == "function" then
@@ -517,9 +548,12 @@ function ns._IsForeverSuiteQuestTrackerActive()
             return false
         end
     end
-    local okEn, enabled = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "trackerEnabled")
-    local okHide, hideDef = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "hideDefaultTracker")
-    return okEn and enabled == true and okHide and hideDef == true
+    if type(FS.QuestTracker) == "table" and FS.QuestTracker.active == true then
+        local okEn, enabled = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "trackerEnabled")
+        local okHide, hideDef = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "hideDefaultTracker")
+        return okEn and enabled == true and okHide and hideDef == true
+    end
+    return IsQuestTrackerPreLoginIntended(FS)
 end
 
 function ns._IsEditModeActiveSafe()
@@ -532,14 +566,14 @@ function ns._IsEditModeActiveSafe()
     end
     if type(em.IsEditModeActive) == "function" then
         local ok, active = pcall(em.IsEditModeActive, em)
-        if not ok or IsSecretBridgeValue(active) or active == true then
+        if not ok or IsSecretBridgeValue(active) or type(active) ~= "boolean" or active == true then
             return true
         end
     end
     local okProp, propVal = pcall(function()
         return em.editModeActive
     end)
-    if not okProp or IsSecretBridgeValue(propVal) or propVal == true then
+    if not okProp or IsSecretBridgeValue(propVal) or (propVal ~= nil and (type(propVal) ~= "boolean" or propVal == true)) then
         return true
     end
     return false
@@ -549,25 +583,30 @@ function ns._EnsureEditModeExitHook(flushFn)
     if type(flushFn) ~= "function" then
         return
     end
+    local function ScheduleDeferredFlush()
+        if not ns._IsEditModeActiveSafe() then
+            flushFn()
+        elseif type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            pcall(_G.C_Timer.After, 0, flushFn)
+        end
+    end
     local reg = _G.EventRegistry
     if not editModeRegistryHooked and not IsSecretBridgeValue(reg) and type(reg) == "table" and type(reg.RegisterCallback) == "function" then
-        local okReg = pcall(reg.RegisterCallback, reg, "EditMode.Exit", function()
-            flushFn()
-        end, ns)
+        local okReg = pcall(reg.RegisterCallback, reg, "EditMode.Exit", ScheduleDeferredFlush, ns)
         if okReg then
             editModeRegistryHooked = true
         end
     end
     local em = _G.EditModeManagerFrame
     if not IsSecretBridgeValue(em) and type(em) == "table" and not hookedEditModeFrames[em] and type(em.HookScript) == "function" then
-        hookedEditModeFrames[em] = true
-        pcall(em.HookScript, em, "OnHide", function()
-            flushFn()
-        end)
+        local okHook = pcall(em.HookScript, em, "OnHide", ScheduleDeferredFlush)
+        if okHook then
+            hookedEditModeFrames[em] = true
+        end
     end
 end
 
-function ns._ApplyGJQuestTrackerYield(C)
+function ns._ApplyGJQuestTrackerYield(C, retryAttempt)
     if type(C) ~= "table" then
         return false
     end
@@ -576,17 +615,34 @@ function ns._ApplyGJQuestTrackerYield(C)
         ns._pendingQuestTrackerRefresh = true
         ns._EnsureEditModeExitHook(function()
             if ns._pendingQuestTrackerRefresh then
-                ns._ApplyGJQuestTrackerYield(_G.GJCompanion)
+                ns._ApplyGJQuestTrackerYield(_G.GJCompanion, 0)
             end
         end)
         return false
     end
-    ns._pendingQuestTrackerRefresh = false
     if type(C.RefreshQuestTrackerSelection300) == "function" then
         pcall(C.RefreshQuestTrackerSelection300)
     elseif type(C.SetOwnedQuestTrackerActive302) == "function" then
         pcall(C.SetOwnedQuestTrackerActive302, false)
     end
+    local stillEnabled = false
+    if type(C.GodJohnsonTrackerEnabled299) == "function" then
+        local okEn, en = pcall(C.GodJohnsonTrackerEnabled299)
+        stillEnabled = okEn and en == true
+    end
+    if stillEnabled then
+        ns._pendingQuestTrackerRefresh = true
+        local attempt = tonumber(retryAttempt) or 0
+        if attempt < 3 and type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+            pcall(_G.C_Timer.After, 0.15, function()
+                if ns._pendingQuestTrackerRefresh then
+                    ns._ApplyGJQuestTrackerYield(_G.GJCompanion, attempt + 1)
+                end
+            end)
+        end
+        return false
+    end
+    ns._pendingQuestTrackerRefresh = false
     local FS = _G.ForeverSuite
     if type(FS) == "table" and type(FS.QuestTracker) == "table" and type(FS.QuestTracker.SyncDefaultTrackerVisibility) == "function" then
         pcall(FS.QuestTracker.SyncDefaultTrackerVisibility, FS.QuestTracker)
