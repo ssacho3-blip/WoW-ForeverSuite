@@ -1,9 +1,9 @@
 # ForeverSuite — 통합 애드온 아키텍처 & 품질 계약서 (`FS-V031-OPUS-FABLE-CONSENSUS`)
 
-## 1. 시스템 계층 구조 (Modular Fault-Isolated Architecture, 18 Lua Modules)
+## 1. 시스템 계층 구조 (Modular Fault-Isolated Architecture, 20 Lua Modules)
 
 ```text
-ForeverSuite v0.3.2 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.70938)
+ForeverSuite v0.5.4 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.71037)
 ├── Core Layer (P0)
 │   ├── Init.lua              : 단일 네임스페이스(ns), C_AddOns.GetAddOnMetadata 우선 파싱, Secret 가드(IsSecret), CombatQueue, /fs probe
 │   ├── MoneyLedgerQueue.lua  : 상점·수리·퀘스트 골드 변동 사유 FIFO 큐 (최대 TTL 3.0s, 정확 델타 우선 매칭)
@@ -16,7 +16,9 @@ ForeverSuite v0.3.2 (TOC Interface: 16001, 120105 | Product: wowf 1.60.1.70938)
 │   ├── QuestLogCollector.lua : C_QuestLog + GetQuestLogSpecialItemInfo 실시간 스냅샷 수집기 (순수 ViewModel과 I/O 분리)
 │   ├── DefaultTrackerSync.lua: 내장 ObjectiveTrackerFrame / QuestWatchFrame 비전투 가시성 동기화
 │   ├── QuestTracker.lua      : 온스크린 퀘스트 추적창 View, Ctrl/Alt/Shift 클릭, [잠금], UIParent 직계 Secure 아이템 버튼 풀(1..6)
-│   └── SettingsPanel.lua     : 멱등 UISpecialFrames(ESC), 3탭 제어판(모듈 세부설정 서랍 · 6-Key GJ 브리지 · 골드 원장), 슬래시 라우터
+│   ├── FishingTargetModel.lua: 순수 ViewModel — 현재 지역 낚시 대상어·권장 숙련·퀘스트 어종·최단 어군 좌표 계산(GJ DB + 내장 폴백)
+│   ├── FishingTargetHud.lua  : 낚시 대상어 HUD View — 낚싯대 장착 자동 표시, /fs fish 고정, 어군 좌클릭 /way 원클릭 핀 연동
+│   └── SettingsPanel.lua     : 멱등 UISpecialFrames(ESC), 3탭 제어판(모듈 세부설정 서랍 · GJ 브리지 공존 5종 · 골드 원장), 슬래시 라우터
 ├── Functional Modules (P1 ~ P2)
 │   ├── Utility.lua           : [P1] 자동 수리(길드→개인 폴백), 회색템 배치 판매(12개 한도·잔여 안내·/fs sell·/fs protect), 고속 전리품
 │   ├── Inventory.lua         : [P1] Baganator/Bagnon 공존 + 여유 슬롯 HUD(/fs move 드래그·골드 원장 호버 툴팁), 묶음 상점가(xN)·보호 배지

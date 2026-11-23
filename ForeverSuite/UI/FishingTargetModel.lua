@@ -336,11 +336,17 @@ function FishingTargetModel:CollectZoneFishEntries(mapID, gjCompanion)
                     if name and dedupeKey and not seen[dedupeKey] then
                         seen[dedupeKey] = true
                         local schoolCount = 0
+                        local schoolPoints = {}
                         if type(matchedZone.points) == "table" then
                             for p = 1, #matchedZone.points do
                                 local pt = matchedZone.points[p]
                                 if type(pt) == "table" and pt.schoolPoint then
                                     schoolCount = schoolCount + 1
+                                    local px = SafeNumber(pt.x)
+                                    local py = SafeNumber(pt.y)
+                                    if px and py and px >= 0 and px <= 100 and py >= 0 and py <= 100 then
+                                        schoolPoints[#schoolPoints + 1] = { x = px, y = py }
+                                    end
                                 end
                             end
                         end
@@ -354,6 +360,7 @@ function FishingTargetModel:CollectZoneFishEntries(mapID, gjCompanion)
                             sourceNote = prac and SafeString(prac.source) or SafeString(matchedZone.note),
                             waterNote = SafeString(entry.fishingWater) or SafeString(matchedZone.note) or SafeString(entry.note),
                             schoolPointCount = schoolCount,
+                            schoolPoints = schoolPoints,
                             requiredSkill = SafeNumber(matchedZone.requiredSkill) or SafeNumber(entry.requiredSkill),
                         }
                     end
@@ -476,6 +483,7 @@ function FishingTargetModel:BuildViewModel(opts)
             sourceNote = e.sourceNote,
             waterNote = e.waterNote,
             schoolPointCount = e.schoolPointCount or 0,
+            schoolPoints = type(e.schoolPoints) == "table" and e.schoolPoints or {},
             hasSchool = (e.schoolPointCount or 0) > 0,
             requiredSkill = e.requiredSkill,
             isQuestTarget = isQT,
@@ -567,4 +575,35 @@ function FishingTargetModel:FormatChatSummary(vm)
         names[#names + 1] = tag
     end
     return string_format("[%s] (%s) 대상어 %d종: %s", vm.zoneName, skillPart, vm.totalCount, table.concat(names, ", "))
+end
+
+function FishingTargetModel:FindNearestSchoolPoint(row, playerX, playerY)
+    if type(row) ~= "table" or type(row.schoolPoints) ~= "table" or #row.schoolPoints == 0 then
+        return nil
+    end
+    local px = SafeNumber(playerX)
+    local py = SafeNumber(playerY)
+    local hasPlayer = (px ~= nil and py ~= nil and px >= 0 and px <= 100 and py >= 0 and py <= 100)
+    local best = nil
+    local bestDistSq = nil
+    for i = 1, #row.schoolPoints do
+        local pt = row.schoolPoints[i]
+        if type(pt) == "table" then
+            local x = SafeNumber(pt.x)
+            local y = SafeNumber(pt.y)
+            if x and y and x >= 0 and x <= 100 and y >= 0 and y <= 100 then
+                if not hasPlayer then
+                    return { x = x, y = y, dist = nil }
+                end
+                local dx = x - px
+                local dy = y - py
+                local dSq = (dx * dx) + (dy * dy)
+                if bestDistSq == nil or dSq < bestDistSq then
+                    bestDistSq = dSq
+                    best = { x = x, y = y, dist = dSq ^ 0.5 }
+                end
+            end
+        end
+    end
+    return best
 end

@@ -81,6 +81,9 @@ local CLASS_BUFF_FAMILIES = {
             8033, 8038, 10456, 16355, 16356, -- Frostbrand Weapon
             8232, 8235, 10486, 16362, -- Windfury Weapon
         },
+        shieldSpells = { 324, 325, 905, 945, 8134, 10431, 10432, 25469, 25472, 24398, 33736, 974, 32593, 32594 },
+        shieldNameSeeds = { 324, 24398, 974 },
+        enchantSpells = { 8017, 8018, 8019, 10399, 16314, 16315, 16316, 8024, 8027, 8030, 16339, 16341, 16342, 8033, 8038, 10456, 16355, 16356, 8232, 8235, 10486, 16362 },
         nameSeeds = { 324, 24398, 974, 8017, 8024, 8033, 8232 },
         checkWeaponEnchant = true,
         label = "주술사 보호막/무기 강화",
@@ -428,157 +431,150 @@ local function AddSpellNameToSet(nameSet, spellID)
     end
 end
 
-local function GetClassBuffMatchers(self, playerClass, spec, firstKnownSpellID)
-    if type(self._buffMatcherCache) ~= "table" then
-        self._buffMatcherCache = {}
-    end
-    local entry = self._buffMatcherCache[playerClass]
+local function GetBuffMatchers(self, cacheKey, spellList, seedList, firstKnownSpellID)
+    if type(self._buffMatcherCache) ~= "table" then self._buffMatcherCache = {} end
+    local entry = self._buffMatcherCache[cacheKey]
     if not entry then
-        local idSet = {}
-        local nameSet = {}
-        for _, sid in ipairs(spec.spells) do
-            idSet[sid] = true
-        end
-        local seeds = type(spec.nameSeeds) == "table" and spec.nameSeeds or spec.spells
-        for _, sid in ipairs(seeds) do
-            AddSpellNameToSet(nameSet, sid)
-        end
+        local idSet, nameSet = {}, {}
+        for _, sid in ipairs(spellList) do idSet[sid] = true end
+        for _, sid in ipairs(type(seedList) == "table" and seedList or spellList) do AddSpellNameToSet(nameSet, sid) end
         entry = { idSet = idSet, nameSet = nameSet }
-        self._buffMatcherCache[playerClass] = entry
+        self._buffMatcherCache[cacheKey] = entry
     end
     AddSpellNameToSet(entry.nameSet, firstKnownSpellID)
     return entry.idSet, entry.nameSet
 end
 
+local function FindFirstKnownSpell(spellList)
+    for _, sid in ipairs(spellList) do
+        local known = true
+        if C_Spell and C_Spell.IsSpellKnown then
+            local okK, kVal = pcall(C_Spell.IsSpellKnown, sid)
+            if not okK or ns.IsSecret(kVal) then return nil, true end
+            known = kVal and true or false
+        end
+        if known then return sid, false end
+    end
+    return nil, false
+end
+
+local function HasActiveWeaponEnchant()
+    if type(_G.GetWeaponEnchantInfo) ~= "function" then return false, false end
+    local okW, mhEnchant, _, _, _, ohEnchant = pcall(_G.GetWeaponEnchantInfo)
+    if not okW then return false, false end
+    if ns.IsSecret(mhEnchant) or ns.IsSecret(ohEnchant) then return false, true end
+    return (mhEnchant == true or mhEnchant == 1 or ohEnchant == true or ohEnchant == 1), false
+end
+
+local function HasActiveAuraFromList(self, cacheKey, spellList, seedList, firstKnownSpellID)
+    local sawApiError = false
+    if C_UnitAuras and type(C_UnitAuras.GetPlayerAuraBySpellID) == "function" then
+        for _, sid in ipairs(spellList) do
+            local okA, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, sid)
+            if not okA then
+                sawApiError = true
+            else
+                if ns.IsSecret(aura) then return false, true end
+                if aura ~= nil then return true, false end
+            end
+        end
+    end
+    if C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function" then
+        local idSet, nameSet = GetBuffMatchers(self, cacheKey, spellList, seedList, firstKnownSpellID)
+        local sawSecret = false
+        for i = 1, 64 do
+            local okI, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not okI then return false, true end
+            if aura == nil then break end
+            if ns.IsSecret(aura) then return false, true end
+            if type(aura) == "table" then
+                local aSid, aName = aura.spellId, aura.name
+                local sSec, nSec = ns.IsSecret(aSid), ns.IsSecret(aName)
+                if (not sSec) and type(aSid) == "number" and idSet[aSid] then return true, false end
+                if (not nSec) and type(aName) == "string" and aName ~= "" and nameSet[aName] then return true, false end
+                if sSec or nSec then sawSecret = true end
+            end
+        end
+        if sawSecret then return false, true end
+    end
+    if sawApiError then return false, true end
+    return false, false
+end
+
 function Combat:CheckOutOfCombatBuffs()
-    if ns.InCombat() or not ns.ProfileManager:Get("combat", "remindMissingClassBuff") then
-        return nil
-    end
-    if _G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost("player") then
-        return nil
-    end
-    if _G.IsResting and _G.IsResting() then
-        return nil
-    end
-    if _G.IsMounted and _G.IsMounted() then
-        return nil
-    end
-    if _G.UnitOnTaxi and _G.UnitOnTaxi("player") then
+    if ns.InCombat() or not ns.ProfileManager:Get("combat", "remindMissingClassBuff") then return nil end
+    if (_G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost("player")) or (_G.IsResting and _G.IsResting())
+        or (_G.IsMounted and _G.IsMounted()) or (_G.UnitOnTaxi and _G.UnitOnTaxi("player")) then
         return nil
     end
 
     local playerClass = ns.ProfileManager.playerClass
     local spec = CLASS_BUFF_FAMILIES[playerClass]
-    if not spec or type(spec.spells) ~= "table" then
-        return nil
-    end
+    if not spec or type(spec.spells) ~= "table" then return nil end
 
-    local firstKnownSpellID = nil
-    for _, sid in ipairs(spec.spells) do
-        local known = true
-        if C_Spell and C_Spell.IsSpellKnown then
-            local okK, kVal = pcall(C_Spell.IsSpellKnown, sid)
-            if not okK or ns.IsSecret(kVal) then
-                return nil
+    local hasAuraAPI = C_UnitAuras and (type(C_UnitAuras.GetPlayerAuraBySpellID) == "function" or type(C_UnitAuras.GetAuraDataByIndex) == "function")
+    local hasEnchantAPI = spec.checkWeaponEnchant and type(_G.GetWeaponEnchantInfo) == "function"
+    if not hasAuraAPI and not hasEnchantAPI then return nil end
+
+    -- Dual-requirement check for classes that know both Shield & Weapon Imbue (e.g., Shaman Lv 8+)
+    if type(spec.shieldSpells) == "table" and type(spec.enchantSpells) == "table" and hasAuraAPI and hasEnchantAPI then
+        local knownShield, secS = FindFirstKnownSpell(spec.shieldSpells)
+        local knownEnchant, secE = FindFirstKnownSpell(spec.enchantSpells)
+        if secS or secE then return nil end
+        if knownShield and knownEnchant then
+            local hasEnch, secW = HasActiveWeaponEnchant()
+            if secW then return nil end
+            local hasShield, secA = HasActiveAuraFromList(self, playerClass .. ":shield", spec.shieldSpells, spec.shieldNameSeeds, knownShield)
+            if secA then return nil end
+            local satisfied = hasShield and hasEnch
+            if not satisfied then
+                local missKey = (not hasShield and not hasEnch) and "SHIELD_ENCHANT" or (not hasShield and "SHIELD" or "ENCHANT")
+                local missLbl = (missKey == "SHIELD_ENCHANT") and "주술사 보호막 · 무기 강화" or (missKey == "SHIELD" and "주술사 보호막" or "무기 강화")
+                if self.lastBuffMissingKey ~= missKey then
+                    ns.Print("비전투 버프 누락 알림: [" .. missLbl .. "] 효과가 없습니다.")
+                end
+                self.lastBuffMissing, self.lastBuffMissingKey = true, missKey
+            else
+                self.lastBuffMissing, self.lastBuffMissingKey = false, nil
             end
-            known = kVal and true or false
+            return satisfied
         end
-        if known then
-            firstKnownSpellID = sid
-            break
-        end
-    end
-    if not firstKnownSpellID then
-        return nil
     end
 
-    local hasAuraByID = (C_UnitAuras and type(C_UnitAuras.GetPlayerAuraBySpellID) == "function") and true or false
-    local hasAuraByIndex = (C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function") and true or false
-    local hasEnchantAPI = (spec.checkWeaponEnchant and type(_G.GetWeaponEnchantInfo) == "function") and true or false
-    if not hasAuraByID and not hasAuraByIndex and not hasEnchantAPI then
-        return nil
-    end
+    local firstKnownSpellID, secKnown = FindFirstKnownSpell(spec.spells)
+    if secKnown or not firstKnownSpellID then return nil end
 
     local satisfied = false
     if hasEnchantAPI then
-        local okW, mhEnchant, _, _, _, ohEnchant = pcall(_G.GetWeaponEnchantInfo)
-        if okW then
-            if ns.IsSecret(mhEnchant) or ns.IsSecret(ohEnchant) then
-                return nil
-            end
-            if mhEnchant == true or mhEnchant == 1 or ohEnchant == true or ohEnchant == 1 then
-                satisfied = true
-            end
-        end
+        local enchOk, secW = HasActiveWeaponEnchant()
+        if secW then return nil end
+        if enchOk then satisfied = true end
     end
-
-    if (not satisfied) and hasAuraByID then
-        for _, sid in ipairs(spec.spells) do
-            local okA, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, sid)
-            if okA then
-                if ns.IsSecret(aura) then
-                    return nil
-                end
-                if aura ~= nil then
-                    satisfied = true
-                    break
-                end
-            end
-        end
-    end
-
-    if (not satisfied) and hasAuraByIndex then
-        local idSet, nameSet = GetClassBuffMatchers(self, playerClass, spec, firstKnownSpellID)
-        local sawSecretAura = false
-        for i = 1, 64 do
-            local okI, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
-            if not okI then
-                break
-            end
-            if ns.IsSecret(aura) then
-                return nil
-            end
-            if aura == nil then
-                break
-            end
-            if type(aura) == "table" then
-                local aSid = aura.spellId
-                local aName = aura.name
-                local sidSecret = ns.IsSecret(aSid)
-                local nameSecret = ns.IsSecret(aName)
-                if (not sidSecret) and type(aSid) == "number" and idSet[aSid] then
-                    satisfied = true
-                    break
-                elseif (not nameSecret) and type(aName) == "string" and aName ~= "" and nameSet[aName] then
-                    satisfied = true
-                    break
-                elseif sidSecret or nameSecret then
-                    sawSecretAura = true
-                end
-            end
-        end
-        if (not satisfied) and sawSecretAura then
-            return nil
-        end
+    if not satisfied and hasAuraAPI then
+        local auraOk, secA = HasActiveAuraFromList(self, playerClass, spec.spells, spec.nameSeeds, firstKnownSpellID)
+        if secA then return nil end
+        satisfied = auraOk
     end
 
     local missing = not satisfied
-    if missing and not self.lastBuffMissing then
+    if missing and self.lastBuffMissingKey ~= "SINGLE" then
         local buffName = spec.label or "직업 강화 효과"
         if C_Spell and C_Spell.GetSpellInfo then
-            local info = C_Spell.GetSpellInfo(firstKnownSpellID)
-            if type(info) == "table" and not ns.IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
+            local okInfo, info = pcall(C_Spell.GetSpellInfo, firstKnownSpellID)
+            if okInfo and type(info) == "table" and not ns.IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
                 buffName = info.name
             end
         end
         ns.Print("비전투 버프 누락 알림: [" .. buffName .. "] 효과가 없습니다.")
     end
     self.lastBuffMissing = missing
+    self.lastBuffMissingKey = missing and "SINGLE" or nil
     return satisfied
 end
 
 function Combat:OnEnable(ctx)
     self.lastBuffMissing = false
+    self.lastBuffMissingKey = nil
     local banner = ctx:CreateFrame("Frame", "ForeverSuiteHealthAlertFrame", _G.UIParent)
     if banner then
         if not banner._fsInitialized then
@@ -662,6 +658,7 @@ function Combat:OnDisable()
     self.lastShownPct = nil
     self.lastHealthStatus = "NORMAL"
     self.lastBuffMissing = false
+    self.lastBuffMissingKey = nil
     self._buffMatcherCache = nil
     self.nameplateOwner = nil
 end

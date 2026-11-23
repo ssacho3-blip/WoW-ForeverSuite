@@ -174,6 +174,7 @@ local function ApplyPostToggleSideEffects(section, key)
                     if comb.definition.CheckOutOfCombatBuffs then comb.definition:CheckOutOfCombatBuffs() end
                 else
                     comb.definition.lastBuffMissing = false
+                    comb.definition.lastBuffMissingKey = nil
                 end
             elseif key == "enhanceNameplates" then
                 if comb.definition.SyncNameplatePreset then comb.definition:SyncNameplatePreset() end
@@ -255,8 +256,8 @@ local function BuildBridgeStatusText()
     end
     local ext = type(bridge.externalCoexistence) == "table" and bridge.externalCoexistence or nil
     if ext then
-        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보·연동) 4종]|r"
-        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips", "baganatorBadges" }) do
+        out = out .. "\n\n|cffffd23f[외부 전문 애드온 공존 (GJ 자동 양보·연동) 5종]|r"
+        for _, k in ipairs({ "auction", "nameplates", "inventoryTooltips", "questDialog", "baganatorBadges" }) do
             out = out .. string_format("\n • %-17s : %s", k, tostring(ext[k] or "—"))
         end
     end

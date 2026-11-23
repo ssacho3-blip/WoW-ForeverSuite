@@ -57,6 +57,9 @@ local function ShowFishRowTooltip(rowBtn)
     end
     if data.hasSchool then
         gt:AddLine(string_format("기록된 물고기 떼(어군): %d곳", data.schoolPointCount or 0), 0.45, 0.82, 1.0)
+        if type(data.schoolPoints) == "table" and #data.schoolPoints > 0 then
+            gt:AddLine("좌클릭: 가장 가까운 어군 좌표로 /way 핀 설정", 0.35, 0.90, 0.52)
+        end
     end
     if (data.caughtCount or 0) > 0 then
         gt:AddLine(string_format("이번 세션 획득: %d마리", data.caughtCount), 0.35, 0.90, 0.52)
@@ -68,6 +71,35 @@ end
 local function HideFishRowTooltip()
     if _G.GameTooltip and _G.GameTooltip.Hide then
         _G.GameTooltip:Hide()
+    end
+end
+
+local function OnFishRowClick(rowBtn)
+    local data = rowBtn and rowBtn._fsFishData or nil
+    if type(data) ~= "table" or not ns.FishingTargetModel then
+        return
+    end
+    local mapID = FishingTargetHud.lastViewModel and FishingTargetHud.lastViewModel.mapID or nil
+    local px, py = nil, nil
+    if ns.Map and type(ns.Map.QueryPlayerCoords) == "function" then
+        local sameMap = true
+        if mapID and C_Map and type(C_Map.GetBestMapForUnit) == "function" then
+            local okM, liveMap = pcall(C_Map.GetBestMapForUnit, "player")
+            sameMap = okM and (not ns.IsSecret(liveMap)) and (liveMap == mapID)
+        end
+        if sameMap then
+            px, py = ns.Map:QueryPlayerCoords()
+        end
+    end
+    local nearest = ns.FishingTargetModel:FindNearestSchoolPoint(data, px, py)
+    if not nearest then
+        ns.Print(tostring(data.name or "어종") .. "은(는) 기록된 어군 좌표가 없습니다.")
+        return
+    end
+    if ns.Map and type(ns.Map.SetWaypointAt) == "function" then
+        ns.Map:SetWaypointAt(mapID, nearest.x, nearest.y, tostring(data.name or "물고기") .. " 어군")
+    else
+        ns.Warn("지도 모듈을 사용할 수 없어 어군 웨이포인트를 설정하지 못했습니다.")
     end
 end
 
@@ -206,6 +238,10 @@ function FishingTargetHud:EnsureFrame()
             end
             row._fsBadge = badgeLbl
         end
+        if row.RegisterForClicks then
+            row:RegisterForClicks("LeftButtonUp")
+        end
+        row:SetScript("OnClick", OnFishRowClick)
         row:SetScript("OnEnter", ShowFishRowTooltip)
         row:SetScript("OnLeave", HideFishRowTooltip)
         row:Hide()

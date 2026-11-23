@@ -142,6 +142,62 @@ function Map:StopMapTicker()
     end
 end
 
+function Map:SetWaypointAt(uiMapID, x, y, note)
+    if not self.active or ns.IsFeatureYielded("way") then
+        ns.Warn("지도 모듈이 비활성(또는 외부 애드온에 양보) 상태라 웨이포인트를 설정하지 않습니다.")
+        return false
+    end
+    if ns.IsSecret(x) or ns.IsSecret(y) or type(x) ~= "number" or type(y) ~= "number" then
+        return false
+    end
+    if x ~= x or y ~= y or x < 0 or x > 100 or y < 0 or y > 100 then
+        return false
+    end
+    if not (C_Map and C_Map.CanSetUserWaypointOnMap and C_Map.SetUserWaypoint) then
+        ns.Warn("현재 클라이언트에서 사용자 웨이포인트 API를 사용할 수 없습니다.")
+        return false
+    end
+    local targetMapID = uiMapID
+    if (ns.IsSecret(targetMapID) or not targetMapID) and C_Map.GetBestMapForUnit then
+        local okMap, liveMap = pcall(C_Map.GetBestMapForUnit, "player")
+        targetMapID = okMap and liveMap or nil
+    end
+    if ns.IsSecret(targetMapID) or type(targetMapID) ~= "number" or targetMapID <= 0 then
+        ns.Warn("현재 지역(인스턴스/미지원 맵)에서는 웨이포인트를 설정할 수 없습니다.")
+        return false
+    end
+    local okCan, canSet = pcall(C_Map.CanSetUserWaypointOnMap, targetMapID)
+    if not okCan or ns.IsSecret(canSet) or canSet ~= true then
+        ns.Warn("현재 지역(인스턴스/미지원 맵)에서는 웨이포인트를 설정할 수 없습니다.")
+        return false
+    end
+    local nx = x / 100
+    local ny = y / 100
+    local mapPoint
+    if _G.UiMapPoint and _G.UiMapPoint.CreateFromCoordinates then
+        local okPt, pt = pcall(_G.UiMapPoint.CreateFromCoordinates, targetMapID, nx, ny)
+        if not okPt or not pt then
+            ns.Warn("웨이포인트 좌표 생성에 실패했습니다.")
+            return false
+        end
+        mapPoint = pt
+    else
+        mapPoint = { uiMapID = targetMapID, position = { x = nx, y = ny } }
+    end
+    local okSet = pcall(C_Map.SetUserWaypoint, mapPoint)
+    if not okSet then
+        ns.Warn("웨이포인트 설정에 실패했습니다.")
+        return false
+    end
+    self.userWaypointActive = true
+    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+        pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+    end
+    local label = (not ns.IsSecret(note) and type(note) == "string" and note ~= "") and (" (" .. note .. ")") or ""
+    ns.Print(string_format("목표 지점 설정: %.1f, %.1f%s (단일 네이티브 SuperTrack 핀)", x, y, label))
+    return true
+end
+
 function Map:SetWaypointFromSlash(rawInput)
     if ns.IsFeatureYielded("way") or not self.active or not ns.ProfileManager:Get("map", "enableWaySlash") then
         return false
@@ -180,30 +236,7 @@ function Map:SetWaypointFromSlash(rawInput)
     if not uiMapID then
         uiMapID = C_Map.GetBestMapForUnit("player")
     end
-
-    if not uiMapID or ns.IsSecret(uiMapID) or not C_Map.CanSetUserWaypointOnMap(uiMapID) then
-        ns.Warn("현재 지역(인스턴스/미지원 맵)에서는 웨이포인트를 설정할 수 없습니다.")
-        return false
-    end
-
-    local nx = x / 100
-    local ny = y / 100
-    local mapPoint
-    if _G.UiMapPoint and _G.UiMapPoint.CreateFromCoordinates then
-        mapPoint = _G.UiMapPoint.CreateFromCoordinates(uiMapID, nx, ny)
-    else
-        mapPoint = { uiMapID = uiMapID, position = { x = nx, y = ny } }
-    end
-
-    C_Map.SetUserWaypoint(mapPoint)
-    self.userWaypointActive = true
-    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
-        C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-    end
-
-    local label = (note and note ~= "") and (" (" .. note .. ")") or ""
-    ns.Print(string_format("목표 지점 설정: %.1f, %.1f%s (단일 네이티브 SuperTrack 핀)", x, y, label))
-    return true
+    return self:SetWaypointAt(uiMapID, x, y, note)
 end
 
 function Map:UnregisterWaySlash()

@@ -2,6 +2,21 @@
 
 All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
 
+## [0.5.4] - 2026-11-23
+
+### Synced & Added (`FS-V054-ECOSYSTEM-UPGRADE`)
+- **GodJohnson Upstream `v5.312` (`rev 664`, Client `1.60.1.71037`, File ID `9753333`)**:
+  - Synced `pinned_upstream.json` and `ForeverSuite_GJBridge/Bridge.lua` (`ns.UPSTREAM_PIN = "5.312"`) across all 21 upstream folders with full `folder_sha256` verification, and aligned `tests/binary_api_manifest.py` + `tests/wow_forever_mock.py` to live client build `1.60.1.71037`.
+- **`DialogueUI` & `Spoken` Quest Dialog Coexistence (`ForeverSuite/Core/Init.lua`, `ForeverSuite_GJBridge/State.lua`, `Bridge.lua`, `UI/SettingsPanel.lua`)**:
+  - Extended `questAutoDialog` yield rules in `ForeverSuite` to cover `Spoken` alongside `DialogueUI`, and added `questDialog` reconciliation in `ForeverSuite_GJBridge` (`ReconcileExternalCoexistence`) so GodJohnson's `automation.gossip/accept/complete` automatically yields when `DialogueUI` or `Spoken` is loaded (preserving Korean quest voiceover and immersive dialogue across `PLAYER_LOGIN`, late `ADDON_LOADED`, `/fsgj sync`, and `ApplyAuthorPreset`, with strict Read-Only schema protection).
+- **Shaman Dual-Requirement Out-of-Combat Buff Check (`ForeverSuite/Modules/Combat.lua`, `UI/SettingsPanel.lua`)**:
+  - Upgraded `Combat:CheckOutOfCombatBuffs()` so Shamans knowing both a Shield (`Lightning`/`Water`/`Earth Shield`) and a Weapon Imbue (`Rockbiter`/`Flametongue`/`Frostbrand`/`Windfury`) independently verify BOTH buffs instead of satisfying on either one alone, with specific missing-buff notices (`주술사 보호막` / `무기 강화` / `주술사 보호막 · 무기 강화`) and strict `C_Secrets` fail-closed guards.
+- **One-Click Nearest Fishing School `/way` Pin & `Baganator` Protected Badge (`UI/FishingTargetModel.lua`, `UI/FishingTargetHud.lua`, `Modules/Map.lua`, `ForeverSuite_GJBridge/State.lua`)**:
+  - Stored valid `schoolPoints` coordinates from `GodJohnsonProfessionData` in `FishingTargetModel`, added `FindNearestSchoolPoint()` and `Map:SetWaypointAt()`, and wired left-clicking a school fish row in `ForeverSuiteFishingTargetHUD` to set a native 3D SuperTrack waypoint at the closest school coordinate.
+  - Added `/fs protect` integration (`보호` badge in sky-blue, highest priority) to the `Baganator` `fsgj_badge` corner widget while moving widget helpers to `State.lua` to preserve the `< 700`-line Lua budget.
+- **Documentation Parity (`README.md`, `docs/ARCHITECTURE.md`, `docs/WINDOWS_MAC_SYNC.md`)**:
+  - Updated all architecture, sync, and command references from `v0.3.2` / `v5.236` / legacy path to `v0.5.4` / `v5.312` / `1.60.1.71037` / `/Users/choyoungseo/workspace/ForeverSuite`.
+
 ## [0.5.3] - 2026-11-22
 
 ### Added (`FS-V053-FISHING-TARGET-HUD`)

@@ -1,12 +1,12 @@
-# ForeverSuite v0.3.2 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.236+` 3-Tier Bridge Edition)
+# ForeverSuite v0.5.4 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.312` 3-Tier Bridge Edition)
 
-- **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.70938`, TOC `16001, 120105`)
+- **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.71037`, TOC `16001, 120105`)
 - **지원 OS**: **macOS & Windows 양방향 100% 호환** (Windows 원클릭 `.exe` 설치기 포함)
-- **개발 저장소**: macOS `/Users/choyoungseo/WoW_Forever/ForeverSuite` · GitHub Private `https://github.com/ssacho3-blip/WoW-ForeverSuite`
+- **개발 저장소**: macOS `/Users/choyoungseo/workspace/ForeverSuite` · GitHub Private `https://github.com/ssacho3-blip/WoW-ForeverSuite`
 - **설계 원칙 (`Claude Opus 5.5` × `Claude Fable 5.2` 합의 아키텍처)**:
-  - **Tier 1 (Upstream Read-Only Base)**: 유튜버 **갓존슨(GodJohnson) 통합 애드온 `v5.236`** 원본 21개 폴더 무수정(`0 diff`, `.toc` + 전체 파일 트리 `folder_sha256` 해시 고정 [`pinned_upstream.json`](pinned_upstream.json), 14개 `GodJohnsonFontChoice_*` 7비트 레지스터 폴더 100% 보존)
-  - **Tier 2 (`ForeverSuite` v0.3.1, 18개 Lua 모듈)**: 개인용 코어/경제/전투/유틸리티 스위트 (`xpcall` 서킷 브레이커, `C_Secrets` 가드, `CombatQueue` 전투 격리, 브리지 인지형 `Economy` 원장 후크, 단일 소유자 자동 양보)
-  - **Tier 3 (`ForeverSuite_GJBridge` v0.3.1)**: Zero-SV-Mutation 비침습 런타임 브리지 (Weak-key 프라이빗 상태 격리, `ProfileShare` 오염 제로, `ApplyAuthorPreset` 스냅샷 보호, `BuildHome404` `ChannelLogo` 자식 리전 스킨, 6개 키 단일 소유자 중재)
+  - **Tier 1 (Upstream Read-Only Base)**: 유튜버 **갓존슨(GodJohnson) 통합 애드온 `v5.312`** 원본 21개 폴더 무수정(`0 diff`, `.toc` + 전체 파일 트리 `folder_sha256` 해시 고정 [`pinned_upstream.json`](pinned_upstream.json), 14개 `GodJohnsonFontChoice_*` 7비트 레지스터 폴더 100% 보존)
+  - **Tier 2 (`ForeverSuite` v0.5.4, 20개 Lua 모듈)**: 개인용 코어/경제/전투/유틸리티/낚시 HUD 스위트 (`xpcall` 서킷 브레이커, `C_Secrets` 가드, `CombatQueue` 전투 격리, 브리지 인지형 `Economy` 원장 후크, 단일 소유자 자동 양보)
+  - **Tier 3 (`ForeverSuite_GJBridge` v0.5.4)**: Zero-SV-Mutation 비침습 런타임 브리지 (Weak-key 프라이빗 상태 격리, `ProfileShare` 오염 제로, `ApplyAuthorPreset` 스냅샷 보호, `Baganator` 재료·보호 코너 위젯, `Auctionator`/`Platynator`/`Syndicator`/`DialogueUI`/`Spoken` 자동 공존)
 
 ---
 
@@ -31,9 +31,13 @@
 - `/fs quest [zone | level | here | lock | toggle | default | reset]` : **온스크린 퀘스트 추적창 지역별/레벨별 전환, 현재 지역 필터, 드래그 잠금(`[잠금]`), 기본 추적기 동시 표시, 위치 초기화** (`[∞ 포에버]` 확장 퀘스트 배지 포함)
 - `/fs nameplate [on | off | status]` : **이름표 가독성·겹침방지(`motion=1`, `41yd`, `1.2x`) CVar 최적화 토글 (`Platynator`/`Plater` 공존 시 자동 양보)**
 - `/fs layer` : **현재 대상/마우스오버 NPC 기준 서버 위상(`ZoneUID`) 및 인스턴스 진단**
-- `/fs protect <아이템링크 | itemID | list>` : 상점 자동 판매 제외 보호 아이템 등록/해제 및 목록 조회
+- `/fs fish [list | auto | on | off | reset]` : **현재 지역 낚시 대상어 HUD 고정/자동 전환 및 어군 원클릭 `/way` 핀 연동**
+- `/fs cheap [1~10]` (별칭 `/fs junk`) : **가방 최저가 정리 추천 안내 전용 가이드 (여유 ≤2칸 시 자동 안내)**
+- `/fs xp [reset]` : **세션 시간당 경험치(XP/h) 및 레벨업 예상 소요 시간 조회**
+- `/fs scale [0.64~1.00 | reset]` : **전투 안전 UI 스케일 원커맨드 전환 (MacBook Pro / Mac Studio 전환용)**
+- `/fs protect <아이템링크 | itemID | list>` : 상점 자동 판매 제외 보호 아이템 등록/해제 및 목록 조회 (`Baganator` `보호` 배지 연동)
 - `/fs sell` : 상점 창이 열려 있을 때 회색 잡템 최대 12개 수동 안전 배치 판매
-- `/fs move [reset]` : 가방 HUD 및 저체력 경고 프레임 드래그 잠금/해제 토글 (`reset` 시 기본 위치 복원)
+- `/fs move [reset]` : 가방 HUD, 낚시 대상어 HUD 및 저체력 경고 프레임 드래그 잠금/해제 토글 (`reset` 시 기본 위치 복원)
 - `/fs enable <모듈>` / `/fs disable <모듈>` : 개별 모듈 활성화·비활성화
 - `/fs status` / `/fs perf` / `/fs gold` / `/fs gather` : 모듈 상태, 실시간 메모리·CPU, 세션 골드 원장, 채집 수확량 출력
 - `/fsgj` 또는 `/fsgj status` / `/fsgj sync` : **갓존슨 브리지 오버라이드 및 단일 소유자(`OWNED_BY_FS`/`YIELDED`) 상태 점검·재동기화**
@@ -51,7 +55,7 @@
 chmod +x scripts/deploy_mac.sh
 ./scripts/deploy_mac.sh
 
-# 3. Windows 원클릭 설치 파일(dist/ForeverSuite_Installer.exe) 및 포터블 ZIP(dist/ForeverSuite-v0.3.2.zip) 빌드
+# 3. Windows 원클릭 설치 파일(dist/ForeverSuite_Installer.exe) 및 포터블 ZIP(dist/ForeverSuite-v0.5.4.zip) 빌드
 python3 scripts/package_release.py
 
 # 4. 갓존슨 업스트림 신규 버전 출시 시 해시 고정 및 호환성 검증

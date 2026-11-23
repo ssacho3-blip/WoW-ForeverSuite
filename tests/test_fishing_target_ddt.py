@@ -283,3 +283,60 @@ def test_fs_fish_slash_commands_pin_list_off_on_reset_and_readonly() -> None:
     rt_ro.run_slash("FOREVERSUITE", "fish off")
     assert rt_ro.vm._invoke_callable(ns_ro["ProfileManager"]["Get"], (ns_ro["ProfileManager"], "profession", "showFishingTargetHUD"))[0] is True
     assert any("읽기 전용" in m for m in rt_ro.chat_messages)
+
+
+def test_v054_fishing_hud_click_sets_nearest_school_waypoint_and_handles_no_school() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.current_map_id = 1413
+    rt.real_zone_text = "불모의 땅"
+    rt.player_coords = (0.632, 0.590)  # Closer to (63.3, 59.3) than (62.9, 52.7)
+    ns = rt.boot_session()
+    gj = _make_gj_fishing_companion()
+    rt.vm.G["GJCompanion"] = gj
+
+    hud = ns["FishingTargetHud"]
+    rt.run_slash("FOREVERSUITE", "fish")
+    assert hud["frame"]["_shown"] is True
+
+    # Row 1 in Barrens GJ mock is 기름기 많은 아귀 (2 school points: 62.9,52.7 and 63.3,59.3)
+    row1 = hud["rowButtons"][1]
+    assert row1["_fsFishData"]["itemID"] == 6358
+    assert row1["_fsFishData"]["schoolPoints"][1]["x"] == 62.9
+    assert row1["_fsFishData"]["schoolPoints"][2]["x"] == 63.3
+
+    # Tooltip should advertise left-click waypoint action
+    rt._fire_widget_script(row1, "OnEnter")
+    gt = rt.vm.G["GameTooltip"]
+    assert any("좌클릭" in ln and "/way" in ln for ln in gt["_lines"])
+    rt._fire_widget_script(row1, "OnLeave")
+
+    # Click row -> sets native waypoint to nearest school point (63.3, 59.3)
+    rt.chat_messages.clear()
+    rt._fire_widget_script(row1, "OnClick")
+    assert rt.user_waypoint is not None
+    assert rt.user_waypoint["uiMapID"] == 1413
+    assert abs(rt.user_waypoint["position"]["x"] - 0.633) < 0.001
+    assert abs(rt.user_waypoint["position"]["y"] - 0.593) < 0.001
+    assert rt.super_tracked_waypoint is True
+    assert any("63.3, 59.3" in m and "기름기 많은 아귀 어군" in m for m in rt.chat_messages)
+
+    # Non-school fish click prints clean informative message without error
+    rt.current_map_id = 1429
+    rt.real_zone_text = "엘윈 숲"
+    rt.vm._invoke_callable(hud["Refresh"], (hud,))
+    rt.chat_messages.clear()
+    rt._fire_widget_script(hud["rowButtons"][1], "OnClick")
+    assert any("기록된 어군 좌표가 없습니다" in m for m in rt.chat_messages)
+
+    # When way feature is yielded (e.g. TomTom), clicking school row respects ownership and skips C_Map.SetUserWaypoint
+    rt.current_map_id = 1413
+    rt.real_zone_text = "불모의 땅"
+    rt.user_waypoint = None
+    rt.super_tracked_waypoint = False
+    rt.vm._invoke_callable(hud["Refresh"], (hud,))
+    rt.vm._invoke_callable(ns["SetFeatureYield"], ("way", True, "TomTom"))
+    rt.chat_messages.clear()
+    rt._fire_widget_script(hud["rowButtons"][1], "OnClick")
+    assert rt.user_waypoint is None
+    assert any("양보" in m for m in rt.chat_messages)
+

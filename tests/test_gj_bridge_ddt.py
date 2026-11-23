@@ -141,10 +141,10 @@ def test_pinned_upstream_manifest_and_21_folders_unmodified() -> None:
     manifest_path = REPO_ROOT / "pinned_upstream.json"
     assert manifest_path.is_file()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "5.278"
-    assert manifest["file_id"] == 9663720
-    assert manifest["release_revision"] == 630
-    assert manifest["target_client_build"] == "1.60.1.70938"
+    assert manifest["version"] == "5.312"
+    assert manifest["file_id"] == 9753333
+    assert manifest["release_revision"] == 664
+    assert manifest["target_client_build"] == "1.60.1.71037"
     assert manifest["folder_count"] == 21
     assert len(manifest["folders"]) == 21
 
@@ -664,8 +664,8 @@ def test_windows_one_click_exe_pe32plus_and_payload_integrity(tmp_path: pathlib.
     assert start_marker in raw and end_marker in raw
     ps1_bytes = raw.rsplit(start_marker, 1)[1].split(end_marker, 1)[0]
     ps1_text = ps1_bytes.decode("utf-8")
-    assert "70ff575b98d7fc9c7dc0f6e79eb0e33631276db156517ef790fdc7eae6159f39" in ps1_text
-    assert "GodJohnson-5.278.zip" in ps1_text
+    assert "7db1f80a3eb92714c2402081d18eb3f4fcc1b2084b8f02ae4a0dd38ce63eb73b" in ps1_text
+    assert "GodJohnson-5.312.zip" in ps1_text
     assert "ForeverSuite_AutoUpdate" in ps1_text
     assert "Register-ScheduledTask" in ps1_text
     assert "Security hash mismatch blocked" in ps1_text
@@ -994,7 +994,7 @@ def test_v030_ac3_sync_upstream_patch_preservation_sha_guard_wrapper_unwrap_and_
         },
         base64.b64encode(b"PK").decode("ascii"),
     )
-    assert "(v0.5.3)" in ps1
+    assert "(v0.5.4)" in ps1
 
 
 def test_v030_codex_review_sync_recoverable_swap_and_empty_expected_sha256(
@@ -1136,7 +1136,7 @@ def test_gj_v5236_two_segment_version_client_build_and_retired_vital_alerts(tmp_
     )
     bridge = load_bridge(rt)
     assert bridge.get("status") == "ACTIVE"
-    assert bridge.get("UPSTREAM_PIN") == "5.278"
+    assert bridge.get("UPSTREAM_PIN") == "5.312"
     targets = bridge.get("targets")
     for key in ("sayPrefix", "youtubeLink", "homeScreen", "tradeWhisper", "questSound"):
         assert targets.get(key) == "APPLIED"
@@ -1861,6 +1861,180 @@ def test_v052_baganator_corner_widgets_surface_gj_material_and_buff_badges() -> 
     rt_auct.vm.run_chunk("_G._auctCfg.autoscan_2 = false")
     rt_auct.fire_event("PLAYER_ENTERING_WORLD", True, False)
     assert rt_auct.vm.run_chunk("return _G._auctCfg.autoscan_2")[0] is False
+
+
+@pytest.mark.parametrize("dialog_addon", ["DialogueUI", "Spoken"])
+def test_v054_dialogue_ui_and_spoken_coexistence_yields_gj_and_fs_automation(dialog_addon: str) -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {dialog_addon}
+    ns = rt.boot_session()
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("questAutoDialog",))[0] is True
+
+    rt.vm.run_chunk(
+        """
+        _G._commitCalls = 0
+        GJCompanion = {
+            version = "5.312",
+            _auto = { gossip = true, accept = true, complete = true, manualEscort249 = true },
+            ExtraSettings = function(key)
+                if key == "automation" then return GJCompanion._auto end
+                if key == "merchantAutomation" then return { repair = false, sell = false } end
+                return {}
+            end,
+            CommitSettings = function() _G._commitCalls = _G._commitCalls + 1 end,
+            ApplyAuthorPreset = function()
+                GJCompanion._auto.gossip = true
+                GJCompanion._auto.accept = true
+                GJCompanion._auto.complete = true
+                return true
+            end,
+        }
+        """
+    )
+
+    bridge = load_bridge(rt)
+    assert rt.vm.run_chunk("return GJCompanion._auto.gossip, GJCompanion._auto.accept, GJCompanion._auto.complete")[0:3] == (
+        False,
+        False,
+        False,
+    )
+    assert rt.vm.run_chunk("return GJCompanion._auto.manualEscort249")[0] is True
+    assert bridge.get("externalCoexistence").get("questDialog") == f"YIELDED_TO_{dialog_addon}"
+    assert rt.vm.run_chunk("return _G._commitCalls")[0] == 1
+
+    # Re-running ApplyAuthorPreset must keep quest dialog automation yielded
+    assert rt.vm.run_chunk("return GJCompanion.ApplyAuthorPreset()")[0] is True
+    assert rt.vm.run_chunk("return GJCompanion._auto.gossip, GJCompanion._auto.accept, GJCompanion._auto.complete")[0:3] == (
+        False,
+        False,
+        False,
+    )
+
+    # Late ADDON_LOADED reconciles both GJ automation and ForeverSuite questAutoDialog yield
+    rt_late = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_late.loaded_external_addons = set()
+    ns_late = rt_late.boot_session()
+    rt_late.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.312",
+            _auto = { gossip = true, accept = true, complete = true },
+            ExtraSettings = function(key)
+                if key == "automation" then return GJCompanion._auto end
+                return {}
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_late = load_bridge(rt_late)
+    assert bridge_late.get("externalCoexistence").get("questDialog") == "OWNED_BY_GJ"
+    assert rt_late.vm._invoke_callable(ns_late["IsFeatureYielded"], ("questAutoDialog",))[0] is False
+    rt_late.loaded_external_addons.add(dialog_addon)
+    rt_late.fire_event("ADDON_LOADED", dialog_addon)
+    assert bridge_late.get("externalCoexistence").get("questDialog") == f"YIELDED_TO_{dialog_addon}"
+    assert rt_late.vm._invoke_callable(ns_late["IsFeatureYielded"], ("questAutoDialog",))[0] is True
+    assert rt_late.vm.run_chunk("return GJCompanion._auto.gossip, GJCompanion._auto.accept, GJCompanion._auto.complete")[0:3] == (
+        False,
+        False,
+        False,
+    )
+
+    # Read-only future schema must NEVER mutate GJ automation settings
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.loaded_external_addons = {dialog_addon}
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 999})
+    rt_ro.boot_session()
+    rt_ro.vm.run_chunk(
+        """
+        GJCompanion = {
+            version = "5.312",
+            _auto = { gossip = true, accept = true, complete = true },
+            ExtraSettings = function(key)
+                if key == "automation" then return GJCompanion._auto end
+                return {}
+            end,
+        }
+        """
+    )
+    load_bridge(rt_ro)
+    assert rt_ro.vm.run_chunk("return GJCompanion._auto.gossip, GJCompanion._auto.accept, GJCompanion._auto.complete")[0:3] == (
+        True,
+        True,
+        True,
+    )
+
+
+def test_v054_baganator_protected_item_corner_badge_priority() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Baganator"}
+    ns = rt.boot_session()
+    pm = ns["ProfileManager"]
+    rt.vm._invoke_callable(pm["SetProtectedItem"], (pm, 9901, True))
+    rt.vm._invoke_callable(pm["SetProtectedItem"], (pm, 6948, True))
+
+    rt.vm.run_chunk(
+        """
+        _G._registeredWidgets = {}
+        Baganator = {
+            API = {
+                RegisterCornerWidget = function(label, id, onUpdate, onInit, defaultPosition, isFast)
+                    _G._registeredWidgets[id] = { label = label, onUpdate = onUpdate, onInit = onInit }
+                end,
+            },
+        }
+        GJCompanion = {
+            version = "5.312",
+            DarkmoonGoods = { [9901] = { 5, 1 } },
+            BagBuffItem = function() return false end,
+        }
+        """
+    )
+    load_bridge(rt)
+    res = rt.vm.run_chunk(
+        """
+        local bdg = _G._registeredWidgets["fsgj_badge"]
+        local fs = {
+            _text = "", _r = 0, _g = 0, _b = 0,
+            SetText = function(s, t) s._text = t end,
+            SetTextColor = function(s, r, g, b) s._r, s._g, s._b = r, g, b end,
+        }
+        local ok1 = bdg.onUpdate(fs, { itemID = 9901 })
+        local t1, b1 = fs._text, fs._b
+        local ok2 = bdg.onUpdate(fs, { itemID = 6948 })
+        local t2 = fs._text
+        local ok3 = bdg.onUpdate(fs, { itemID = 1111 })
+        return ok1, t1, b1, ok2, t2, ok3
+        """
+    )
+    assert res == (True, "보호", 1.0, True, "보호", False)
+
+    # SecretValue itemID must fail closed BEFORE <= 0 comparison and invoke IsProtectedItem 0 times
+    from wow_forever_mock import SecretValue
+
+    rt.vm.G["_secretItemID"] = SecretValue("secret_item_id")
+    rt.vm.run_chunk(
+        """
+        _G._protCalls = 0
+        local origProt = ForeverSuite.ProfileManager.IsProtectedItem
+        ForeverSuite.ProfileManager.IsProtectedItem = function(self, id)
+            _G._protCalls = _G._protCalls + 1
+            return origProt(self, id)
+        end
+        """
+    )
+    sec_res = rt.vm.run_chunk(
+        """
+        local bdg = _G._registeredWidgets["fsgj_badge"]
+        local mat = _G._registeredWidgets["fsgj_material"]
+        local fs = { SetText = function() end, SetTextColor = function() end }
+        local okB = bdg.onUpdate(fs, { itemID = _G._secretItemID })
+        local okM = mat.onUpdate(fs, { itemID = _G._secretItemID })
+        return okB, okM, _G._protCalls
+        """
+    )
+    assert sec_res == (False, False, 0)
+
 
 
 

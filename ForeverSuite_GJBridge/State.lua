@@ -12,7 +12,7 @@ local setmetatable = setmetatable
 local math_abs = math.abs
 
 ns.ADDON_NAME = ADDON_NAME or "ForeverSuite_GJBridge"
-ns.VERSION = "0.5.3"
+ns.VERSION = "0.5.4"
 ns.PERSONAL_ICON_ID = 134063
 ns.PERSONAL_PREFIX = "|cffffd36a[포에버]:|r "
 ns.CLEAN_QUEST_ALARM_SOUND = "dingdong"
@@ -83,6 +83,7 @@ ns.externalCoexistence = {
     auction = "OWNED_BY_GJ",
     nameplates = "OWNED_BY_GJ",
     inventoryTooltips = "OWNED_BY_GJ",
+    questDialog = "OWNED_BY_GJ",
     baganatorBadges = "UNAVAILABLE",
 }
 ns._pendingNameplateRefresh = false
@@ -344,4 +345,156 @@ function ns._ReconcileNavRangeLayout(C, store, forceReset)
         ApplyLiveNavRangeRefresh(C, forceReset == true)
     end
     return changed
+end
+
+local function CreateBaganatorBadgeText(itemButton)
+    local text = itemButton:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    local C = _G.GJCompanion
+    local fontPath = (type(C) == "table" and type(C.UIFontPath) == "string" and C.UIFontPath ~= "" and C.UIFontPath)
+        or _G.STANDARD_TEXT_FONT
+    if type(fontPath) == "string" and fontPath ~= "" and type(text.SetFont) == "function" then
+        pcall(text.SetFont, text, fontPath, 11, "OUTLINE")
+    end
+    text.sizeFont = true
+    return text
+end
+
+local function ResolveMaterialColor(C, kind)
+    if type(C.BagMaterialSettings) == "function" then
+        local okCfg, cfg = pcall(C.BagMaterialSettings)
+        if okCfg and type(cfg) == "table" and type(cfg.reagentColors) == "table" and type(cfg.reagentColors[kind]) == "table" then
+            local col = cfg.reagentColors[kind]
+            if type(col[1]) == "number" and type(col[2]) == "number" and type(col[3]) == "number" then
+                return col[1], col[2], col[3]
+            end
+        end
+    end
+    if type(C.ProfessionMaterialGroups) == "table" and type(C.ProfessionMaterialGroups[kind]) == "table" then
+        local col = C.ProfessionMaterialGroups[kind][2]
+        if type(col) == "table" and type(col[1]) == "number" and type(col[2]) == "number" and type(col[3]) == "number" then
+            return col[1], col[2], col[3]
+        end
+    end
+    return 1, 0.86, 0.4
+end
+
+local function IsSecretBridgeValue(val)
+    local fn = _G.issecretvalue
+    if type(fn) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(fn, val)
+    if not ok then
+        return true
+    end
+    return res == true
+end
+
+local function UpdateBaganatorMaterialCorner(labelObj, details)
+    local C = _G.GJCompanion
+    if type(C) ~= "table" or type(C.BagMaterialMatch) ~= "function" then
+        return false
+    end
+    if IsSecretBridgeValue(details) or type(details) ~= "table" then
+        return false
+    end
+    local itemID = details.itemID
+    if IsSecretBridgeValue(itemID) or type(itemID) ~= "number" or itemID <= 0 then
+        return false
+    end
+    local ok, matches, kind, label = pcall(C.BagMaterialMatch, itemID)
+    if not ok or not matches or type(label) ~= "string" or label == "" then
+        return false
+    end
+    local r, g, b = ResolveMaterialColor(C, kind)
+    labelObj:SetText(label)
+    labelObj:SetTextColor(r, g, b)
+    return true
+end
+
+local function UpdateBaganatorBadgeCorner(labelObj, details)
+    if IsSecretBridgeValue(details) or type(details) ~= "table" then
+        return false
+    end
+    local itemID = details.itemID
+    if IsSecretBridgeValue(itemID) or type(itemID) ~= "number" or itemID <= 0 then
+        return false
+    end
+    local caption, r, g, b = nil, 1, 1, 1
+
+    local FS = _G.ForeverSuite
+    if type(FS) == "table" and type(FS.ProfileManager) == "table" and type(FS.ProfileManager.IsProtectedItem) == "function" then
+        local okProt, isProt = pcall(FS.ProfileManager.IsProtectedItem, FS.ProfileManager, itemID)
+        if okProt and isProt == true then
+            caption, r, g, b = "보호", 0.38, 0.85, 1.0
+        end
+    end
+
+    local C = _G.GJCompanion
+    if not caption and type(C) == "table" then
+        if type(C.DarkmoonGoods) == "table" and C.DarkmoonGoods[itemID] then
+            caption, r, g, b = "다크문", 1, 0.55, 1
+        elseif type(C.BagReputationItem) == "function" then
+            local okRep, isRep = pcall(C.BagReputationItem, itemID)
+            if okRep and isRep then
+                caption, r, g, b = "평판", 1, 0.79, 0.32
+            end
+        end
+        if not caption and type(C.BagLibraryBookInfo471) == "function" then
+            local okBook, book = pcall(C.BagLibraryBookInfo471, itemID)
+            if okBook and book then
+                caption, r, g, b = "책", 1, 0.82, 0.25
+            end
+        end
+        if not caption and type(C.BagBuffItem) == "function" then
+            local link = IsSecretBridgeValue(details.itemLink) and nil or details.itemLink
+            local okBuff, isBuff = pcall(C.BagBuffItem, itemID, link)
+            if okBuff and isBuff then
+                caption, r, g, b = "버프", 0.74, 0.65, 1
+            end
+        end
+    end
+    if not caption then
+        return false
+    end
+    labelObj:SetText(caption)
+    labelObj:SetTextColor(r, g, b)
+    return true
+end
+
+function ns.RegisterBaganatorWidgets()
+    if ns._baganatorWidgetsRegistered then
+        ns.externalCoexistence.baganatorBadges = "REGISTERED"
+        return true
+    end
+    local bagApi = type(_G.Baganator) == "table" and _G.Baganator.API or nil
+    if type(bagApi) ~= "table" or type(bagApi.RegisterCornerWidget) ~= "function" then
+        ns.externalCoexistence.baganatorBadges = "UNAVAILABLE"
+        return false
+    end
+    local okMat = pcall(
+        bagApi.RegisterCornerWidget,
+        "갓존슨 재료 (요리·약초·가죽)",
+        "fsgj_material",
+        UpdateBaganatorMaterialCorner,
+        CreateBaganatorBadgeText,
+        { corner = "bottom_left", priority = 1 },
+        true
+    )
+    local okBadge = pcall(
+        bagApi.RegisterCornerWidget,
+        "갓존슨·보호 배지 (보호·버프·평판·다크문·책)",
+        "fsgj_badge",
+        UpdateBaganatorBadgeCorner,
+        CreateBaganatorBadgeText,
+        { corner = "top_right", priority = 1 },
+        true
+    )
+    if okMat or okBadge then
+        ns._baganatorWidgetsRegistered = true
+        ns.externalCoexistence.baganatorBadges = "REGISTERED"
+        return true
+    end
+    ns.externalCoexistence.baganatorBadges = "FAILED"
+    return false
 end

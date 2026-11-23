@@ -284,7 +284,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
 def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.3"
+    assert ns["VERSION"] == "0.5.4"
 
     allowed_globals = {
         "ForeverSuite",
@@ -307,7 +307,7 @@ def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
     rt.run_slash("FOREVERSUITE", "probe")
     probe = rt.vm.G["ForeverSuiteDB"]["lastProbe"]
     assert probe["version"] == "1.60.1"
-    assert probe["build"] == "70938"
+    assert probe["build"] == "71037"
     assert probe["tocVersion"] == 16001
     assert probe["namespaces"]["C_Container"]["present"] is True
 
@@ -986,7 +986,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
     for _ in range(5):
         rt.run_slash("FOREVERSUITE", "ui")
     assert _count_special_frame_occurrences(rt, "ForeverSuiteSettingsFrame") == 1
-    assert "v0.5.3 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
+    assert "v0.5.4 · 1.60.1 (16001)" in sp["titleLabel"]["_text"]
 
     drawer_keys = _lua_table_string_keys(rt.vm._invoke_callable(sp["GetDrawerBooleanKeySet"], (sp,))[0])
     profile_keys = _lua_table_string_keys(rt.vm._invoke_callable(pm["GetConfigurableBooleanKeys"], (pm,))[0])
@@ -1035,7 +1035,7 @@ def test_v030_ac4_module_contract_headers_and_ui_line_budget() -> None:
         ("WARRIOR", 6673, 6673, False),
         ("DRUID", 1126, 21849, False),
         ("PALADIN", 19740, 25782, False),
-        ("SHAMAN", 324, 8017, True),
+        ("SHAMAN", 324, 24398, True),
         ("WARLOCK", 687, 706, False),
         ("HUNTER", 13165, 5118, False),
         ("ROGUE", 2842, 8679, True),
@@ -1374,7 +1374,7 @@ def test_v031_c_addons_metadata_fallback_when_global_missing() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     rt.vm.G["GetAddOnMetadata"] = None
     ns = rt.boot_session()
-    assert ns["VERSION"] == "0.5.3"
+    assert ns["VERSION"] == "0.5.4"
     assert ns["TARGET_TOC"] == 16001
 
 
@@ -2479,6 +2479,62 @@ def test_v051_tooltip_feature_yields_prevent_duplicate_vendor_and_ilvl_lines() -
     assert any("[판매 보호됨]" in ln for ln in lines2)
     assert not any("아이템 레벨" in ln for ln in lines2)
     assert not any("상점 판매가" in ln or "묶음 판매가" in ln for ln in lines2)
+
+
+def test_v054_shaman_dual_buff_check_shield_and_weapon_enchant_ddt() -> None:
+    """Shaman knowing both Shield & Weapon Imbue must require BOTH independently (fail-closed on SecretValue)."""
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.player_class = "SHAMAN"
+    rt.known_spells = {324, 8017}  # Lightning Shield + Rockbiter Weapon
+    rt.player_auras = {}
+    rt.weapon_enchant = (False, False)
+    ns = rt.boot_session()
+    combat = ns["ModuleManager"]["modules"]["Combat"]["definition"]
+
+    # 1) Missing BOTH -> combined alert
+    assert any("주술사 보호막 · 무기 강화" in m for m in rt.chat_messages)
+    rt.chat_messages.clear()
+    # Repeated check with same missing key must not spam
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert rt.chat_messages == []
+
+    # 2) Weapon imbue applied, shield still missing -> specific shield alert
+    rt.weapon_enchant = (True, False)
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert any("주술사 보호막" in m and "무기 강화" not in m for m in rt.chat_messages)
+    rt.chat_messages.clear()
+
+    # 3) Shield applied, weapon imbue expired -> specific weapon enchant alert
+    rt.weapon_enchant = (False, False)
+    rt.player_auras = {324: LuaTable({"spellId": 324, "name": "번개 보호막"})}
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is False
+    assert any("무기 강화" in m and "보호막" not in m for m in rt.chat_messages)
+    rt.chat_messages.clear()
+
+    # 4) BOTH active -> satisfied with zero alert
+    rt.weapon_enchant = (True, False)
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is True
+    assert rt.chat_messages == []
+
+    # 5) SecretValue in weapon enchant or aura -> fail-closed nil
+    rt.weapon_enchant = (SecretValue("mh"), False)
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+    rt.weapon_enchant = (True, False)
+    rt.player_auras = {324: SecretValue("aura")}
+    assert rt.vm._invoke_callable(combat["CheckOutOfCombatBuffs"], (combat,))[0] is None
+
+
+def test_v054_spoken_addon_yields_quest_auto_dialog() -> None:
+    """When Spoken is loaded, ForeverSuite Quest auto-accept/turn-in yields so Korean voiceover is not skipped."""
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.loaded_external_addons = {"Spoken"}
+    ns = rt.boot_session()
+    assert rt.vm._invoke_callable(ns["IsFeatureYielded"], ("questAutoDialog",))[0] is True
+
+    rt.accepted_quests = 0
+    rt.fire_event("QUEST_DETAIL")
+    assert rt.accepted_quests == 0
+
 
 
 

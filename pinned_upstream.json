@@ -1,123 +1,123 @@
 {
   "upstream_name": "GodJohnson Integrated Addon",
   "curseforge_project_id": 1707376,
-  "version": "5.278",
-  "release_revision": 630,
-  "release_date": "2026-11-17",
-  "target_client_build": "1.60.1.70938",
-  "file_id": 9663720,
-  "file_name": "GodJohnson-5.278.zip",
-  "download_url": "https://mediafilez.forgecdn.net/files/9663/720/GodJohnson-5.278.zip",
-  "zip_sha256": "70ff575b98d7fc9c7dc0f6e79eb0e33631276db156517ef790fdc7eae6159f39",
-  "zip_size_bytes": 294146845,
+  "version": "5.312",
+  "release_revision": 664,
+  "release_date": "2026-11-22",
+  "target_client_build": "1.60.1.71037",
+  "file_id": 9753333,
+  "file_name": "GodJohnson-5.312.zip",
+  "download_url": "https://mediafilez.forgecdn.net/files/9753/333/GodJohnson-5.312.zip",
+  "zip_sha256": "7db1f80a3eb92714c2402081d18eb3f4fcc1b2084b8f02ae4a0dd38ce63eb73b",
+  "zip_size_bytes": 295630177,
   "folder_count": 21,
   "folders": {
     "GodJohnsonAtlasData": {
-      "toc_sha256": "e1658e32e7c05896108ba15445e250cb9b0bf11d27443377da7fb20ac177bdac",
-      "folder_sha256": "d1ad96f0d49c8c1c5ff74d9b71a64d6a9e0cd64052564f5b7d47e5b6296e94f8",
+      "toc_sha256": "62c4cb148e90dc2688b1de0d3bbc09416c6da514061753e24bb4ad41aba94fb4",
+      "folder_sha256": "db77bffa234cdce5da73c873a7a14c83c6cb2b2ebc97d192423d50e6729e178d",
       "file_count": 4
     },
     "GodJohnsonBiSData": {
-      "toc_sha256": "c31d6c39821dae13e95fa21e888d3e32e99352c938928474dc020e0a5f5ef8d8",
-      "folder_sha256": "1b66fcf20297a8849351a50ba18daf494af8c68e966b4d933977410385dc2c70",
+      "toc_sha256": "78095f804211c96cdfe45a21c18035ae04be1b8ebf39afb392c8c76b0bca0718",
+      "folder_sha256": "f5f56df72ae03d4f433f7814ebf7edc8d7b5912baa5dcc5fd99e19df56010f7a",
       "file_count": 5
     },
     "GodJohnsonEngineStartup": {
-      "toc_sha256": "5585f3a5aad6cbb6521bfac7b1e3cfb55db1583b20834acdbe2147b98c7ed60d",
-      "folder_sha256": "8d8fb691fbf973838cda8ef2edd480fcf402c5614d10e0f9a1407ebad755d6a7",
+      "toc_sha256": "5f1a19939a330899fac7d7b0401785656253b47c4d829fa02e91c23704297b8a",
+      "folder_sha256": "1abce58db5db753a88059fb3e70b96468bdc3aa7cf1033186405457dc721bb7e",
       "file_count": 3
     },
     "GodJohnsonFontChoice_damage_1": {
-      "toc_sha256": "cdb7fc54db29d7867626d468a0b32ca19f19eb679d2efe334e74ed85e9e0f4ed",
-      "folder_sha256": "6ecfa86fc3dc28c7af2f1d0407fff024430650622b1794cadc2d177aa4c76d49",
+      "toc_sha256": "c9defa245c76d711683347d9271323e71c577c9f7accf40f195ffe9c351eebf8",
+      "folder_sha256": "99c3bce287f489973c6dffe63dbf48fbd2427cc2975de0cca7a97faf87854bd2",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_2": {
-      "toc_sha256": "944f0fb90f072d422c7724e6a1f279e6a60522767d39bb8b33b7bc1eabc5e7f8",
-      "folder_sha256": "ff05cb6ef812e8bd7c61dcf3bd944dd0224321ba822579002de2ef7cd8e759b2",
+      "toc_sha256": "81ebb838341d9332ccf037fe30f0427e0039af95e2f6f813c92c9cec593da273",
+      "folder_sha256": "71d3f2de68bf695a3599f758a9ff24380c0ac9111811429414e4f34bf5797170",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_3": {
-      "toc_sha256": "6c10c82ff400ed69b98fdc0965a1faa2988f10ecb3b859828584f4695d13f41e",
-      "folder_sha256": "517059ab7d9fd0d599f1807937a318b09bed882fa5ffbdc44ed609a10fbea762",
+      "toc_sha256": "22f0d8dbf8cb09bd02c10745a35d94dbd7b8b943904063672f1661a9f9b2a8e4",
+      "folder_sha256": "d33d37f3ceaea19429593c8acfdd17ea3e092a5314063ed02a6aedac6921102f",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_4": {
-      "toc_sha256": "3149eb9cad88b58139e12f77da3f06887f29dacb69479b84b6cccadbf5780cb3",
-      "folder_sha256": "066e8359d3e6b8ade8e6198d47794098ec270c856fb232b13a9d9913ad4bbfe2",
+      "toc_sha256": "80f17c2f8b07345ca03482c2feb79e59f63bd43bcc4e6c9b7009f5002fb4e830",
+      "folder_sha256": "10e981f5bc961f149db27db823b576d8436ada974f29160d90d83cd1623269ca",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_5": {
-      "toc_sha256": "90500539985c78162104187f9b7516b103732fbb463ea99f4301dece0aabfeed",
-      "folder_sha256": "cc77e8f19c019cecca01e2614625f3179f2712759cc98a74986c442f3f28d8b1",
+      "toc_sha256": "f1af41150ad2346e8bdcc16c837c89327f2a790ad5a6f49a2eebab9cb54cf6ad",
+      "folder_sha256": "1ca4c38a9af9945d88b952a8f54be54435ad35b117309116944dac5169897eea",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_6": {
-      "toc_sha256": "f6e8e1d60b207ad0e16b03c2b6b55083a1cc5ef7f7081c28fd9f345f4bc4f30b",
-      "folder_sha256": "e001ad9446b0de17cce0a25d0e7124a359246254dd84fc7465043a674affdfc0",
+      "toc_sha256": "38390fd9d0709d99c8be6821367b45649e57ffb5b23515d121f832e29b12e694",
+      "folder_sha256": "ebda95cf9d9ba5a6f54d66ba990815db4b4cbcd35a8ff02d0c6d3f536d054e4b",
       "file_count": 2
     },
     "GodJohnsonFontChoice_damage_7": {
-      "toc_sha256": "9dc040eb36fd5868b3be67937ec033d53da9a3237e5c3aeb2f9983282bc7ba4b",
-      "folder_sha256": "36be4f5cecbcabb74e2a57eb47969cc6964999cecc7968d5fc8f4018108dda13",
+      "toc_sha256": "5529944928191ceda67d0947fa62bd61c8836337636023ceb0085b3dceb5cc99",
+      "folder_sha256": "66b640bfc5c89f501b765b872d96c6724dbe44a75b2a4de9daa199e99c674726",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_1": {
-      "toc_sha256": "ef38fc676a9bf0e0ef00ab72def3b2f8eb63180a9139a384752b227cfd95726b",
-      "folder_sha256": "c2db5b7dd6ed4993b1131be47c242d59f6a57e95313ec50935a9103ba3053471",
+      "toc_sha256": "2f35ffb78d110730baac3f0d37131a0afe26833161ccfd8c73604faa29a542ac",
+      "folder_sha256": "84aa79abcd12e6d91cebe7c2c8dcabb1c4e0b3f0d2e97e597f4922f5d085f6e9",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_2": {
-      "toc_sha256": "065ad4b6804ee03c2ff9f7941df8ab9ef6690365de5d3b70859a2dc3c2e5495e",
-      "folder_sha256": "6dc1e7ed825da6d81f1bbcf791b935073269619239d88377220ad965da5844d5",
+      "toc_sha256": "62a3a3c68a7ba0fdeaa7b72a744e30d87d85761ae6870b0fbd01cde9690ffb0f",
+      "folder_sha256": "4763c8b97860e1d1573abc5c9853ae07f56377fe416e0a950994d1dcad40cffc",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_3": {
-      "toc_sha256": "5dda88d4d4f05f44abdb3f75a378cb2f4e929553e6aa60e4519aa1eefeb2c01b",
-      "folder_sha256": "b626addcbdeff50730113b92af6a3d2c0741769ca3ea9e607e58e9e1e4cc59c4",
+      "toc_sha256": "546294b99529b374fa69cd3a35b508fbc0b5bd9ee2a2917ddd42f64227330a9a",
+      "folder_sha256": "1cfaf5885d2617dd10f5aa655049d17b6cc49d4ebde5b42544a1edbde65c5e6c",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_4": {
-      "toc_sha256": "7187ff09e248db4b3b1142f193fa9203eea73e6e157dc3d0c1274218aa270fe0",
-      "folder_sha256": "4e455f1bc6d09a504b3192deee1e3aae89c2c3905536b0fb22b7fbe721e6132d",
+      "toc_sha256": "c00d0cdb9c90fccc03dc8957e1331ec448ddfc25bfd9eeb87d247b6457971045",
+      "folder_sha256": "04130cbe4d67ba3da05125d9d8a59ecd4c26292afb703d5b0bcde341fbd5a227",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_5": {
-      "toc_sha256": "67f667f4f3f905ef022f191dc33eeb689a0d9f7c45b51e0fc7f259cec07ccaff",
-      "folder_sha256": "08c468ea820d8391018d95c61658acaffc13cf85e45b2e48341b0f0dc91e2446",
+      "toc_sha256": "4adfd4b3309ac1786d9db8ffbeb031c15a6a9f9b1a2aee26c0ae30b337e070a2",
+      "folder_sha256": "9dc40f441ae8584e9d9802e55986d87c94a26a5bf7c1ae96aa79ff28c89a2a75",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_6": {
-      "toc_sha256": "52df6d06e6658b46d1edec23cd51276f5a69107fbf8c3015cd8f29d13f966ffc",
-      "folder_sha256": "74bb8d90a2730341cd3a31d010d5ad6d17937d37d921fddd6aa7f5759359b32d",
+      "toc_sha256": "46bd23d970c8922d8e10e1eb513ae9467e01bd767ca47af7898910d47a9200d3",
+      "folder_sha256": "c6fabc1f82031f3335e42dc420c72a39fb1d05b52ce723142af4b0fe49d80640",
       "file_count": 2
     },
     "GodJohnsonFontChoice_world_7": {
-      "toc_sha256": "665904f68bf18ad4a1c7747ef50b96e37ff91cc4c292d1a66f4e8b58c85d8511",
-      "folder_sha256": "eddfa251620c615d9c67b6525a0e2e5b40ab1013122d1fbd93963e7c84ce86e8",
+      "toc_sha256": "4b924b07134d3e760294c73bf026291181e8132c72a5ebe58eaee5a78f504379",
+      "folder_sha256": "b77b2640c41799cb964fab57b23e5a03c52716f32bcf4a1d2ebef035855fa2d6",
       "file_count": 2
     },
     "GodJohnsonGoldBorder": {
-      "toc_sha256": "93461666584eeb82ca6fbfef346033edb98ffdc6685fc46b287c9b3c1aa84bfa",
-      "folder_sha256": "f95832db4498ede01e56967acb401fcada97207ee0b3ed10dc98b7b8846c699d",
-      "file_count": 1154
+      "toc_sha256": "3f4b72d9e8fa18393af06dd149b0fcc07baf78d8f4cad1ab0ff42307adf9583e",
+      "folder_sha256": "de32b2ffac86f671c3bf3b3a6a8b6ee2c360229b56e8070483cf9a7e2104f5c4",
+      "file_count": 1191
     },
     "GodJohnsonHunterPetData": {
-      "toc_sha256": "d206468dd24641360eb5f7dc9fdfbe1dc069ad6de7d3ab3d06f1a9b8f47957e9",
-      "folder_sha256": "a6b5336889db7b2ebba498146335b64b5d36967474b1eb0756507c003d845987",
-      "file_count": 4
+      "toc_sha256": "d3a19ab1fd04d0c3ffcf99857260301e9ce53a553a5a7bca351bb32c08e2251d",
+      "folder_sha256": "26e846711fc00b6a500ff3fb40bb82bf1c7a9d8a503e32882fed5f48f277b1f6",
+      "file_count": 5
     },
     "GodJohnsonProfessionData": {
-      "toc_sha256": "7e79c8aa281077cf7283bad8125d5ef6925ce6ac5fdf23316b266d9ee39bfa93",
-      "folder_sha256": "1f39e9ab7cb84118aefacd37b746fdf787140961926e19c9e5ede83081f667ff",
-      "file_count": 11
+      "toc_sha256": "7c8c26b5bbecb644b0769529e09ee0535196e54f5b1d9c38738590dbd436d56b",
+      "folder_sha256": "4e6f62b2fcced73e5bfeee370a398cf5549b9d0563bafe425afdf6210298b419",
+      "file_count": 12
     },
     "GodJohnsonRewardData": {
-      "toc_sha256": "2f38fdf6fa646f1729f128a4766c4c8beea6f1441cccb540ae862ced0094b9d8",
-      "folder_sha256": "730b7b8f6a07bc1ed025f05e6dd3ee3e7df9c7ebe68ccf8dfab4f6e00e019f20",
+      "toc_sha256": "696f9775bf4a3ed24c44c56ba0074e3faa375736af381473942e79ba5142b30e",
+      "folder_sha256": "03338071fd683e95d7d211a3c2f801cc786b5eec6e29d2fc6d7b2efa35f8b03c",
       "file_count": 8
     }
   },
-  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.5.3.zip",
-  "patch_zip_sha256": "72ea2fa0754ac2fe41cb7fe5f0aac56e76fb7377c88a7c31f59a454404136613"
+  "patch_zip_url": "https://raw.githubusercontent.com/ssacho3-blip/WoW-ForeverSuite/main/dist/ForeverSuite-v0.5.4.zip",
+  "patch_zip_sha256": "9428afe923083f12f78855df8356caef1b4e1e63a4a514b68ba1796e446d51d3"
 }

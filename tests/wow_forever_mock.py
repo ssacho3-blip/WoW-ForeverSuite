@@ -520,7 +520,7 @@ class WoWForeverMockRuntime:
         G["GetAddOnMetadata"] = lambda name, field: (
             self._toc_meta.get(str(field)) if str(name) == "ForeverSuite" else None
         )
-        G["GetBuildInfo"] = lambda: MultiReturn(("1.60.1", "70938", "Nov 14 2026", 16001))
+        G["GetBuildInfo"] = lambda: MultiReturn(("1.60.1", "71037", "Nov 22 2026", 16001))
         G["GetTime"] = lambda: self.now
         G["InCombatLockdown"] = lambda: self.combat_lockdown
         G["issecretvalue"] = lambda v: isinstance(v, SecretValue)
