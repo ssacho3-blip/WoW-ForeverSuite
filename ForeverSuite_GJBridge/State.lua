@@ -52,6 +52,8 @@ local function NewWeakKeyTable()
 end
 
 local wrappedTargets = NewWeakKeyTable()
+local hookedEditModeFrames = NewWeakKeyTable()
+local editModeRegistryHooked = false
 local ephemeralTradeSeeded = NewWeakKeyTable()
 local ephemeralStarterSeeded = NewWeakKeyTable()
 local pendingTradePromote = false
@@ -84,9 +86,11 @@ ns.externalCoexistence = {
     nameplates = "OWNED_BY_GJ",
     inventoryTooltips = "OWNED_BY_GJ",
     questDialog = "OWNED_BY_GJ",
+    questTracker = "OWNED_BY_GJ",
     baganatorBadges = "UNAVAILABLE",
 }
 ns._pendingNameplateRefresh = false
+ns._pendingQuestTrackerRefresh = false
 ns._baganatorWidgetsRegistered = false
 
 local function PrintBridge(msg)
@@ -497,4 +501,114 @@ function ns.RegisterBaganatorWidgets()
     end
     ns.externalCoexistence.baganatorBadges = "FAILED"
     return false
+end
+
+function ns._IsForeverSuiteQuestTrackerActive()
+    local FS = _G.ForeverSuite
+    if type(FS) ~= "table" or type(FS.ProfileManager) ~= "table" or type(FS.ProfileManager.Get) ~= "function" then
+        return false
+    end
+    if type(FS.QuestTracker) ~= "table" or FS.QuestTracker.active ~= true then
+        return false
+    end
+    if type(FS.IsFeatureYielded) == "function" then
+        local okYield, yielded = pcall(FS.IsFeatureYielded, "questTrackerHud")
+        if okYield and yielded == true then
+            return false
+        end
+    end
+    local okEn, enabled = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "trackerEnabled")
+    local okHide, hideDef = pcall(FS.ProfileManager.Get, FS.ProfileManager, "quest", "hideDefaultTracker")
+    return okEn and enabled == true and okHide and hideDef == true
+end
+
+function ns._IsEditModeActiveSafe()
+    local em = _G.EditModeManagerFrame
+    if em == nil then
+        return false
+    end
+    if IsSecretBridgeValue(em) or type(em) ~= "table" then
+        return true
+    end
+    if type(em.IsEditModeActive) == "function" then
+        local ok, active = pcall(em.IsEditModeActive, em)
+        if not ok or IsSecretBridgeValue(active) or active == true then
+            return true
+        end
+    end
+    local okProp, propVal = pcall(function()
+        return em.editModeActive
+    end)
+    if not okProp or IsSecretBridgeValue(propVal) or propVal == true then
+        return true
+    end
+    return false
+end
+
+function ns._EnsureEditModeExitHook(flushFn)
+    if type(flushFn) ~= "function" then
+        return
+    end
+    local reg = _G.EventRegistry
+    if not editModeRegistryHooked and not IsSecretBridgeValue(reg) and type(reg) == "table" and type(reg.RegisterCallback) == "function" then
+        local okReg = pcall(reg.RegisterCallback, reg, "EditMode.Exit", function()
+            flushFn()
+        end, ns)
+        if okReg then
+            editModeRegistryHooked = true
+        end
+    end
+    local em = _G.EditModeManagerFrame
+    if not IsSecretBridgeValue(em) and type(em) == "table" and not hookedEditModeFrames[em] and type(em.HookScript) == "function" then
+        hookedEditModeFrames[em] = true
+        pcall(em.HookScript, em, "OnHide", function()
+            flushFn()
+        end)
+    end
+end
+
+function ns._ApplyGJQuestTrackerYield(C)
+    if type(C) ~= "table" then
+        return false
+    end
+    local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+    if inCombat or ns._IsEditModeActiveSafe() then
+        ns._pendingQuestTrackerRefresh = true
+        ns._EnsureEditModeExitHook(function()
+            if ns._pendingQuestTrackerRefresh then
+                ns._ApplyGJQuestTrackerYield(_G.GJCompanion)
+            end
+        end)
+        return false
+    end
+    ns._pendingQuestTrackerRefresh = false
+    if type(C.RefreshQuestTrackerSelection300) == "function" then
+        pcall(C.RefreshQuestTrackerSelection300)
+    elseif type(C.SetOwnedQuestTrackerActive302) == "function" then
+        pcall(C.SetOwnedQuestTrackerActive302, false)
+    end
+    local FS = _G.ForeverSuite
+    if type(FS) == "table" and type(FS.QuestTracker) == "table" and type(FS.QuestTracker.SyncDefaultTrackerVisibility) == "function" then
+        pcall(FS.QuestTracker.SyncDefaultTrackerVisibility, FS.QuestTracker)
+    end
+    return true
+end
+
+function ns._ResolveGJQuestTrackerStatus(C)
+    if type(C) ~= "table" then
+        return "UNAVAILABLE"
+    end
+    if type(C.GodJohnsonTrackerEnabled299) == "function" then
+        local okEn, en = pcall(C.GodJohnsonTrackerEnabled299)
+        if okEn and type(en) == "boolean" then
+            return en and "OWNED_BY_GJ" or "NATIVE_TRACKER"
+        end
+    end
+    if type(C.QuestRegionSettings248) == "function" then
+        local okQrs, qrs = pcall(C.QuestRegionSettings248)
+        if okQrs and type(qrs) == "table" then
+            return (qrs.useNativeTracker299 == true) and "NATIVE_TRACKER" or "OWNED_BY_GJ"
+        end
+    end
+    return "UNKNOWN"
 end

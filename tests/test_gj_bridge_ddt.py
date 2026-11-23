@@ -2036,6 +2036,164 @@ def test_v054_baganator_protected_item_corner_badge_priority() -> None:
     assert sec_res == (False, False, 0)
 
 
+def test_v054_gj_owned_quest_tracker_302_yields_to_foreversuite() -> None:
+    # 1. Existing v5.278 -> v5.312 upgrade DB (useNativeTracker299 = nil) yields to ForeverSuite QuestTracker
+    #    and calls CommitSettings BEFORE RefreshQuestTrackerSelection300
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        _G._qtRefreshCalls = 0
+        _G._qtCommitCalls = 0
+        _G._syncDefCalls = 0
+        _G._qtOrder = ""
+        local origSync = ForeverSuite.QuestTracker.SyncDefaultTrackerVisibility
+        ForeverSuite.QuestTracker.SyncDefaultTrackerVisibility = function(self, ...)
+            _G._syncDefCalls = _G._syncDefCalls + 1
+            if origSync then return origSync(self, ...) end
+        end
+        local qrs = { style = "Oak", locked = true }
+        local trackerEnabled = true
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return trackerEnabled end,
+            RefreshQuestTrackerSelection300 = function()
+                _G._qtRefreshCalls = _G._qtRefreshCalls + 1
+                _G._qtOrder = _G._qtOrder .. "refresh,"
+                if qrs.useNativeTracker299 == true then
+                    trackerEnabled = false
+                end
+            end,
+            CommitSettings = function()
+                _G._qtCommitCalls = _G._qtCommitCalls + 1
+                _G._qtOrder = _G._qtOrder .. "commit,"
+            end,
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    assert bridge.get("externalCoexistence").get("questTracker") == "YIELDED_TO_ForeverSuite"
+    assert rt.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299, GJCompanion.GodJohnsonTrackerEnabled299(), _G._qtRefreshCalls, _G._qtCommitCalls, _G._syncDefCalls, _G._qtOrder") == (
+        True,
+        False,
+        1,
+        1,
+        1,
+        "commit,refresh,",
+    )
+
+    # 2. Combat lockdown defers RefreshQuestTrackerSelection300 until PLAYER_REGEN_ENABLED
+    rt_combat = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_combat.boot_session()
+    rt_combat.vm.run_chunk(
+        """
+        _G._inCombat = true
+        InCombatLockdown = function() return _G._inCombat end
+        _G._qtCombatRefresh = 0
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return true end,
+            RefreshQuestTrackerSelection300 = function()
+                _G._qtCombatRefresh = _G._qtCombatRefresh + 1
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_combat = load_bridge(rt_combat)
+    assert rt_combat.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299, _G._qtCombatRefresh") == (True, 0)
+    assert bridge_combat.get("_pendingQuestTrackerRefresh") is True
+    rt_combat.vm.run_chunk("_G._inCombat = false")
+    rt_combat.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt_combat.vm.run_chunk("return _G._qtCombatRefresh") == (1,)
+    assert bridge_combat.get("_pendingQuestTrackerRefresh") is False
+
+    # 3. EditMode active defers RefreshQuestTrackerSelection300 and flushes immediately on EditMode OnHide
+    from wow_forever_mock import SecretValue
+
+    rt_edit = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_edit.boot_session()
+    rt_edit.vm.G["_secretEditFlag"] = SecretValue("secret_edit_mode")
+    rt_edit.vm.run_chunk(
+        """
+        _G._qtEditRefresh = 0
+        _G._emOnHide = nil
+        EditModeManagerFrame = {
+            editModeActive = _G._secretEditFlag,
+            HookScript = function(self, script, fn)
+                if script == "OnHide" then _G._emOnHide = fn end
+            end,
+        }
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return true end,
+            RefreshQuestTrackerSelection300 = function()
+                _G._qtEditRefresh = _G._qtEditRefresh + 1
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_edit = load_bridge(rt_edit)
+    assert rt_edit.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299, _G._qtEditRefresh") == (True, 0)
+    assert bridge_edit.get("_pendingQuestTrackerRefresh") is True
+    rt_edit.vm.run_chunk("EditModeManagerFrame.editModeActive = false; if _G._emOnHide then _G._emOnHide() end")
+    assert rt_edit.vm.run_chunk("return _G._qtEditRefresh") == (1,)
+    assert bridge_edit.get("_pendingQuestTrackerRefresh") is False
+
+    # 4. When ForeverSuite quest tracker is inactive, GJ QuestTracker stays untouched and status reflects truth
+    rt_off = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_off.boot_session()
+    rt_off.vm.run_chunk(
+        """
+        ForeverSuite.QuestTracker.active = false
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return not (qrs.useNativeTracker299 == true) end,
+            RefreshQuestTrackerSelection300 = function() end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_off = load_bridge(rt_off)
+    assert bridge_off.get("externalCoexistence").get("questTracker") == "OWNED_BY_GJ"
+    assert rt_off.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299")[0] is None
+    rt_off.vm.run_chunk("GJCompanion._qrs.useNativeTracker299 = true; ForeverSuite_GJBridge.ReconcileExternalCoexistence(GJCompanion)")
+    assert bridge_off.get("externalCoexistence").get("questTracker") == "NATIVE_TRACKER"
+
+    # 5. Read-only future schema refuses mutation
+    rt_ro = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_ro.vm.G["ForeverSuiteDB"] = LuaTable({"schemaVersion": 999})
+    rt_ro.boot_session()
+    rt_ro.vm.run_chunk(
+        """
+        local qrs = { style = "Oak" }
+        GJCompanion = {
+            version = "5.312",
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return true end,
+            RefreshQuestTrackerSelection300 = function() end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    load_bridge(rt_ro)
+    assert rt_ro.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299")[0] is None
+
+
+
 
 
 

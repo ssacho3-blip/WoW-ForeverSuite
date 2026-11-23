@@ -76,6 +76,7 @@ local EXTERNAL_COEXISTENCE_WATCH = {
 local function ReconcileExternalCoexistenceBody(C)
     local changed = false
     local needsCommit = false
+    local needsQuestTrackerYield = false
 
     local auctionOwner = FindLoadedExternalAddon({ "Auctionator" })
     if auctionOwner and type(C.AuctionSettings) == "function" then
@@ -177,8 +178,35 @@ local function ReconcileExternalCoexistenceBody(C)
         ns.externalCoexistence.questDialog = "OWNED_BY_GJ"
     end
 
+    if ns._IsForeverSuiteQuestTrackerActive() and type(C.QuestRegionSettings248) == "function" then
+        local okQrs, qrs = pcall(C.QuestRegionSettings248)
+        if okQrs and type(qrs) == "table" then
+            local gjEnabled = false
+            if type(C.GodJohnsonTrackerEnabled299) == "function" then
+                local okEn, val = pcall(C.GodJohnsonTrackerEnabled299)
+                gjEnabled = okEn and val == true
+            end
+            if qrs.useNativeTracker299 ~= true then
+                qrs.useNativeTracker299 = true
+                changed = true
+                needsCommit = true
+                needsQuestTrackerYield = true
+            elseif gjEnabled then
+                needsQuestTrackerYield = true
+            end
+            ns.externalCoexistence.questTracker = "YIELDED_TO_ForeverSuite"
+        else
+            ns.externalCoexistence.questTracker = ns._ResolveGJQuestTrackerStatus(C)
+        end
+    else
+        ns.externalCoexistence.questTracker = ns._ResolveGJQuestTrackerStatus(C)
+    end
+
     if needsCommit and type(C.CommitSettings) == "function" then
         pcall(C.CommitSettings)
+    end
+    if needsQuestTrackerYield then
+        ns._ApplyGJQuestTrackerYield(C)
     end
     return changed
 end
@@ -410,7 +438,7 @@ function ns.PrintStatus()
     for _, key in ipairs(OWNERSHIP_KEYS_ALL) do
         ns.Print("  기능 소유권 [" .. key .. "] = " .. tostring(ns.ownership[key]))
     end
-    for _, key in ipairs({ "auction", "nameplates", "inventoryTooltips", "questDialog", "baganatorBadges" }) do
+    for _, key in ipairs({ "auction", "nameplates", "inventoryTooltips", "questDialog", "questTracker", "baganatorBadges" }) do
         ns.Print("  외부 공존 [" .. key .. "] = " .. tostring(ns.externalCoexistence[key]))
     end
 end
@@ -561,6 +589,9 @@ if _G.CreateFrame then
                         ns._pendingNameplateRefresh = false
                         pcall(C.RefreshEnemyNameplates)
                     end
+                end
+                if ns._pendingQuestTrackerRefresh then
+                    ns._ApplyGJQuestTrackerYield(_G.GJCompanion)
                 end
                 return
             elseif event == "PLAYER_LOGIN" then
