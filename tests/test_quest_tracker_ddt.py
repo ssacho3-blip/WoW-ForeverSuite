@@ -455,6 +455,24 @@ def test_edit_mode_disable_retains_restore_ownership_and_query_failures_avoid_fa
     rt._fire_widget_script(em_frame, "OnHide")
     assert otf["_shown"] is True
 
+    # 1b. Blizzard leaves EditModeManagerFrame.editModeActive nil (so IsEditModeActive() returns nil)
+    #     until the first visit to Edit Mode -> must NOT be treated as active Edit Mode!
+    rt_nil_em = WoWForeverMockRuntime(ADDON_ROOT)
+    em_nil = rt_nil_em._make_frame("Frame", "EditModeManagerFrame", rt_nil_em.vm.G["UIParent"])
+    em_nil["editModeActive"] = None
+    em_nil["IsEditModeActive"] = lambda self: self["editModeActive"]
+    rt_nil_em.vm.G["EditModeManagerFrame"] = em_nil
+    rt_nil_em.boot_session()
+    assert rt_nil_em.vm.G["ObjectiveTrackerFrame"]["_shown"] is False
+
+    # 1c. Non-nil non-boolean or erroring IsEditModeActive() still fails closed (keeps default tracker visible)
+    rt_bad_em = WoWForeverMockRuntime(ADDON_ROOT)
+    em_bad = rt_bad_em._make_frame("Frame", "EditModeManagerFrame", rt_bad_em.vm.G["UIParent"])
+    em_bad["IsEditModeActive"] = lambda _self: "unexpected"
+    rt_bad_em.vm.G["EditModeManagerFrame"] = em_bad
+    rt_bad_em.boot_session()
+    assert rt_bad_em.vm.G["ObjectiveTrackerFrame"]["_shown"] is True
+
     # 2. Secret watched/questAccepted args + unavailable QuestLog / secret SuperTrack -> 0 violations, no fake '0'
     rt2 = WoWForeverMockRuntime(ADDON_ROOT)
     _seed_sample_quest_log(rt2)

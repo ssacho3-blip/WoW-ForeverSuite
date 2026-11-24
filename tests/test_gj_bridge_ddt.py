@@ -2325,6 +2325,35 @@ def test_v055_carbon_audit_p0_p1_coexistence_hardening() -> None:
     rt_sec.vm._invoke_callable(qt_sec["SyncDefaultTrackerVisibility"], (qt_sec,))
     assert rt_sec.vm.G.get("_objHidden") is False
 
+    # 5. Blizzard nil IsEditModeActive() before first Edit Mode visit must NOT block GJBridge quest tracker yield
+    rt_nil = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_nil.boot_session()
+    rt_nil.vm.run_chunk(
+        """
+        _G._nilYieldRefresh = 0
+        EditModeManagerFrame = {
+            editModeActive = nil,
+            IsEditModeActive = function(self) return self.editModeActive end,
+        }
+        local qrs = { style = "Oak", useNativeTracker299 = false }
+        local active = true
+        GJCompanion = {
+            _qrs = qrs,
+            QuestRegionSettings248 = function() return qrs end,
+            GodJohnsonTrackerEnabled299 = function() return active end,
+            RefreshQuestTrackerSelection300 = function()
+                _G._nilYieldRefresh = _G._nilYieldRefresh + 1
+                active = false
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    bridge_nil = load_bridge(rt_nil)
+    assert rt_nil.vm.run_chunk("return GJCompanion._qrs.useNativeTracker299, _G._nilYieldRefresh") == (True, 1)
+    assert bridge_nil.get("_pendingQuestTrackerRefresh") is False
+    assert rt_nil.vm.run_chunk("return ForeverSuite_GJBridge._IsEditModeActiveSafe()") == (False,)
+
 
 
 

@@ -29,7 +29,8 @@ local function IsEditModeActive()
     end
     if type(em.IsEditModeActive) == "function" then
         local ok, active = pcall(em.IsEditModeActive, em)
-        if not ok or ns.IsSecret(active) or type(active) ~= "boolean" or active == true then
+        -- Blizzard leaves editModeActive nil until the first visit to Edit Mode.
+        if not ok or ns.IsSecret(active) or (active ~= nil and (type(active) ~= "boolean" or active == true)) then
             return true
         end
     end
