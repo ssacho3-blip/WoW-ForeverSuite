@@ -445,6 +445,7 @@ function ns.SanitizeLiveGJSettings(allowStandaloneStoreCreate)
     if type(C) ~= "table" then
         return false
     end
+    ns._RecoverGJLegacyCharacterIdentity(C)
     local store = ns._GetBridgeStore(allowStandaloneStoreCreate == true)
     if type(C.TradeManager404Config) == "function" then
         pcall(C.TradeManager404Config)
@@ -585,6 +586,7 @@ if type(_G.SlashCmdList) == "table" then
             if type(FS) == "table" and type(FS.SyncExternalFeatureYields) == "function" then
                 pcall(FS.SyncExternalFeatureYields)
             end
+            ns._RecoverGJLegacyCharacterIdentity(_G.GJCompanion)
             ns.ReconcileExternalCoexistence(_G.GJCompanion)
             ns.RegisterBaganatorWidgets()
             ns.SyncOwnership()
@@ -653,6 +655,9 @@ if _G.CreateFrame then
                 end
                 if ns._pendingQuestTrackerRefresh then
                     ns._ApplyGJQuestTrackerYield(_G.GJCompanion)
+                end
+                if ns._pendingIdentityIconRefresh then
+                    ns._RefreshRecoveredPopupIcons(_G.GJCompanion)
                 end
                 return
             elseif event == "PLAYER_LOGIN" then

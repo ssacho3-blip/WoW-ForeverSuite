@@ -1,11 +1,14 @@
 local _, ns = ...
 
 local type = type
+local pairs = pairs
+local ipairs = ipairs
 local tostring = tostring
 local pcall = pcall
 local error = error
 local string_find = string.find
 local string_lower = string.lower
+local string_match = string.match
 local string_sub = string.sub
 
 function ns.TrySkinLauncher()
@@ -341,4 +344,155 @@ function ns._ApplyBrandingOverrides(C)
     ns.targets.launcherIcon = "PENDING"
     ns.TrySkinLauncher()
     ns.ApplyLifecycleHooks(C)
+end
+
+local function IsSafeIdentityText(v)
+    return (not ns._IsSecretBridgeValue(v))
+        and type(v) == "string"
+        and v ~= ""
+        and v ~= "?"
+        and #v <= 160
+        and not string_find(v, "[%c|:]")
+end
+
+local function RefreshRecoveredPopupIcons(C)
+    if type(C) ~= "table" then
+        return false
+    end
+    local inCombat = type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+    if inCombat then
+        ns._pendingIdentityIconRefresh = true
+        return false
+    end
+    ns._pendingIdentityIconRefresh = false
+    for _, fnName in ipairs({
+        "RefreshGrowthAlertLauncher5105",
+        "RefreshRewardQuick416",
+        "RefreshLibraryBooksAccess471",
+        "RefreshHunterPetAccess4116",
+        "RefreshProfessionQuick410",
+        "ApplyDungeonQuickLootPreset453",
+        "RefreshPopupIconLayout410",
+    }) do
+        if type(C[fnName]) == "function" then
+            pcall(C[fnName])
+        end
+    end
+    return true
+end
+
+ns._RefreshRecoveredPopupIcons = RefreshRecoveredPopupIcons
+
+-- GodJohnson v5.311+ CompanionCore.lua deadlocks (returns nil, "realm") on WoW Forever KR
+-- when GetRealmName() is empty (realm fallback source == "id") and a pre-5.311 character row
+-- ("<RealmName>:<PlayerName>") exists without identityGUID297. That traps C.Char() on an
+-- unsaved empty table so popupIconLayout410 resets and only 3 default-visible icons remain.
+function ns._RecoverGJLegacyCharacterIdentity(C)
+    if type(C) ~= "table" or C.savedVariablesReady ~= true or ns._IsForeverSuiteReadOnly() then
+        return false
+    end
+    if type(C.CurrentCharacterKey297) ~= "function" or type(C.DB) ~= "function" then
+        return false
+    end
+    local okKey, key, reason = pcall(C.CurrentCharacterKey297)
+    if not okKey or key ~= nil or reason ~= "realm" then
+        return false
+    end
+    if type(_G.UnitName) ~= "function" or type(_G.UnitGUID) ~= "function" then
+        return false
+    end
+    local okName, name = pcall(_G.UnitName, "player")
+    if not okName or not IsSafeIdentityText(name) then
+        return false
+    end
+    local okGuid, guid = pcall(_G.UnitGUID, "player")
+    if not okGuid or ns._IsSecretBridgeValue(guid) or type(guid) ~= "string" or #guid > 80 or not string_match(guid, "^Player%-%d+%-[0-9A-Fa-f]+$") then
+        return false
+    end
+    local realmID = nil
+    if type(_G.GetRealmID) == "function" then
+        local okRid, rid = pcall(_G.GetRealmID)
+        if okRid and not ns._IsSecretBridgeValue(rid) and type(rid) == "number" and rid > 0 and rid < 1e9 and rid % 1 == 0 then
+            realmID = rid
+        end
+    end
+    local engClass = nil
+    if type(_G.UnitClass) == "function" then
+        local okCls, _, cls = pcall(_G.UnitClass, "player")
+        if okCls and not ns._IsSecretBridgeValue(cls) and type(cls) == "string" and cls ~= "" then
+            engClass = cls
+        end
+    end
+    local okDb, db = pcall(C.DB)
+    if not okDb or type(db) ~= "table" or type(db.characters) ~= "table" then
+        return false
+    end
+    local chars = db.characters
+    for _, row in pairs(chars) do
+        if type(row) == "table" and row.identityGUID297 == guid then
+            return false
+        end
+    end
+    local allLegacy, classMatches = {}, {}
+    for candidate, row in pairs(chars) do
+        if type(candidate) == "string" and type(row) == "table" and not row.identityGUID297
+            and (not realmID or not row.identityRealmID297 or row.identityRealmID297 == realmID)
+        then
+            local oldRealm, oldName = string_match(candidate, "^([^:]*):(.+)$")
+            if oldName == name and IsSafeIdentityText(oldRealm) and oldRealm ~= "guid" and not string_match(oldRealm, "^realm%-id%-%d+$") then
+                allLegacy[#allLegacy + 1] = { key = candidate, row = row }
+                if not engClass or row.settingsClass5105 == nil or row.settingsClass5105 == engClass then
+                    classMatches[#classMatches + 1] = { key = candidate, row = row }
+                end
+            end
+        end
+    end
+    if #allLegacy == 0 then
+        return false
+    end
+    local targetRow = nil
+    local createdAltKey = nil
+    if #classMatches == 1 then
+        targetRow = classMatches[1].row
+    elseif #classMatches == 0 and engClass then
+        local altKey = "guid:" .. guid
+        if chars[altKey] ~= nil then
+            return false
+        end
+        chars[altKey] = {}
+        targetRow = chars[altKey]
+        createdAltKey = altKey
+    else
+        return false
+    end
+    local prevGuid = targetRow.identityGUID297
+    local prevName = targetRow.identityName297
+    local prevRealm = targetRow.identityRealmID297
+    targetRow.identityGUID297 = guid
+    if targetRow.identityName297 == nil then
+        targetRow.identityName297 = name
+    end
+    if realmID and targetRow.identityRealmID297 == nil then
+        targetRow.identityRealmID297 = realmID
+    end
+    local okAfter, resolvedKey = pcall(C.CurrentCharacterKey297)
+    local resolvedRow = okAfter and type(resolvedKey) == "string" and resolvedKey ~= ""
+        and type(chars[resolvedKey]) == "table" and chars[resolvedKey] or nil
+    if resolvedRow ~= targetRow or resolvedRow.identityGUID297 ~= guid then
+        targetRow.identityGUID297 = prevGuid
+        targetRow.identityName297 = prevName
+        targetRow.identityRealmID297 = prevRealm
+        if createdAltKey then
+            chars[createdAltKey] = nil
+        end
+        return false
+    end
+    if type(C.Char) == "function" then
+        pcall(C.Char)
+    end
+    if type(C.CommitSettings) == "function" then
+        pcall(C.CommitSettings)
+    end
+    RefreshRecoveredPopupIcons(C)
+    return true
 end

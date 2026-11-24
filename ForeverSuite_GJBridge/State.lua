@@ -93,6 +93,7 @@ ns._pendingNameplateRefresh = false
 ns._pendingThreatRefresh = false
 ns._pendingHighlightRefresh = false
 ns._pendingQuestTrackerRefresh = false
+ns._pendingIdentityIconRefresh = false
 ns._baganatorWidgetsRegistered = false
 
 local function PrintBridge(msg)
@@ -395,6 +396,7 @@ local function IsSecretBridgeValue(val)
     end
     return res == true
 end
+ns._IsSecretBridgeValue = IsSecretBridgeValue
 
 local function UpdateBaganatorMaterialCorner(labelObj, details)
     local C = _G.GJCompanion

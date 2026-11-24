@@ -2355,6 +2355,232 @@ def test_v055_carbon_audit_p0_p1_coexistence_hardening() -> None:
     assert rt_nil.vm.run_chunk("return ForeverSuite_GJBridge._IsEditModeActiveSafe()") == (False,)
 
 
+def test_v055_gj_legacy_character_identity_deadlock_recovery() -> None:
+    # 1. Exact WoW Forever KR deadlock: GetRealmName() empty -> CurrentCharacterKey297() returns nil, "realm"
+    #    because pre-5.311 row "CAMWOW KR 서버 2 PvP:삼성전자" lacks identityGUID297.
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt.boot_session()
+    rt.vm.run_chunk(
+        """
+        _G._commits = 0
+        _G._refreshes = {}
+        UnitName = function() return "삼성전자", "노동조합" end
+        UnitGUID = function() return "Player-6785-0023738B" end
+        GetRealmID = function() return 92 end
+        UnitClass = function() return "마법사", "MAGE" end
+        InCombatLockdown = function() return false end
+
+        local db = {
+            characters = {
+                [":삼성전자"] = { authorPresetVersion = "5.278" },
+                ["CAMWOW KR 서버 2 PvP:삼성전자"] = {
+                    authorPresetVersion = "5.236",
+                    settingsClass5105 = "MAGE",
+                    popupIconLayout410 = { enabled = true },
+                },
+            },
+        }
+        local function Record(name)
+            return function() _G._refreshes[name] = (_G._refreshes[name] or 0) + 1 end
+        end
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function()
+                local guid = UnitGUID("player")
+                for k, row in pairs(db.characters) do
+                    if type(row) == "table" and row.identityGUID297 == guid then
+                        return k, nil, guid, 92, "삼성전자"
+                    end
+                end
+                return nil, "realm"
+            end,
+            Char = function()
+                local k = GJCompanion.CurrentCharacterKey297()
+                return k and db.characters[k] or {}
+            end,
+            CommitSettings = function() _G._commits = _G._commits + 1 end,
+            RefreshGrowthAlertLauncher5105 = Record("growth"),
+            RefreshRewardQuick416 = Record("encyclopedia"),
+            RefreshLibraryBooksAccess471 = Record("books"),
+            RefreshHunterPetAccess4116 = Record("hunterPets"),
+            RefreshProfessionQuick410 = Record("professions"),
+            ApplyDungeonQuickLootPreset453 = Record("loot"),
+            RefreshPopupIconLayout410 = Record("layout"),
+        }
+        """
+    )
+    bridge = load_bridge(rt)
+    rt.fire_event("PLAYER_LOGIN")
+    resolved = rt.vm.run_chunk(
+        """
+        local k = GJCompanion.CurrentCharacterKey297()
+        local row = GJCompanion._db.characters["CAMWOW KR 서버 2 PvP:삼성전자"]
+        return k, row.identityGUID297, row.identityRealmID297, row.identityName297, _G._commits,
+            _G._refreshes.growth, _G._refreshes.encyclopedia, _G._refreshes.books,
+            _G._refreshes.hunterPets, _G._refreshes.professions, _G._refreshes.loot, _G._refreshes.layout
+        """
+    )
+    assert resolved == (
+        "CAMWOW KR 서버 2 PvP:삼성전자",
+        "Player-6785-0023738B",
+        92,
+        "삼성전자",
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+    )
+    assert bridge.get("_pendingIdentityIconRefresh") is False
+
+    # 2. Same first name but DIFFERENT class (e.g. SHAMAN alt) must NOT hijack the MAGE row;
+    #    binds a separate guid:<guid> row instead and preserves the MAGE row untouched.
+    rt_alt = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_alt.boot_session()
+    rt_alt.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자", "연구소장" end
+        UnitGUID = function() return "Player-6785-00E8AE72" end
+        GetRealmID = function() return 92 end
+        UnitClass = function() return "주술사", "SHAMAN" end
+        InCombatLockdown = function() return true end
+
+        local db = {
+            characters = {
+                ["CAMWOW KR 서버 2 PvP:삼성전자"] = {
+                    settingsClass5105 = "MAGE",
+                },
+            },
+        }
+        _G._altLayoutRefreshed = 0
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function()
+                local guid = UnitGUID("player")
+                for k, row in pairs(db.characters) do
+                    if type(row) == "table" and row.identityGUID297 == guid then
+                        return k
+                    end
+                end
+                return nil, "realm"
+            end,
+            CommitSettings = function() end,
+            RefreshPopupIconLayout410 = function() _G._altLayoutRefreshed = _G._altLayoutRefreshed + 1 end,
+        }
+        """
+    )
+    bridge_alt = load_bridge(rt_alt)
+    rt_alt.fire_event("PLAYER_LOGIN")
+    alt_res = rt_alt.vm.run_chunk(
+        """
+        local mageRow = GJCompanion._db.characters["CAMWOW KR 서버 2 PvP:삼성전자"]
+        local altRow = GJCompanion._db.characters["guid:Player-6785-00E8AE72"]
+        return mageRow.identityGUID297, altRow and altRow.identityGUID297, _G._altLayoutRefreshed
+        """
+    )
+    assert alt_res == (None, "Player-6785-00E8AE72", 0)
+    assert bridge_alt.get("_pendingIdentityIconRefresh") is True
+    # Combat ends -> deferred popup icon refresh flushes cleanly
+    rt_alt.vm.run_chunk("InCombatLockdown = function() return false end")
+    rt_alt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt_alt.vm.G.get("_altLayoutRefreshed") == 1
+    assert bridge_alt.get("_pendingIdentityIconRefresh") is False
+
+    # 3. Ambiguous legacy rows (2 matching MAGE rows) -> Fail-Closed (touches neither)
+    rt_amb = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_amb.boot_session()
+    rt_amb.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00999999" end
+        GetRealmID = function() return 92 end
+        UnitClass = function() return "마법사", "MAGE" end
+        local db = {
+            characters = {
+                ["서버1:삼성전자"] = { settingsClass5105 = "MAGE" },
+                ["서버2:삼성전자"] = { settingsClass5105 = "MAGE" },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function() return nil, "realm" end,
+        }
+        """
+    )
+    load_bridge(rt_amb)
+    rt_amb.fire_event("PLAYER_LOGIN")
+    assert rt_amb.vm.run_chunk(
+        'return GJCompanion._db.characters["서버1:삼성전자"].identityGUID297, GJCompanion._db.characters["서버2:삼성전자"].identityGUID297'
+    ) == (None, None)
+
+    # 4. Rollback on failed post-stamp verification (prevents permanent lockout in SavedVariables)
+    rt_rb = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_rb.boot_session()
+    rt_rb.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00888888" end
+        GetRealmID = function() return 92 end
+        UnitClass = function() return "마법사", "MAGE" end
+        local db = {
+            characters = {
+                ["CAMWOW KR 서버 2 PvP:삼성전자"] = {
+                    settingsClass5105 = "MAGE",
+                    identityName297 = "기존이름",
+                },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            -- Always fails post-stamp verification
+            CurrentCharacterKey297 = function() return nil, "realm" end,
+        }
+        """
+    )
+    load_bridge(rt_rb)
+    rt_rb.fire_event("PLAYER_LOGIN")
+    assert rt_rb.vm.run_chunk(
+        'local r = GJCompanion._db.characters["CAMWOW KR 서버 2 PvP:삼성전자"]; return r.identityGUID297, r.identityName297, r.identityRealmID297'
+    ) == (None, "기존이름", None)
+
+    # 4b. Rollback fresh guid: row creation when post-stamp verification fails
+    rt_rb2 = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_rb2.boot_session()
+    rt_rb2.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00777777" end
+        GetRealmID = function() return 92 end
+        UnitClass = function() return "주술사", "SHAMAN" end
+        local db = {
+            characters = {
+                ["CAMWOW KR 서버 2 PvP:삼성전자"] = { settingsClass5105 = "MAGE" },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function() return nil, "realm" end,
+        }
+        """
+    )
+    load_bridge(rt_rb2)
+    rt_rb2.fire_event("PLAYER_LOGIN")
+    assert rt_rb2.vm.run_chunk('return GJCompanion._db.characters["guid:Player-6785-00777777"]') == (None,)
+
+
 
 
 
