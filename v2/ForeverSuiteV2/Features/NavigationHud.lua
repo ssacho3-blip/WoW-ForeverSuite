@@ -29,7 +29,7 @@ function NavigationHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 224, 48, "ForeverSuiteV2NavArrow")
+    local card = W.Card(nil, 224, 48, "ForeverSuiteV2NavArrow", T.ELEVATION.L0_HUD)
     local arrow = W.Label(card, "•", "title", T.TEXT.GOLD)
     arrow:SetPoint("LEFT", card, "LEFT", 12, 0)
 

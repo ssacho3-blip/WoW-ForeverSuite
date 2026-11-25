@@ -109,12 +109,32 @@ function SafeAPI.LoadDataPack()
     return false
 end
 
-function SafeAPI.IsV1Loaded()
-    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
-        local loaded = SafeAPI.SafeRead(C_AddOns.IsAddOnLoaded, "ForeverSuite")
-        return loaded == true
+-- Returns tri-state: true (loaded), false (confirmed not loaded), nil (unreadable/error).
+function SafeAPI.GetAddOnLoadedState(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
     end
-    return false
+    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
+        local loaded = SafeAPI.SafeRead(C_AddOns.IsAddOnLoaded, name)
+        if loaded == UNAVAILABLE or type(loaded) ~= "boolean" then
+            return nil
+        end
+        return loaded
+    end
+    return nil
+end
+
+function SafeAPI.IsAddOnLoadedByName(name)
+    return SafeAPI.GetAddOnLoadedState(name) == true
+end
+
+-- Fail-closed v1 coexistence check: if AddOn load state cannot be verified, yield safely to prevent double automation.
+function SafeAPI.IsV1Loaded()
+    local st = SafeAPI.GetAddOnLoadedState("ForeverSuite")
+    if st == nil then
+        return true
+    end
+    return st == true
 end
 
 function SafeAPI.GetBagFreeSlots()
@@ -237,33 +257,48 @@ local NavPort = {
 }
 ns.Api.NavPort = NavPort
 
-local function IsOwnedWaypointStillActive()
+-- Returns 4-state: "OWNED" | "MISMATCH" | "UNVERIFIABLE" | "UNSUPPORTED"
+-- Preserves NavPort.ownedWaypoint on transient "UNVERIFIABLE" so addon pins are not silently orphaned.
+local function CheckOwnedWaypointState()
     local owned = NavPort.ownedWaypoint
     if not owned then
-        return false
+        return "MISMATCH"
     end
     if not (C_Map and type(C_Map.GetUserWaypoint) == "function") then
-        return false
+        return "UNSUPPORTED"
     end
     local cur = SafeAPI.SafeRead(C_Map.GetUserWaypoint)
-    if cur == UNAVAILABLE or type(cur) ~= "table" then
-        return false
+    if cur == UNAVAILABLE then
+        return "UNVERIFIABLE"
     end
-    local curMap = (not SafeAPI.IsSecret(cur.uiMapID)) and cur.uiMapID or nil
-    local curPos = (not SafeAPI.IsSecret(cur.position)) and cur.position or nil
+    if cur == nil then
+        NavPort.ownedWaypoint = nil
+        return "MISMATCH"
+    end
+    if type(cur) ~= "table" then
+        return "UNVERIFIABLE"
+    end
+    if SafeAPI.IsSecret(cur.uiMapID) or SafeAPI.IsSecret(cur.position) then
+        return "UNVERIFIABLE"
+    end
+    local curMap = cur.uiMapID
+    local curPos = cur.position
     if type(curMap) ~= "number" or type(curPos) ~= "table" then
-        return false
+        return "UNVERIFIABLE"
     end
-    local cx = (not SafeAPI.IsSecret(curPos.x)) and curPos.x or nil
-    local cy = (not SafeAPI.IsSecret(curPos.y)) and curPos.y or nil
+    if SafeAPI.IsSecret(curPos.x) or SafeAPI.IsSecret(curPos.y) then
+        return "UNVERIFIABLE"
+    end
+    local cx = curPos.x
+    local cy = curPos.y
     if type(cx) ~= "number" or type(cy) ~= "number" then
-        return false
+        return "UNVERIFIABLE"
     end
     if curMap ~= owned.mapID or math_abs(cx - owned.x) > 0.0005 or math_abs(cy - owned.y) > 0.0005 then
         NavPort.ownedWaypoint = nil
-        return false
+        return "MISMATCH"
     end
-    return true
+    return "OWNED"
 end
 
 local function ApplySuperTrackNow(target)
@@ -299,7 +334,14 @@ local function ApplyWaypointNow(wp)
 end
 
 local function ApplyClearWaypointNow()
-    if not IsOwnedWaypointStillActive() then
+    local state = CheckOwnedWaypointState()
+    if state == "UNSUPPORTED" then
+        return false, "UNSUPPORTED"
+    end
+    if state == "UNVERIFIABLE" then
+        return false, "UNVERIFIABLE"
+    end
+    if state ~= "OWNED" then
         NavPort.ownedWaypoint = nil
         return true, "NOT_OWNED"
     end

@@ -116,6 +116,60 @@ local DEFAULT_SCHEMAS = {
         desc = "ForeverSuite_Data LoD 낚시 팩 연동",
         combatSafe = true,
     },
+    {
+        section = "combat",
+        key = "showEncounterTimer",
+        type = "boolean",
+        default = true,
+        label = "전투·보스·인던 타이머 & 풀링 카운트다운 HUD",
+        desc = "/fs2 pull 10 및 /fs2 timer 지원",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "fastLoot",
+        type = "boolean",
+        default = true,
+        label = "고속 자동 루팅 (autoLoot CVar XOR Shift)",
+        desc = "v1 공존 시 자동 양보",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "autoReleaseBG",
+        type = "boolean",
+        default = true,
+        label = "전장(BG) 전용 자동 영혼 해제 (자가 부활 시 중단)",
+        desc = "영혼석/윤회 감지 시 절대 해제하지 않음",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "autoAcceptRes",
+        type = "boolean",
+        default = true,
+        label = "비전투 부활 자동 수락 (전투 부활 제외)",
+        desc = "Shift 우회 가능, 전투 중에는 수락하지 않음",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "autoAcceptFriends",
+        type = "boolean",
+        default = true,
+        label = "친구·길드원 파티 초대 자동 수락",
+        desc = "모르는 유저 초대는 수락하지 않음",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "maxCameraZoom",
+        type = "boolean",
+        default = false,
+        label = "최대 카메라 시야 거리 확장 (비전투 CVar)",
+        desc = "cameraDistanceMaxZoomFactor = 2.6 적용",
+        combatSafe = false,
+    },
 }
 
 local Bootstrap = {
@@ -177,10 +231,14 @@ function Bootstrap:Init()
             ApplyTrackerModeSafely(val)
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
+        elseif sec == "combat" and key == "showEncounterTimer" then
+            ns.Features.EncounterTimerHud:Refresh()
         elseif sec == "combat" then
             ns.Features.CombatAssistHud:Refresh()
         elseif sec == "profession" and key == "showFishingCard" then
             ns.Features.FishingCardHud:Refresh()
+        elseif sec == "qol" and key == "maxCameraZoom" then
+            ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
         end
     end)
 
@@ -191,13 +249,21 @@ function Bootstrap:Init()
     ns.Features.NavigationHud:Init()
     ns.Features.CombatAssistHud:Init()
     ns.Features.CombatAssistHud:Refresh()
+    ns.Features.EncounterTimerHud:Init()
+    ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     ns.Features.FishingCardHud:Init()
     ns.Features.FishingCardHud:Refresh()
     ns.Features.LedgerPage:SyncFromPlayerMoney()
+    ns.Features.QoLModule:ResetSessionXP()
+    ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
 
     -- Lifecycle & Feature event wiring
     ns.Api.EventBus:OnEvent("v2:addonLoaded", "ADDON_LOADED", function()
         ns.Blizzard.WorldMapAdapter:Init()
+    end)
+    ns.Api.EventBus:OnEvent("v2:enterWorld", "PLAYER_ENTERING_WORLD", function()
+        ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
+        ns.Features.QoLModule:SyncSessionXP()
     end)
     ns.Api.EventBus:OnEvent("v2:questLog", "QUEST_LOG_UPDATE", function()
         ns.Features.QuestTrackerView:RefreshLive()
@@ -235,6 +301,31 @@ function Bootstrap:Init()
         local qid = (type(a2) == "number") and a2 or a1
         ns.Features.QuestAutomation:OnQuestAccepted(qid)
     end)
+    ns.Api.EventBus:OnEvent("v2:lootReady", "LOOT_READY", function()
+        ns.Features.QoLModule:OnLootReady()
+    end)
+    ns.Api.EventBus:OnEvent("v2:playerDead", "PLAYER_DEAD", function()
+        ns.Features.EncounterTimerHud:OnPlayerDead()
+        ns.Features.QoLModule:OnPlayerDead()
+    end)
+    ns.Api.EventBus:OnEvent("v2:resRequest", "RESURRECT_REQUEST", function(_, casterName)
+        ns.Features.QoLModule:OnResurrectRequest(casterName)
+    end)
+    ns.Api.EventBus:OnEvent("v2:partyInvite", "PARTY_INVITE_REQUEST", function(_, inviterName)
+        ns.Features.QoLModule:OnPartyInviteRequest(inviterName)
+    end)
+    ns.Api.EventBus:OnEvent("v2:xpUpdate", "PLAYER_XP_UPDATE", function()
+        ns.Features.QoLModule:SyncSessionXP()
+    end)
+    ns.Api.EventBus:OnEvent("v2:levelUp", "PLAYER_LEVEL_UP", function()
+        ns.Features.QoLModule:SyncSessionXP()
+    end)
+    ns.Api.EventBus:OnEvent("v2:encStart", "ENCOUNTER_START", function(_, _, encounterName)
+        ns.Features.EncounterTimerHud:OnEncounterStart(encounterName)
+    end)
+    ns.Api.EventBus:OnEvent("v2:encEnd", "ENCOUNTER_END", function(_, _, encounterName, _, _, success)
+        ns.Features.EncounterTimerHud:OnEncounterEnd(encounterName, success)
+    end)
     ns.Api.EventBus:OnEvent("v2:aura", "UNIT_AURA", function(_, unit)
         if unit == "player" then ns.Features.CombatAssistHud:Refresh() end
     end)
@@ -250,15 +341,19 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:zone", "ZONE_CHANGED_NEW_AREA", function()
         ns.Features.FishingCardHud:Refresh()
         ns.Features.NavigationHud:Refresh()
+        ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
         ns.Features.CombatAssistHud:Refresh(true)
+        ns.Features.EncounterTimerHud:OnCombatStart()
     end)
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
         ns.Secure.CombatQueue:Flush()
         ns.Api.NavPort.FlushIfSafe()
         ns.Features.QuestTrackerView:ReRenderLast()
         ns.Features.CombatAssistHud:Refresh(false)
+        ns.Features.EncounterTimerHud:OnCombatEnd()
+        ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
     end)
 
     ns.Api.EventBus:OnEvent("v2:taintBlocked", "ADDON_ACTION_BLOCKED", function(_, addonName, funcName)
@@ -288,6 +383,12 @@ function Bootstrap:Init()
             elseif cmd == "layer" then
                 local layer = ns.Api.GameAdapters.GetZoneLayerID("target")
                 ns.Api.SafeAPI.Print(layer and ("현재 대상 위상(ZoneUID): #" .. tostring(layer)) or "대상을 선택하면 위상(ZoneUID)을 확인할 수 있습니다.")
+            elseif cmd == "xp" then
+                ns.Features.QoLModule:HandleXPCommand(rest)
+            elseif cmd == "pull" then
+                ns.Features.EncounterTimerHud:HandlePullCommand(rest)
+            elseif cmd == "timer" then
+                ns.Features.EncounterTimerHud:PrintStatus()
             else
                 ns.UI.CommandHub:Toggle()
             end

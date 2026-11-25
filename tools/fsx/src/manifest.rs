@@ -22,6 +22,8 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_Container.UseContainerItem",
             "C_CVar.GetCVar",
             "C_CVar.SetCVar",
+            "C_FriendList.GetFriendInfoByIndex",
+            "C_FriendList.GetNumFriends",
             "C_Item.GetDetailedItemLevelInfo",
             "C_Item.GetItemInfo",
             "C_Map.CanSetUserWaypointOnMap",

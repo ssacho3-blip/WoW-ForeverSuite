@@ -107,11 +107,14 @@ function Widgets.Window(name, width, height, titleText)
     return f
 end
 
--- 2. Card (L1/L2 container: Slate card + 1px hairline border, no gold clutter)
-function Widgets.Card(parent, width, height, name)
+-- 2. Card (L1/L2 container: Slate card + 1px hairline border, optional explicit elevation strata)
+function Widgets.Card(parent, width, height, name, strata)
     local f = CreateFrame("Frame", name, parent or _G.UIParent)
     if width and height then
         f:SetSize(width, height)
+    end
+    if strata then
+        f:SetFrameStrata(strata)
     end
     PaintBox(f, T.SURFACE.CARD, T.BORDER.HAIRLINE)
     return f

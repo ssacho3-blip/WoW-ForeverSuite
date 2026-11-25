@@ -6,25 +6,65 @@ license = "MIT-Personal"
 source = "ForeverSuite v2 Curated"
 
 [[entries]]
-title = "돌비늘 뱀장어"
-zone = "타나리스 · 가시덤불 골짜기"
-minSkill = 205
-mapID = 1446
-x = 0.67
-y = 0.24
+title = "돌연변이 물고기"
+zone = "불모의 땅 · 통곡의 동굴 오아시스"
+minSkill = 1
+mapID = 1413
+x = 0.55
+y = 0.42
 
 [[entries]]
 title = "기름기 많은 아귀"
-zone = "불모의 땅 · 서부 몰락지대"
+zone = "불모의 땅 · 서부 몰락지대 · 어둠해안"
 minSkill = 55
 mapID = 1413
 x = 0.63
 y = 0.37
 
 [[entries]]
-title = "겨울오징어"
+title = "불지느러미 퉁돔"
+zone = "가시덤불 골짜기 · 먼지진흙 습지대 · 힐스브래드"
+minSkill = 130
+mapID = 1434
+x = 0.27
+y = 0.74
+
+[[entries]]
+title = "돌비늘 뱀장어"
+zone = "타나리스 · 가시덤불 골짜기 · 페랄라스"
+minSkill = 205
+mapID = 1446
+x = 0.67
+y = 0.24
+
+[[entries]]
+title = "밤비늘 퉁돔 (야간 18:00-06:00)"
+zone = "타나리스 · 아즈샤라 · 동부 내륙지"
+minSkill = 205
+mapID = 1446
+x = 0.69
+y = 0.31
+
+[[entries]]
+title = "겨울오징어 (겨울철 09-03월)"
 zone = "아즈샤라 · 타나리스 해안"
 minSkill = 250
 mapID = 1447
 x = 0.78
 y = 0.45
+
+[[entries]]
+title = "원소의 물 (물 웅덩이)"
+zone = "아즈샤라 · 폭풍의 만"
+minSkill = 275
+mapID = 1447
+x = 0.66
+y = 0.51
+
+[[entries]]
+title = "큰 붉은아귀 돔"
+zone = "아즈샤라 · 동부 역병지대 해안"
+minSkill = 275
+mapID = 1447
+x = 0.75
+y = 0.36

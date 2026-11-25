@@ -19,7 +19,7 @@ function CombatAssistHud:Init()
     if self.strip then
         return self.strip
     end
-    local card = W.Card(nil, 248, 26, "ForeverSuiteV2CombatAssist")
+    local card = W.Card(nil, 248, 26, "ForeverSuiteV2CombatAssist", T.ELEVATION.L0_HUD)
     local lbl = W.Label(card, "", "small", T.SEMANTIC.WARN)
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.strip = card

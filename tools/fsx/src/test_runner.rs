@@ -140,9 +140,56 @@ _G.__FS_MOCK = {
     targetGUID = nil,
     tickers = {},
     afterTimers = {},
+    cvars = { autoLootDefault = "1" },
+    lootCount = 0,
+    lootedSlots = {},
+    inInstance = false,
+    instanceType = "none",
+    instanceName = "",
+    hasSoulstone = false,
+    releasedSpirit = 0,
+    affectingCombat = false,
+    unitCombat = {},
+    modifiedClicks = {},
+    acceptedRes = 0,
+    friends = {},
+    guildMembers = {},
+    acceptedGroup = 0,
+    xp = 1000,
+    xpMax = 10000,
+    level = 20,
+    maxLevel = 60,
+    restedXP = 500,
 }
 
 function IsShiftKeyDown() return _G.__FS_MOCK.shiftDown == true end
+function IsModifiedClick(action)
+    local mc = _G.__FS_MOCK.modifiedClicks
+    if mc and mc[action] ~= nil then return mc[action] end
+    if action == "AUTOLOOTTOGGLE" then return _G.__FS_MOCK.shiftDown == true end
+    return false
+end
+function GetNumLootItems() return _G.__FS_MOCK.lootCount end
+function LootSlot(slot) table.insert(_G.__FS_MOCK.lootedSlots, slot) end
+function IsInInstance() return _G.__FS_MOCK.inInstance, _G.__FS_MOCK.instanceType end
+function GetInstanceInfo() return _G.__FS_MOCK.instanceName, _G.__FS_MOCK.instanceType end
+function HasSoulstone() return _G.__FS_MOCK.hasSoulstone end
+function RepopMe() _G.__FS_MOCK.releasedSpirit = _G.__FS_MOCK.releasedSpirit + 1 end
+function UnitAffectingCombat(unit)
+    if unit and unit ~= "player" and _G.__FS_MOCK.unitCombat and _G.__FS_MOCK.unitCombat[unit] ~= nil then
+        return _G.__FS_MOCK.unitCombat[unit]
+    end
+    return _G.__FS_MOCK.affectingCombat
+end
+function AcceptResurrect() _G.__FS_MOCK.acceptedRes = _G.__FS_MOCK.acceptedRes + 1 end
+function GetNumGuildMembers() return #(_G.__FS_MOCK.guildMembers or {}) end
+function GetGuildRosterInfo(i) return (_G.__FS_MOCK.guildMembers or {})[i] end
+function AcceptGroup() _G.__FS_MOCK.acceptedGroup = _G.__FS_MOCK.acceptedGroup + 1 end
+function UnitXP() return _G.__FS_MOCK.xp end
+function UnitXPMax() return _G.__FS_MOCK.xpMax end
+function UnitLevel() return _G.__FS_MOCK.level end
+function GetMaxPlayerLevel() return _G.__FS_MOCK.maxLevel end
+function GetXPExhaustion() return _G.__FS_MOCK.restedXP end
 function GetRealZoneText() return _G.__FS_MOCK.zoneText or "" end
 function GetPlayerFacing() return _G.__FS_MOCK.playerPos and _G.__FS_MOCK.playerPos.facing or nil end
 function UnitClass() return _G.__FS_MOCK.playerClass, _G.__FS_MOCK.playerClass end
@@ -481,6 +528,23 @@ C_Map = {
     ClearUserWaypoint = function()
         _G.__FS_MOCK.clearWaypointCalls = (_G.__FS_MOCK.clearWaypointCalls or 0) + 1
         _G.__FS_MOCK.userWaypoint = nil
+    end,
+}
+
+C_CVar = {
+    GetCVar = function(name) return (_G.__FS_MOCK.cvars or {})[name] end,
+    SetCVar = function(name, val)
+        _G.__FS_MOCK.cvars = _G.__FS_MOCK.cvars or {}
+        _G.__FS_MOCK.cvars[name] = tostring(val)
+        return true
+    end,
+}
+
+C_FriendList = {
+    GetNumFriends = function() return #(_G.__FS_MOCK.friends or {}) end,
+    GetFriendInfoByIndex = function(i)
+        local n = (_G.__FS_MOCK.friends or {})[i]
+        return n and { name = n } or nil
     end,
 }
 

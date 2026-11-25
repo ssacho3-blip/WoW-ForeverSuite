@@ -18,7 +18,7 @@ function StatusPillHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 336, 26, "ForeverSuiteV2StatusPill")
+    local card = W.Card(nil, 336, 26, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
     local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY)
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.card = card

@@ -21,9 +21,21 @@ local function IsTruthy(v)
     return v ~= nil and v ~= false and v ~= 0
 end
 
-function GameAdapters.IsShiftDown()
+-- Fail-closed shift helper: returns true|false|nil (nil when unreadable/secret so QoL automation won't bypass user Shift)
+function GameAdapters.IsShiftDownState()
+    if type(_G.IsShiftKeyDown) ~= "function" then
+        return nil
+    end
     local v = SafeAPI.SafeRead(_G.IsShiftKeyDown)
-    return v ~= UNAVAILABLE and IsTruthy(v)
+    if v == UNAVAILABLE then
+        return nil
+    end
+    return IsTruthy(v)
+end
+
+function GameAdapters.IsShiftDown()
+    local st = GameAdapters.IsShiftDownState()
+    return st == true
 end
 
 function GameAdapters.GetEpochTimestamp()
@@ -374,4 +386,298 @@ function GameAdapters.TurnInQuestSafe()
         return ok and true or false, ok and "TURNED_IN" or "FAILED"
     end
     return false, "UNSUPPORTED"
+end
+
+function GameAdapters.GetMonotonicTime()
+    local t = SafeAPI.SafeRead(_G.GetTime)
+    if t ~= UNAVAILABLE and type(t) == "number" then
+        return t
+    end
+    return nil
+end
+
+function GameAdapters.IsAutoLootModifierDown()
+    if type(_G.IsModifiedClick) == "function" then
+        local v = SafeAPI.SafeRead(_G.IsModifiedClick, "AUTOLOOTTOGGLE")
+        if v == UNAVAILABLE then
+            return nil
+        end
+        return IsTruthy(v)
+    end
+    if type(_G.IsShiftKeyDown) ~= "function" then
+        return nil
+    end
+    local v = SafeAPI.SafeRead(_G.IsShiftKeyDown)
+    if v == UNAVAILABLE then
+        return nil
+    end
+    return IsTruthy(v)
+end
+
+function GameAdapters.GetCVarRaw(name)
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+    local v = UNAVAILABLE
+    if C_CVar and type(C_CVar.GetCVar) == "function" then
+        v = SafeAPI.SafeRead(C_CVar.GetCVar, name)
+    elseif type(_G.GetCVar) == "function" then
+        v = SafeAPI.SafeRead(_G.GetCVar, name)
+    end
+    if v == UNAVAILABLE then
+        return nil
+    end
+    return v
+end
+
+function GameAdapters.GetCVarBool(name)
+    local v = GameAdapters.GetCVarRaw(name)
+    if v == nil then
+        return nil
+    end
+    if v == "1" or v == "true" or v == true or v == 1 then
+        return true
+    end
+    if v == "0" or v == "false" or v == false or v == 0 then
+        return false
+    end
+    return nil
+end
+
+function GameAdapters.SetCVarSafe(name, value)
+    if SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    if type(name) ~= "string" or name == "" then
+        return false, "INVALID"
+    end
+    if C_CVar and type(C_CVar.SetCVar) == "function" then
+        local ok = pcall(C_CVar.SetCVar, name, tostring(value))
+        return ok and true or false, ok and "APPLIED" or "FAILED"
+    end
+    if type(_G.SetCVar) == "function" then
+        local ok = pcall(_G.SetCVar, name, tostring(value))
+        return ok and true or false, ok and "APPLIED" or "FAILED"
+    end
+    return false, "UNSUPPORTED"
+end
+
+function GameAdapters.FastLootAll()
+    if type(_G.GetNumLootItems) ~= "function" or type(_G.LootSlot) ~= "function" then
+        return 0
+    end
+    local count = SafeAPI.SafeRead(_G.GetNumLootItems)
+    if count == UNAVAILABLE or type(count) ~= "number" or count <= 0 then
+        return 0
+    end
+    local looted = 0
+    for slot = count, 1, -1 do
+        local ok = pcall(_G.LootSlot, slot)
+        if ok then
+            looted = looted + 1
+        end
+    end
+    return looted
+end
+
+function GameAdapters.GetInstanceContext()
+    if type(_G.IsInInstance) ~= "function" then
+        return nil, nil, nil
+    end
+    local ok, inInst, instType = pcall(_G.IsInInstance)
+    if (not ok) or SafeAPI.IsSecret(inInst) or SafeAPI.IsSecret(instType) then
+        return nil, nil, nil
+    end
+    local instName = ""
+    if type(_G.GetInstanceInfo) == "function" then
+        local okN, rawName = pcall(_G.GetInstanceInfo)
+        if okN and (not SafeAPI.IsSecret(rawName)) and type(rawName) == "string" then
+            instName = rawName
+        end
+    end
+    return IsTruthy(inInst), (type(instType) == "string" and instType or "none"), instName
+end
+
+function GameAdapters.HasSelfResOption()
+    if type(_G.HasSoulstone) ~= "function" then
+        return nil
+    end
+    local ok, res = pcall(_G.HasSoulstone)
+    if (not ok) or SafeAPI.IsSecret(res) then
+        return nil
+    end
+    if type(res) == "string" then
+        return res ~= ""
+    end
+    return IsTruthy(res)
+end
+
+function GameAdapters.ReleaseSpiritSafe()
+    if type(_G.RepopMe) ~= "function" then
+        return false
+    end
+    local ok = pcall(_G.RepopMe)
+    return ok and true or false
+end
+
+-- Fail-closed combat check for Resurrection: checks player combat, caster combat, active boss encounter,
+-- IsEncounterInProgress, and refuses if UnitAffectingCombat is missing/errors/secret or casterName is unreadable.
+function GameAdapters.IsResurrectInCombat(casterName, bossActive)
+    if bossActive == true then
+        return true
+    end
+    if SafeAPI.InCombat() then
+        return true
+    end
+    if type(_G.IsEncounterInProgress) == "function" then
+        local enc = SafeAPI.SafeRead(_G.IsEncounterInProgress)
+        if enc == UNAVAILABLE or IsTruthy(enc) then
+            return true
+        end
+    end
+    if type(_G.UnitAffectingCombat) ~= "function" then
+        return true
+    end
+    local okP, resP = pcall(_G.UnitAffectingCombat, "player")
+    if (not okP) or SafeAPI.IsSecret(resP) or IsTruthy(resP) then
+        return true
+    end
+    if SafeAPI.IsSecret(casterName) or type(casterName) ~= "string" or casterName == "" then
+        return true
+    end
+    local okC, resC = pcall(_G.UnitAffectingCombat, casterName)
+    if (not okC) or SafeAPI.IsSecret(resC) or IsTruthy(resC) then
+        return true
+    end
+    return false
+end
+
+function GameAdapters.AcceptResurrectSafe(casterName, bossActive)
+    if GameAdapters.IsResurrectInCombat(casterName, bossActive) then
+        return false, "IN_COMBAT"
+    end
+    if type(_G.AcceptResurrect) ~= "function" then
+        return false, "UNSUPPORTED"
+    end
+    local ok = pcall(_G.AcceptResurrect)
+    return ok and true or false, ok and "ACCEPTED" or "FAILED"
+end
+
+local function NormalizeRealmToken(rawRealm)
+    if type(rawRealm) ~= "string" or rawRealm == "" then
+        return nil
+    end
+    local cleaned = string.gsub(rawRealm, "[%s%-']", "")
+    if cleaned == "" then
+        return nil
+    end
+    return string.lower(cleaned)
+end
+
+-- Parses "Name-Realm" or "Name" (attaching ownRealmNorm ONLY when no '-' suffix is present).
+local function NormalizeFullName(raw, ownRealmNorm)
+    if type(raw) ~= "string" or raw == "" then
+        return nil, nil
+    end
+    local base, realm = string_match(raw, "^([^%-]+)%-(.+)$")
+    if base and realm then
+        return string.lower(base), NormalizeRealmToken(realm)
+    end
+    if not ownRealmNorm then
+        return nil, nil
+    end
+    return string.lower(raw), ownRealmNorm
+end
+
+local function NamesMatchSameRealm(targetBase, targetRealm, candidateRaw, ownRealmNorm)
+    local cBase, cRealm = NormalizeFullName(candidateRaw, ownRealmNorm)
+    return (cBase ~= nil) and (cRealm ~= nil) and (cBase == targetBase) and (cRealm == targetRealm)
+end
+
+function GameAdapters.IsTrustedInviter(inviterName)
+    if SafeAPI.IsSecret(inviterName) or type(inviterName) ~= "string" or inviterName == "" then
+        return false
+    end
+    local ownRealmNorm = NormalizeRealmToken(SafeAPI.GetCanonicalRealm())
+    local targetBase, targetRealm = NormalizeFullName(inviterName, ownRealmNorm)
+    if (not targetBase) or (not targetRealm) then
+        return false
+    end
+    if C_FriendList and type(C_FriendList.GetNumFriends) == "function" and type(C_FriendList.GetFriendInfoByIndex) == "function" then
+        local numF = SafeAPI.SafeRead(C_FriendList.GetNumFriends)
+        if numF ~= UNAVAILABLE and type(numF) == "number" and numF > 0 then
+            for i = 1, numF do
+                local info = SafeAPI.SafeRead(C_FriendList.GetFriendInfoByIndex, i)
+                if info ~= UNAVAILABLE and type(info) == "table" and (not SafeAPI.IsSecret(info.name)) then
+                    if NamesMatchSameRealm(targetBase, targetRealm, info.name, ownRealmNorm) then
+                        return true
+                    end
+                end
+            end
+        end
+    elseif type(_G.GetNumFriends) == "function" and type(_G.GetFriendInfo) == "function" then
+        local numF = SafeAPI.SafeRead(_G.GetNumFriends)
+        if numF ~= UNAVAILABLE and type(numF) == "number" and numF > 0 then
+            for i = 1, numF do
+                local okF, fName = pcall(_G.GetFriendInfo, i)
+                if okF and (not SafeAPI.IsSecret(fName)) and NamesMatchSameRealm(targetBase, targetRealm, fName, ownRealmNorm) then
+                    return true
+                end
+            end
+        end
+    end
+    if type(_G.GetNumGuildMembers) == "function" and type(_G.GetGuildRosterInfo) == "function" then
+        local numG = SafeAPI.SafeRead(_G.GetNumGuildMembers)
+        if numG ~= UNAVAILABLE and type(numG) == "number" and numG > 0 then
+            for i = 1, numG do
+                local okG, gName = pcall(_G.GetGuildRosterInfo, i)
+                if okG and (not SafeAPI.IsSecret(gName)) and NamesMatchSameRealm(targetBase, targetRealm, gName, ownRealmNorm) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function GameAdapters.AcceptGroupInviteSafe()
+    if type(_G.AcceptGroup) ~= "function" then
+        return false
+    end
+    local ok = pcall(_G.AcceptGroup)
+    return ok and true or false
+end
+
+function GameAdapters.GetPlayerXPInfo()
+    if type(_G.UnitXP) ~= "function" or type(_G.UnitXPMax) ~= "function" or type(_G.UnitLevel) ~= "function" then
+        return nil, nil, nil, nil, 0, false
+    end
+    local okX, xp = pcall(_G.UnitXP, "player")
+    local okM, maxXP = pcall(_G.UnitXPMax, "player")
+    local okL, lvl = pcall(_G.UnitLevel, "player")
+    if not (okX and okM and okL) then
+        return nil, nil, nil, nil, 0, false
+    end
+    if SafeAPI.IsSecret(xp) or SafeAPI.IsSecret(maxXP) or SafeAPI.IsSecret(lvl)
+        or type(xp) ~= "number" or xp < 0
+        or type(maxXP) ~= "number" or maxXP < 0
+        or type(lvl) ~= "number" or lvl < 1
+    then
+        return nil, nil, nil, nil, 0, false
+    end
+    local maxLvl = nil
+    if type(_G.GetMaxPlayerLevel) == "function" then
+        local ml = SafeAPI.SafeRead(_G.GetMaxPlayerLevel)
+        if ml ~= UNAVAILABLE and type(ml) == "number" and ml > 0 then
+            maxLvl = ml
+        end
+    end
+    local rested = 0
+    if type(_G.GetXPExhaustion) == "function" then
+        local r = SafeAPI.SafeRead(_G.GetXPExhaustion)
+        if r ~= UNAVAILABLE and type(r) == "number" and r > 0 then
+            rested = r
+        end
+    end
+    return math.floor(xp), math.floor(maxXP), math.floor(lvl), maxLvl, math.floor(rested), true
 end

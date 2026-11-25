@@ -55,10 +55,15 @@ function MerchantModule:ResolvePendingGuildRepair(source)
 
     -- Timeout confirmed remainingCost > 0 -> fall back safely to personal repair if affordable
     if not stillNeeds or remainingCost <= 0 then
+        ns.Api.SafeAPI.Print("길드 수리 미완료(상태 불일치) — 수동 수리를 확인해 주세요.")
         return "FAILED"
     end
     local curMoney = ns.Api.SafeAPI.GetPlayerMoney()
-    if type(curMoney) == "number" and curMoney >= remainingCost then
+    if type(curMoney) ~= "number" then
+        ns.Api.SafeAPI.Print("길드 수리 미확인 및 개인 골드 조회 불가 — 수동 확인이 필요합니다.")
+        return "FAILED"
+    end
+    if curMoney >= remainingCost then
         local attr = ns.Features.LedgerPage and ns.Features.LedgerPage:EnqueueAttribution("repair", -remainingCost, "개인 수리(폴백)") or nil
         if ns.Api.GameAdapters.RepairAll(false) then
             local msg = "개인 수리 요청(길드 폴백) -" .. ns.Domain.LedgerModel.FormatCopper(remainingCost)
@@ -68,6 +73,7 @@ function MerchantModule:ResolvePendingGuildRepair(source)
         elseif attr and ns.Features.LedgerPage then
             ns.Features.LedgerPage:CancelAttribution(attr)
         end
+        ns.Api.SafeAPI.Print("개인 수리 폴백 요청이 차단되었거나 실패했습니다.")
     else
         ns.Api.SafeAPI.Print("길드 수리 불가 및 개인 골드 부족: 필요 " .. ns.Domain.LedgerModel.FormatCopper(remainingCost))
     end
@@ -109,6 +115,8 @@ function MerchantModule:OnMerchantShow()
                     else
                         ns.Api.SafeAPI.Print("길드 수리 요청 전송(타이머 불가로 자동 폴백 생략)")
                     end
+                else
+                    ns.Api.SafeAPI.Print("길드 수리 요청이 차단되었거나 실패했습니다.")
                 end
             elseif decision == "PERSONAL" then
                 local attr = ns.Features.LedgerPage and ns.Features.LedgerPage:EnqueueAttribution("repair", -cost, "개인 수리") or nil

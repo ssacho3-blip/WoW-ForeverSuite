@@ -21,7 +21,7 @@ function FishingCardHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 248, 66, "ForeverSuiteV2FishingCard")
+    local card = W.Card(nil, 248, 66, "ForeverSuiteV2FishingCard", T.ELEVATION.L1_CARD)
     local title = W.Label(card, "낚시 대상어 가이드", "heading", T.TEXT.GOLD)
     title:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -8)
 

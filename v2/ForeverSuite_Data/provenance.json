@@ -6,50 +6,50 @@
       "category": "bis",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "f81a4ae636d85db7159d9580ed8c2987484061bb78a9b195957714239891aab4",
-      "entry_count": 4,
+      "source_sha256": "4e9f569d004c649ff8a1dc9c02b4fb397aab8b6703907dd38a7654a2baaa98e6",
+      "entry_count": 11,
       "output_file": "Pack_bis.lua",
-      "output_sha256": "c97144480fed7438c8ff8857e5acc7244d175f4d3f619976885a40cddb499d30"
+      "output_sha256": "4d374c1622f48514bbea8be8af5819489a33134c2136f2d1ce9b0c422af9ae7e"
     },
     {
       "id": "dungeons",
       "category": "dungeon",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "24e715dff5ef347a032573ae22524dce933992c6be29ce0c807fa688924b05e4",
-      "entry_count": 2,
+      "source_sha256": "1108cadd690882b42caa38baff711e28cb0b6b3a6536a3e870a8ba21783f0d1a",
+      "entry_count": 12,
       "output_file": "Pack_dungeons.lua",
-      "output_sha256": "e4a376db7acb57f9c75a1d299c6bea5d7dcfd8648d03385538388c7c4d6929cc"
+      "output_sha256": "1f86a81e2920a7e2059ee3fcee71329cec048a75b4b7ead7d40bb43f03d85ef6"
     },
     {
       "id": "fishing",
       "category": "profession",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "15a30c8c657ac252a5370d9e33cd29e440ca5b8ac3e708b86db3e92d7e41aee2",
-      "entry_count": 3,
+      "source_sha256": "a09ab398ebc2b5f9daf2dd65006ed94690002e23862fa8ba8bfa9d3093d93109",
+      "entry_count": 8,
       "output_file": "Pack_fishing.lua",
-      "output_sha256": "50f9e4d30a60c2f0f8bed421a2ec5a7eec0cc7ba2fb20048f6662798a0a3a635"
+      "output_sha256": "f53cd071ee9ada07ed74b7c59154b6e01115fdaec8aaf1cb33af0d79417686c4"
     },
     {
       "id": "professions",
       "category": "profession",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "5d67454ac552c294b95c501c9d9715a733f691fd9af1143a56baf5b9f97b0f53",
-      "entry_count": 3,
+      "source_sha256": "884064dbc967b48eda0d23e5bb09eb79367c80d92cda50d508bb20fd7886d1cc",
+      "entry_count": 8,
       "output_file": "Pack_professions.lua",
-      "output_sha256": "627d594b1eb9f023aaabeb273bdd1b153f3aeb293929698cf262e9d87c00aa9c"
+      "output_sha256": "85da9300b252eeee437b05d751e902bf93a6e4ee630628b83371e6d879935692"
     },
     {
       "id": "rewards",
       "category": "rewards",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "40a240e676e6e27ef452c7b1e451545934752fa66db1466a5cdcb1cb47e6e62c",
-      "entry_count": 3,
+      "source_sha256": "8af4201c8b88bdea503b985fad9c621fab5d07ff7fff5f9324f8c4fca3515a90",
+      "entry_count": 7,
       "output_file": "Pack_rewards.lua",
-      "output_sha256": "011828e62aa660a60c62a76ba4dfae53b2eb2ea79463c33b6a2e8d2c3fdd2e42"
+      "output_sha256": "f1e54e2b96e9d8f00e9485d3c0216664a8d6c132a8cfe5de34bd9c4ddfcb90d3"
     }
   ]
 }
