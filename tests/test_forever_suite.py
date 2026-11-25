@@ -266,7 +266,7 @@ def test_toc_and_all_lua_files_static_compliance() -> None:
     assert meta["SavedVariables"] == "ForeverSuiteDB"
     assert meta["SavedVariablesPerCharacter"] == "ForeverSuiteCharDB"
     assert meta["AddonCompartmentFunc"] == "ForeverSuite_OnAddonCompartmentClick"
-    assert len(files) == 20
+    assert len(files) == 21
 
     all_c_calls: set[str] = set()
     for lua_file in files:
@@ -296,6 +296,7 @@ def test_ac1_load_integrity_reload_3x_and_global_hygiene() -> None:
         "SLASH_FOREVERSUITE1",
         "SLASH_FOREVERSUITE2",
         "SLASH_FOREVERSUITEWAY1",
+        "SLASH_FOREVERSUITEDIAG1",
     }
 
     for _ in range(3):
@@ -1014,7 +1015,7 @@ def test_v030_ac1_settings_panel_esc_idempotency_tabs_drawer_and_readonly_rollba
 def test_v030_ac4_module_contract_headers_and_ui_line_budget() -> None:
     rt = WoWForeverMockRuntime(ADDON_ROOT)
     _, toc_files = rt.parse_toc_files()
-    assert len(toc_files) == 20
+    assert len(toc_files) == 21
 
     required_headers = ("-- Responsibility:", "-- Dependencies:", "-- Public API:", "-- Combat/Secret Safety:")
     for lua_path in toc_files:

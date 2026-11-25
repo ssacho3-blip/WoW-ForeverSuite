@@ -1,0 +1,11 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Data (LoD)
+## Notes: ForeverSuite v2 LoadOnDemand 도감 데이터팩 (도감 열람 시에만 RAM 적재)
+## Author: Youngseo Cho
+## Version: 2.0.0-alpha.1
+## LoadOnDemand: 1
+## Dependencies: ForeverSuiteV2
+
+DataBootstrap.lua
+Pack_dungeons.lua
+Pack_fishing.lua

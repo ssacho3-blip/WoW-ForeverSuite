@@ -57,7 +57,7 @@ def test_toc_lua_parity_order_line_budget_and_syntax_across_all_addons() -> None
     assert fs_names.index("FishingTargetModel.lua") < fs_names.index("FishingTargetHud.lua")
 
     bridge_toc = _verify_addon_dir(REPO_ROOT / "ForeverSuite_GJBridge")
-    assert [p.name for p in bridge_toc] == ["State.lua", "Branding.lua", "Bridge.lua"]
+    assert [p.name for p in bridge_toc] == ["State.lua", "Branding.lua", "Bridge.lua", "UsageCanary.lua"]
 
 
 def test_luacheck_config_and_optional_binary_gate() -> None:

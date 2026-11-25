@@ -1,0 +1,25 @@
+{
+  "generator": "fsx 0.1.0",
+  "packs": [
+    {
+      "id": "dungeons",
+      "category": "dungeon",
+      "license": "MIT-Personal",
+      "source": "ForeverSuite v2 Curated",
+      "source_sha256": "24e715dff5ef347a032573ae22524dce933992c6be29ce0c807fa688924b05e4",
+      "entry_count": 2,
+      "output_file": "Pack_dungeons.lua",
+      "output_sha256": "e4a376db7acb57f9c75a1d299c6bea5d7dcfd8648d03385538388c7c4d6929cc"
+    },
+    {
+      "id": "fishing",
+      "category": "profession",
+      "license": "MIT-Personal",
+      "source": "ForeverSuite v2 Curated",
+      "source_sha256": "15a30c8c657ac252a5370d9e33cd29e440ca5b8ac3e708b86db3e92d7e41aee2",
+      "entry_count": 3,
+      "output_file": "Pack_fishing.lua",
+      "output_sha256": "50f9e4d30a60c2f0f8bed421a2ec5a7eec0cc7ba2fb20048f6662798a0a3a635"
+    }
+  ]
+}

@@ -103,7 +103,7 @@ def test_gj_bridge_toc_and_lua_static_compliance() -> None:
     assert "Bridge.lua" in raw_toc
 
     toc_files = _parse_bridge_toc_files()
-    assert [p.name for p in toc_files] == ["State.lua", "Branding.lua", "Bridge.lua"]
+    assert [p.name for p in toc_files] == ["State.lua", "Branding.lua", "Bridge.lua", "UsageCanary.lua"]
 
     for lua_path in toc_files:
         assert lua_path.is_file(), f"Missing bridge file: {lua_path}"

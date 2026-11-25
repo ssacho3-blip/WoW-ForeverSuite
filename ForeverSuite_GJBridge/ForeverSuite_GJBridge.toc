@@ -13,3 +13,4 @@
 State.lua
 Branding.lua
 Bridge.lua
+UsageCanary.lua
