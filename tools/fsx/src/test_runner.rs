@@ -540,7 +540,7 @@ end
 
 C_AddOns = {
     GetAddOnMetadata = function(_, field)
-        if field == "Version" then return "2.0.0-alpha.4" end
+        if field == "Version" then return "2.0.0" end
         if field == "Interface" then return "16001, 120105" end
         return nil
     end,
@@ -725,7 +725,7 @@ fn setup_vm(v2_root: &Path) -> Result<Lua> {
         load_addon_into_vm(&lua, &media_dir)?;
     }
 
-    let addon_dir = v2_root.join("ForeverSuiteV2");
+    let addon_dir = v2_root.join("ForeverSuite");
     if addon_dir.is_dir() {
         load_addon_into_vm(&lua, &addon_dir)?;
     }

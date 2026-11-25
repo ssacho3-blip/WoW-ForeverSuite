@@ -35,7 +35,7 @@ function CommandHub:EnsureWindow()
     if self.window then
         return self.window
     end
-    local win = W.Window("ForeverSuiteV2CommandHub", 760, 520, "✦ ForeverSuite v2")
+    local win = W.Window("ForeverSuiteV2CommandHub", 760, 520, "✦ ForeverSuite")
     win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 20)
 
     local search = W.SearchBox(win._header, 210, "설정 · 도감 전역 검색...", function(q)
@@ -49,7 +49,7 @@ function CommandHub:EnsureWindow()
 
     local moveBtn = W.Button(win._header, "HUD 이동", 78, 24, function()
         local unlocked = ns.UI.HudLayout:ToggleUnlock()
-        ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs2 move)" or "HUD 위치 잠금 완료")
+        ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금 완료")
     end, true)
     moveBtn:SetPoint("RIGHT", win._closeBtn, "LEFT", -T.SPACE.SM, 0)
 

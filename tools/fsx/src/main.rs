@@ -51,6 +51,9 @@ enum Commands {
         /// Explicit opt-out when WTF backup is intentionally skipped
         #[arg(long)]
         no_wtf_backup: bool,
+        /// Archive and remove legacy ForeverSuiteV2, ForeverSuite_GJBridge, and GodJohnson* folders
+        #[arg(long)]
+        prune_legacy: bool,
         /// Validate and plan deployment without writing to AddOns
         #[arg(long)]
         dry_run: bool,
@@ -116,8 +119,16 @@ fn main() -> Result<()> {
             addons_dir,
             wtf_dir,
             no_wtf_backup,
+            prune_legacy,
             dry_run,
-        } => install::run_install(&source, &addons_dir, wtf_dir.as_deref(), no_wtf_backup, dry_run),
+        } => install::run_install(
+            &source,
+            &addons_dir,
+            wtf_dir.as_deref(),
+            no_wtf_backup,
+            prune_legacy,
+            dry_run,
+        ),
         Commands::TaintReport {
             taint_log,
             saved_vars,

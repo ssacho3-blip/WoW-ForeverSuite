@@ -16,14 +16,14 @@ local DEFAULT_SCHEMAS = {
         section = "quest",
         key = "defaultTrackerMode",
         type = "enum",
-        default = "coexist",
+        default = "hide",
         label = "Blizzard 기본 퀘스트 추적기 모드",
-        desc = "coexist(무접촉 기본) / dim(알파만) / hide(비전투 숨김, v1 공존 시 자동 양보)",
+        desc = "hide(기본 · 중복 방지) / dim(흐리게) / coexist(기본 공존)",
         combatSafe = false,
         options = {
-            { value = "coexist", label = "공존(기본)", width = 86 },
+            { value = "hide", label = "숨김(기본)", width = 82 },
             { value = "dim", label = "흐리게", width = 76 },
-            { value = "hide", label = "숨김", width = 72 },
+            { value = "coexist", label = "공존", width = 72 },
         },
     },
     {
@@ -58,7 +58,7 @@ local DEFAULT_SCHEMAS = {
         key = "autoAccept",
         type = "boolean",
         default = true,
-        label = "퀘스트 자동 수락 (Shift 우회, v1 공존 시 양보)",
+        label = "퀘스트 자동 수락 (Shift 우회 · PvP 차단)",
         desc = "NPC 대화 시 퀘스트 자동 수락",
         combatSafe = true,
     },
@@ -148,8 +148,8 @@ local DEFAULT_SCHEMAS = {
         key = "fastLoot",
         type = "boolean",
         default = true,
-        label = "고속 자동 루팅 (autoLoot CVar XOR Shift)",
-        desc = "v1 공존 시 자동 양보",
+        label = "고속 자동 루팅 (autoLoot CVar XOR 수정키)",
+        desc = "전리품 창 열림 시 즉시 역순 획득",
         combatSafe = true,
     },
     {
@@ -196,11 +196,7 @@ local Bootstrap = {
 ns.Features.Bootstrap = Bootstrap
 
 local function ApplyTrackerModeSafely(requestedMode)
-    if ns.Api.SafeAPI.IsV1Loaded() then
-        ns.Blizzard.ObjectiveTrackerAdapter:ApplyMode("coexist")
-        return
-    end
-    ns.Blizzard.ObjectiveTrackerAdapter:ApplyMode(requestedMode or "coexist")
+    ns.Blizzard.ObjectiveTrackerAdapter:ApplyMode(requestedMode or "hide")
 end
 
 local function RecordTaintEvent(kind, addonName, funcName)
@@ -241,7 +237,7 @@ function Bootstrap:Init()
 
     ns.Blizzard.WorldMapAdapter:Init()
 
-    local mode = ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "coexist"
+    local mode = ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide"
     ApplyTrackerModeSafely(mode)
 
     ns.Api.EventBus:Subscribe("setting:changed", function(sec, key, val)
@@ -392,14 +388,13 @@ function Bootstrap:Init()
     end)
 
     if type(_G.SlashCmdList) == "table" then
-        _G.SLASH_FOREVERSUITEV21 = "/fs2"
-        _G.SlashCmdList["FOREVERSUITEV2"] = function(raw)
+        local function HandleMainSlash(raw)
             local trimmed = string_match(tostring(raw or ""), "^%s*(.-)%s*$") or ""
             local cmd, rest = string_match(trimmed, "^(%S+)%s*(.*)$")
             cmd = cmd and string_lower(cmd) or ""
             if cmd == "move" then
                 local unlocked = ns.UI.HudLayout:ToggleUnlock()
-                ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs2 move)" or "HUD 위치 잠금")
+                ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금")
             elseif cmd == "codex" or cmd == "ledger" or cmd == "settings" then
                 local win = ns.UI.CommandHub:EnsureWindow()
                 win:Show()
@@ -421,21 +416,30 @@ function Bootstrap:Init()
                 ns.Features.NavigationHud:Clear()
                 ns.Api.SafeAPI.Print("웨이포인트를 해제했습니다.")
             elseif cmd == "help" then
-                ns.Api.SafeAPI.Print("명령어: /fs2 [ledger|codex|settings|move|protect <ID/링크>|cheap|layer|xp [reset]|pull <3~30|0>|timer|clearway] · /way2 <x> <y> [이름]")
+                ns.Api.SafeAPI.Print("명령어: /fs [ledger|codex|settings|move|protect <ID/링크>|cheap|layer|xp [reset]|pull <3~30|0>|timer|clearway] · /way <x> <y> [이름]")
             else
                 ns.UI.CommandHub:Toggle()
             end
         end
 
-        _G.SLASH_FOREVERSUITEWAYV21 = "/way2"
-        _G.SlashCmdList["FOREVERSUITEWAYV2"] = function(raw)
+        _G.SLASH_FOREVERSUITE1 = "/fs"
+        _G.SLASH_FOREVERSUITE2 = "/fs2"
+        _G.SlashCmdList["FOREVERSUITE"] = HandleMainSlash
+        _G.SlashCmdList["FOREVERSUITEV2"] = HandleMainSlash
+
+        local function HandleWaySlash(raw)
             ns.Features.NavigationHud:HandleWaySlash(raw)
         end
+        _G.SLASH_FOREVERSUITEWAY1 = "/way"
+        _G.SLASH_FOREVERSUITEWAY2 = "/way2"
+        _G.SlashCmdList["FOREVERSUITEWAY"] = HandleWaySlash
+        _G.SlashCmdList["FOREVERSUITEWAYV2"] = HandleWaySlash
     end
 
     self.initialized = true
 end
 
+_G.ForeverSuite = ns
 _G.ForeverSuiteV2 = ns
 
 ns.Api.EventBus:OnEvent("v2:boot", "PLAYER_LOGIN", function()

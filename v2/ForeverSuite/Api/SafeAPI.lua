@@ -149,13 +149,11 @@ function SafeAPI.IsAddOnLoadedByName(name)
     return SafeAPI.GetAddOnLoadedState(name) == true
 end
 
--- Fail-closed v1 coexistence check: if AddOn load state cannot be verified, yield safely to prevent double automation.
+-- Legacy conflict check: only yields if obsolete ForeverSuite_GJBridge or preview ForeverSuiteV2 is loaded.
+-- Never detects official ForeverSuite 2.0.0 as a conflict.
 function SafeAPI.IsV1Loaded()
-    local st = SafeAPI.GetAddOnLoadedState("ForeverSuite")
-    if st == nil then
-        return true
-    end
-    return st == true
+    return SafeAPI.GetAddOnLoadedState("ForeverSuite_GJBridge") == true
+        or SafeAPI.GetAddOnLoadedState("ForeverSuiteV2") == true
 end
 
 function SafeAPI.GetBagFreeSlots()
@@ -262,7 +260,7 @@ end
 function SafeAPI.Print(msg)
     local frame = _G.DEFAULT_CHAT_FRAME
     if type(frame) == "table" and type(frame.AddMessage) == "function" then
-        pcall(frame.AddMessage, frame, "|cffd4af37[ForeverSuite v2]|r " .. tostring(msg or ""))
+        pcall(frame.AddMessage, frame, "|cffd4af37[ForeverSuite]|r " .. tostring(msg or ""))
     end
 end
 

@@ -1,5 +1,5 @@
 -- Module: Features/DiagnosticsPage.lua
--- Responsibility: Diagnostics, live Taint Canary breakdown, module active/yielded matrix, GodJohnson exit readiness, and quick actions inside L2 /fs2 Command Hub.
+-- Responsibility: Clean standalone ForeverSuite 2.0.0 diagnostics, live Taint Canary count, LoD pack stats, and module status matrix inside /fs Command Hub.
 -- Layer: Features (zero raw CreateFrame / C_*; uses UI/Widgets + Api/SafeAPI).
 local _, ns = ...
 ns.Features = ns.Features or {}
@@ -21,12 +21,12 @@ local DiagnosticsPage = {
 ns.Features.DiagnosticsPage = DiagnosticsPage
 
 local MODULE_STATUS_DEFS = {
-    { label = "상점 자동 수리·판매 (Merchant)", yieldsToV1 = true, toggles = { { "merchant", "autoRepair" }, { "merchant", "autoSellJunk" } } },
-    { label = "퀘스트 자동 수락·완료 (QuestAuto)", yieldsToV1 = true, toggles = { { "quest", "autoAccept" }, { "quest", "autoTurnIn" }, { "quest", "autoSuperTrack" } } },
-    { label = "편의 자동화 (QoL · 루팅/부활/전장)", yieldsToV1 = true, toggles = { { "qol", "fastLoot" }, { "qol", "autoReleaseBG" }, { "qol", "autoAcceptRes" }, { "qol", "autoAcceptFriends" }, { "qol", "maxCameraZoom" } } },
-    { label = "웨이포인트 내비 HUD (/way2)", yieldsToV1 = false, toggles = nil },
-    { label = "전투·버프 & 인던 타이머 HUD", yieldsToV1 = false, toggles = { { "combat", "buffReminder" }, { "combat", "lowHealthAlert" }, { "combat", "showEncounterTimer" } } },
-    { label = "낚시 카드 & 5종 LoD 도감", yieldsToV1 = false, toggles = { { "profession", "showFishingCard" } } },
+    { label = "상점 자동 수리·판매 (Merchant)", toggles = { { "merchant", "autoRepair" }, { "merchant", "autoSellJunk" } } },
+    { label = "퀘스트 추적기 & 자동화 (Quest)", toggles = { { "quest", "autoAccept" }, { "quest", "autoTurnIn" }, { "quest", "autoSuperTrack" } } },
+    { label = "편의 자동화 (QoL · 루팅/부활/전장)", toggles = { { "qol", "fastLoot" }, { "qol", "autoReleaseBG" }, { "qol", "autoAcceptRes" }, { "qol", "autoAcceptFriends" }, { "qol", "maxCameraZoom" } } },
+    { label = "웨이포인트 내비 & 미니맵 · 툴팁", toggles = { { "ui", "showMinimapButton" }, { "ui", "enhanceTooltips" } } },
+    { label = "전투·버프 & 인던 타이머 HUD", toggles = { { "combat", "buffReminder" }, { "combat", "lowHealthAlert" }, { "combat", "showEncounterTimer" } } },
+    { label = "낚시 카드 & 5종 LoD 도감", toggles = { { "profession", "showFishingCard" } } },
 }
 
 local function IsModuleEnabledInSettings(def)
@@ -43,7 +43,7 @@ end
 
 function DiagnosticsPage:Build(parent)
     self.host = parent
-    local hdr = W.SectionHeader(parent, "Zero-Taint 진단 · 모듈 상태 · GodJohnson 전환 준비도")
+    local hdr = W.SectionHeader(parent, "ForeverSuite 2.0 · Zero-Taint 진단 & HUD 레이아웃")
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     hdr:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
 
@@ -80,7 +80,7 @@ function DiagnosticsPage:Build(parent)
     end)
     xpResetBtn:SetPoint("LEFT", loadBtn, "RIGHT", T.SPACE.SM, 0)
 
-    local modHdr = W.SectionHeader(parent, "모듈 활성 · v1 공존 양보 매트릭스")
+    local modHdr = W.SectionHeader(parent, "핵심 모듈 상태")
     modHdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -162)
     modHdr:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -162)
 
@@ -103,7 +103,6 @@ function DiagnosticsPage:OnShow()
         return
     end
     local db = ns.Api.ProfileStore.db
-    local hasV1Backup = (type(db) == "table" and type(db._v1_backup) == "table") and "보존됨" or "없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     local pending = ns.Secure.CombatQueue:PendingCount()
     local taintText
@@ -116,54 +115,32 @@ function DiagnosticsPage:OnShow()
     end
 
     self.summaryLabel:SetText(
-        "렐름: " .. realm ..
+        "버전: 2.0.0  |  렐름: " .. realm ..
         "  |  Taint: " .. taintText ..
-        "  |  v1 백업: " .. hasV1Backup ..
         "  |  전투큐: " .. tostring(pending) .. "건"
     )
-
-    local gjPres = ns.Api.SafeAPI.GetAddOnPresenceState("GodJohnson")
-    local bridgePres = ns.Api.SafeAPI.GetAddOnPresenceState("ForeverSuite_GJBridge")
-    local gjText
-    if gjPres == "LOADED" or bridgePres == "LOADED" then
-        gjText = "GodJohnson 공존 중"
-    elseif gjPres == "NOT_INSTALLED" and bridgePres == "NOT_INSTALLED" then
-        gjText = "GodJohnson 미설치 (완전 독립)"
-    elseif (gjPres == "DISABLED" or gjPres == "NOT_INSTALLED") and (bridgePres == "DISABLED" or bridgePres == "NOT_INSTALLED") then
-        gjText = "GodJohnson 미로드 (독립 완료)"
-    else
-        gjText = "확인 불가 (AddOn API 오류)"
-    end
 
     local packCount = 0
     local entryCount = 0
     if type(_G.ForeverSuiteData) == "table" and type(_G.ForeverSuiteData.packs) == "table" then
         for _, p in pairs(_G.ForeverSuiteData.packs) do
-            packCount = packCount + 1
-            if type(p.entries) == "table" then
-                entryCount = entryCount + #p.entries
+            if type(p) == "table" then
+                packCount = packCount + 1
+                if type(p.entries) == "table" then
+                    entryCount = entryCount + #p.entries
+                end
             end
         end
     end
     local dataText = (packCount > 0)
         and (tostring(packCount) .. "팩 / " .. tostring(entryCount) .. "항목 로드됨")
         or "미로드 (로그인 RAM 0MB)"
-    self.readinessLabel:SetText("전환 상태: " .. gjText .. "  |  도감 LoD: " .. dataText)
+    self.readinessLabel:SetText("독립 실행: Zero-Taint 6-Layer  |  도감 LoD: " .. dataText)
 
-    local v1State = ns.Api.SafeAPI.GetAddOnLoadedState("ForeverSuite")
     for _, item in ipairs(self.moduleRows) do
-        local text, col
-        if item.def.yieldsToV1 and v1State ~= false then
-            text = (v1State == true) and "v1 양보" or "양보(v1 확인불가)"
-            col = T.SEMANTIC.WARN
-        elseif not IsModuleEnabledInSettings(item.def) then
-            text = "비활성(설정 꺼짐)"
-            col = T.TEXT.MUTED
-        else
-            text = "v2 활성"
-            col = T.SEMANTIC.SUCCESS
-        end
-        item.row._right:SetText(text)
+        local active = IsModuleEnabledInSettings(item.def)
+        item.row._right:SetText(active and "활성" or "비활성(설정 꺼짐)")
+        local col = active and T.SEMANTIC.SUCCESS or T.TEXT.MUTED
         item.row._right:SetTextColor(col[1], col[2], col[3], 1)
     end
 end

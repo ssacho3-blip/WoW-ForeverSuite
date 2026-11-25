@@ -37,7 +37,7 @@ _G.__FS_MOCK.shiftDown = false
 
 -- Tooltip on hover
 mb:FireScript("OnEnter")
-assert(#_G.GameTooltip._lines >= 4 and string.find(_G.GameTooltip._lines[1].left, "ForeverSuite v2", 1, true))
+assert(#_G.GameTooltip._lines >= 4 and string.find(_G.GameTooltip._lines[1].left, "ForeverSuite", 1, true))
 
 -- Toggle ui.showMinimapButton hides & shows
 ns.Api.ProfileStore:Set("ui", "showMinimapButton", false)
@@ -113,18 +113,19 @@ __FS_FIRE_EVENT("RESURRECT_REQUEST", "외부시전자")
 assert(_G.__FS_MOCK.acceptedRes == 0, "unresolvable caster (UnitExists == false) must fail closed")
 _G.__FS_MOCK.unitExists = {}
 
--- 6. Phase 2B Nit #5 & GLM Note #2: DoesAddOnExist == false distinguishes NOT_INSTALLED without triggering IsAddOnLoaded errors, and missing taintTotal shows "집계 없음"
+-- 6. Standalone DiagnosticsPage: missing taintTotal shows "집계 없음", DoesAddOnExist == false returns NOT_INSTALLED cleanly
 local origIsLoaded = C_AddOns.IsAddOnLoaded
 C_AddOns.IsAddOnLoaded = function(name)
-    if name == "GodJohnson" or name == "ForeverSuite_GJBridge" or name == "ForeverSuite" then
+    if name == "ForeverSuite_GJBridge" then
         error("uninstalled_addon_error")
     end
     return origIsLoaded(name)
 end
-_G.__FS_MOCK.addonExists = { GodJohnson = false, ForeverSuite_GJBridge = false, ForeverSuite = false }
-assert(ns.Api.SafeAPI.IsV1Loaded() == false, "uninstalled v1 ForeverSuite (DoesAddOnExist==false) must NOT falsely yield")
+_G.__FS_MOCK.addonExists = { ForeverSuite_GJBridge = false }
+assert(ns.Api.SafeAPI.GetAddOnPresenceState("ForeverSuite_GJBridge") == "NOT_INSTALLED")
+assert(ns.Api.SafeAPI.IsV1Loaded() == false)
 ns.UI.CommandHub:SelectPage("diagnostics")
-assert(string.find(ns.Features.DiagnosticsPage.readinessLabel:GetText(), "GodJohnson 미설치 (완전 독립)", 1, true))
+assert(string.find(ns.Features.DiagnosticsPage.summaryLabel:GetText(), "버전: 2.0.0", 1, true))
 
 -- Missing taintTotal displays "집계 없음" instead of fabricated "0건"
 ns.Api.ProfileStore.db.v2.diagnostics.taintTotal = nil
@@ -133,8 +134,8 @@ assert(string.find(ns.Features.DiagnosticsPage.summaryLabel:GetText(), "Taint: �
 C_AddOns.IsAddOnLoaded = origIsLoaded
 _G.__FS_MOCK.addonExists = {}
 
--- 7. /fs2 help and /fs2 clearway slash commands
-_G.SlashCmdList["FOREVERSUITEV2"]("help")
-assert(string.find(_G.__FS_MOCK.printed[#_G.__FS_MOCK.printed], "/way2", 1, true))
-_G.SlashCmdList["FOREVERSUITEV2"]("clearway")
+-- 7. /fs help and /fs clearway primary slash commands (plus /way)
+_G.SlashCmdList["FOREVERSUITE"]("help")
+assert(string.find(_G.__FS_MOCK.printed[#_G.__FS_MOCK.printed], "/way", 1, true))
+_G.SlashCmdList["FOREVERSUITE"]("clearway")
 assert(string.find(_G.__FS_MOCK.printed[#_G.__FS_MOCK.printed], "웨이포인트를 해제", 1, true))

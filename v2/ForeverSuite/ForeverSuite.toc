@@ -1,10 +1,10 @@
 ## Interface: 16001, 120105
-## Title: |cffd4af37Forever|rSuite v2 (Preview)
-## Notes: WoW Forever 1.60.1 Zero-Taint · Obsidian & Burnished Gold 통일 UI 통합 애드온 (v1과 안전 공존)
+## Title: |cffd4af37Forever|rSuite
+## Notes: WoW Forever 1.60.1 Zero-Taint · Obsidian & Burnished Gold 통일 UI 통합 애드온
 ## Author: Youngseo Cho
-## Version: 2.0.0-alpha.4
-## SavedVariables: ForeverSuiteV2DB
-## SavedVariablesPerCharacter: ForeverSuiteV2CharDB
+## Version: 2.0.0
+## SavedVariables: ForeverSuiteV2DB, ForeverSuiteDB
+## SavedVariablesPerCharacter: ForeverSuiteV2CharDB, ForeverSuiteCharDB
 ## OptionalDeps: ForeverSuite_Media
 
 Domain/QuestTrackerModel.lua

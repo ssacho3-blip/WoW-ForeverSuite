@@ -3,17 +3,15 @@ local ns = _G.ForeverSuiteV2
 
 __FS_FIRE_EVENT("PLAYER_LOGIN")
 
--- 1. ObjectiveTrackerAdapter default "coexist" is a TRUE NO-OP (zero Show/SetAlpha/HookScript calls!)
+-- 1. Standalone 2.0.0 default "hide" hides Blizzard ObjectiveTrackerFrame (zero duplicate quest tracker!),
+--    and transitioning hide -> dim -> coexist restores Show() and Alpha cleanly!
 local adapter = ns.Blizzard.ObjectiveTrackerAdapter
-assert(adapter.mode == "coexist")
-assert(adapter.touched == false and adapter.hooked == false)
-assert(_G.__FS_MOCK.objTrackerTouches == 0, "coexist default must NEVER touch ObjectiveTrackerFrame")
-
--- Transition to hide -> dim restores Show() and Alpha=0.15!
-adapter:ApplyMode("hide")
+assert(adapter.mode == "hide")
 assert(_G.ObjectiveTrackerFrame:IsShown() == false and _G.ObjectiveTrackerFrame:GetAlpha() == 0)
 adapter:ApplyMode("dim")
 assert(_G.ObjectiveTrackerFrame:IsShown() == true and _G.ObjectiveTrackerFrame:GetAlpha() == 0.15)
+adapter:ApplyMode("coexist")
+assert(_G.ObjectiveTrackerFrame:IsShown() == true and _G.ObjectiveTrackerFrame:GetAlpha() == 1.0)
 
 -- 2. QuestItemDock UIParent-direct SecureActionButton + combat badge freeze alignment
 local dock = ns.Secure.QuestItemDock

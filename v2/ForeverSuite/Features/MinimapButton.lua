@@ -30,7 +30,7 @@ function MinimapButton:Init()
                     ns.UI.CommandHub:SelectPage("ledger")
                 else
                     local unlocked = ns.UI.HudLayout:ToggleUnlock()
-                    ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs2 move)" or "HUD 위치 잠금")
+                    ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금")
                 end
             else
                 ns.UI.CommandHub:Toggle()
@@ -41,11 +41,11 @@ function MinimapButton:Init()
             if type(gt) == "table" and type(gt.SetOwner) == "function" then
                 local ok = pcall(gt.SetOwner, gt, selfBtn, "ANCHOR_LEFT")
                 if ok then
-                    ns.Blizzard.TooltipAdapter.AddLine(gt, "✦ ForeverSuite v2", ns.Api.SafeAPI.GetCanonicalRealm(), T.TEXT.GOLD)
+                    ns.Blizzard.TooltipAdapter.AddLine(gt, "✦ ForeverSuite", ns.Api.SafeAPI.GetCanonicalRealm(), T.TEXT.GOLD)
                     local free = ns.Api.SafeAPI.GetBagFreeSlots()
                     local freeTxt = (type(free) == "number") and (tostring(free) .. "칸") or "집계 없음"
                     ns.Blizzard.TooltipAdapter.AddLine(gt, "빈 가방 슬롯", freeTxt, T.TEXT.PRIMARY)
-                    ns.Blizzard.TooltipAdapter.AddLine(gt, "좌클릭", "/fs2 통합 허브 열기", T.TEXT.SECONDARY)
+                    ns.Blizzard.TooltipAdapter.AddLine(gt, "좌클릭", "/fs 통합 허브 열기", T.TEXT.SECONDARY)
                     ns.Blizzard.TooltipAdapter.AddLine(gt, "우클릭 / Shift+우클릭", "HUD 이동 / 골드 원장", T.TEXT.SECONDARY)
                     if type(gt.Show) == "function" then
                         pcall(gt.Show, gt)

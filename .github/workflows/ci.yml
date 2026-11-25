@@ -1,4 +1,4 @@
-name: ForeverSuite CI
+name: ForeverSuite v2 CI
 
 on:
   push:
@@ -13,42 +13,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Lua 5.1 & luacheck
+      - name: Run Rust fsx unit tests
+        run: cargo test --manifest-path tools/fsx/Cargo.toml
+
+      - name: Build fsx and verify Zero-Taint 6-Layer AST & Lua 5.1 VM suites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y lua5.1 liblua5.1-dev luarocks
-          sudo luarocks --lua-version=5.1 install luacheck 1.1.2-1
-
-      - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
-
-      - name: Run luacheck static analysis
-        run: luacheck --config .luacheckrc ForeverSuite ForeverSuite_GJBridge
-
-      - name: Run BDD/DDT & Lua static suites
-        run: pytest tests/ -v --strict-markers -m "not upstream_local"
-
-      - name: Build and verify cross-platform ZIP & PE32+ Windows installer
-        run: |
-          python3 scripts/package_release.py
-          SUITE_VER=$(python3 -c 'import pathlib; from scripts.build_win_exe import read_suite_version; print(read_suite_version(pathlib.Path(".")))')
-          ZIP_PATH="dist/ForeverSuite-v${SUITE_VER}.zip"
-          EXE_PATH="dist/ForeverSuite_Installer.exe"
-          test -s "$ZIP_PATH"
-          python3 -m zipfile -t "$ZIP_PATH"
-          test -s "$EXE_PATH"
-          python3 -c 'import pathlib; assert pathlib.Path("dist/ForeverSuite_Installer.exe").read_bytes()[:2] == b"MZ"'
-
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: foreversuite-dist
-          path: |
-            dist/ForeverSuite-v*.zip
-            dist/ForeverSuite_Installer.exe
-          if-no-files-found: error
+          cargo build --manifest-path tools/fsx/Cargo.toml
+          ./tools/fsx/target/debug/fsx check v2/ForeverSuite
+          ./tools/fsx/target/debug/fsx check v2/ForeverSuite_Media
+          ./tools/fsx/target/debug/fsx check v2/ForeverSuite_Data
+          ./tools/fsx/target/debug/fsx test v2
+          ./tools/fsx/target/debug/fsx install --source v2 --addons-dir /tmp --prune-legacy --dry-run

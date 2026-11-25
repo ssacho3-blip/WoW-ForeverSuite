@@ -8,7 +8,7 @@ local type = type
 local pairs = pairs
 
 local ProfileMigrationModel = {
-    TARGET_SCHEMA = 3,
+    TARGET_SCHEMA = 4,
 }
 ns.Domain.ProfileMigrationModel = ProfileMigrationModel
 
@@ -102,6 +102,12 @@ function ProfileMigrationModel.Migrate(rawV2DB, defaults, optionalLegacyV1DB)
                 db.v2.diagnostics.importedV1TaintCounts = DeepCopy(srcLegacy._diagnostics.taintCounts)
             end
             db._legacyImported = true
+        end
+
+        -- Schema 3 -> 4 (Phase 3 standalone cutover): switch preview-era "coexist" default to "hide"
+        -- so players never see duplicate Blizzard + ForeverSuite quest trackers after v1 removal.
+        if curSchema == 3 and type(db.v2.settings.quest) == "table" and db.v2.settings.quest.defaultTrackerMode == "coexist" then
+            db.v2.settings.quest.defaultTrackerMode = "hide"
         end
 
         db.schemaVersion = ProfileMigrationModel.TARGET_SCHEMA

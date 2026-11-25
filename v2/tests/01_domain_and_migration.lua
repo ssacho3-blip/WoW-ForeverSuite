@@ -43,17 +43,22 @@ local legacyV1 = {
     _diagnostics = { taintCounts = { ["ForeverSuite:Test"] = 3 } },
 }
 local migrated, ro, status = ns.Domain.ProfileMigrationModel.Migrate({}, {
-    quest = { defaultTrackerMode = "coexist" },
+    quest = { defaultTrackerMode = "hide" },
 }, legacyV1)
-assert(status == "OK" and ro == false and migrated.schemaVersion == 3)
+assert(status == "OK" and ro == false and migrated.schemaVersion == 4)
 assert(migrated.v2.protectedItems[6948] == true)
-assert(migrated.v2.settings.quest.defaultTrackerMode == "coexist", "must NOT auto-import v1 hide into v2")
+assert(migrated.v2.settings.quest.defaultTrackerMode == "hide")
 assert(migrated.v2.diagnostics.importedV1TaintCounts["ForeverSuite:Test"] == 3)
 
--- Shape repair on corrupted schema-3 DB + backup/restore
-local broken = { schemaVersion = 3, v2 = "corrupted" }
-local repaired, rro = ns.Domain.ProfileMigrationModel.Migrate(broken, { quest = { defaultTrackerMode = "coexist" } })
-assert(rro == false and type(repaired.v2.diagnostics) == "table" and repaired.v2.settings.quest.defaultTrackerMode == "coexist")
+-- Schema 3 -> 4 upgrade switches preview-era "coexist" to "hide" to eliminate duplicate quest trackers
+local prevV3 = { schemaVersion = 3, v2 = { settings = { quest = { defaultTrackerMode = "coexist" } } } }
+local upgradedV4 = ns.Domain.ProfileMigrationModel.Migrate(prevV3, { quest = { defaultTrackerMode = "hide" } })
+assert(upgradedV4.schemaVersion == 4 and upgradedV4.v2.settings.quest.defaultTrackerMode == "hide")
+
+-- Shape repair on corrupted schema-4 DB + backup/restore
+local broken = { schemaVersion = 4, v2 = "corrupted" }
+local repaired, rro = ns.Domain.ProfileMigrationModel.Migrate(broken, { quest = { defaultTrackerMode = "hide" } })
+assert(rro == false and type(repaired.v2.diagnostics) == "table" and repaired.v2.settings.quest.defaultTrackerMode == "hide")
 
 local withPrev = { oldField = 42 }
 local upg = ns.Domain.ProfileMigrationModel.Migrate(withPrev, {})

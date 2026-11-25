@@ -56,11 +56,15 @@ __FS_FIRE_EVENT("LOOT_READY")
 assert(#_G.__FS_MOCK.lootedSlots == 0, "unreadable autoLootDefault CVar must fail closed")
 _G.__FS_MOCK.cvars.autoLootDefault = "1"
 
--- v1 loaded -> yields cleanly
+-- ForeverSuite 2.0.0 itself being loaded must NEVER yield to itself; only legacy ForeverSuite_GJBridge yields!
 _G.__FS_MOCK.loadedAddOns["ForeverSuite"] = true
 __FS_FIRE_EVENT("LOOT_READY")
-assert(#_G.__FS_MOCK.lootedSlots == 0, "FastLoot must yield when v1 ForeverSuite is loaded")
-_G.__FS_MOCK.loadedAddOns["ForeverSuite"] = false
+assert(#_G.__FS_MOCK.lootedSlots == 3, "ForeverSuite 2.0.0 must NEVER self-yield when loaded as ForeverSuite")
+_G.__FS_MOCK.lootedSlots = {}
+_G.__FS_MOCK.loadedAddOns["ForeverSuite_GJBridge"] = true
+__FS_FIRE_EVENT("LOOT_READY")
+assert(#_G.__FS_MOCK.lootedSlots == 0, "FastLoot must yield if legacy ForeverSuite_GJBridge is somehow loaded")
+_G.__FS_MOCK.loadedAddOns["ForeverSuite_GJBridge"] = false
 
 -- 3. QoL BG-only Auto-Release Spirit (NEVER in dungeon, NEVER with Soulstone, NEVER on secret HasSoulstone)
 _G.__FS_MOCK.releasedSpirit = 0
@@ -269,25 +273,18 @@ _G.__FS_MOCK.money = savedMoney
 __FS_FIRE_EVENT("MERCHANT_CLOSED")
 _G.__FS_MOCK.asyncGuildRepair = false
 
--- 10. N3 + N4 Regressions: Honest DiagnosticsPage (disabled module & AddOn API error) + 46 LoD entries + SettingsPage tabs
-_G.SlashCmdList["FOREVERSUITEV2"]("")
+-- 10. Standalone DiagnosticsPage (zero GodJohnson text, honest disabled status) + 46 LoD entries + SettingsPage tabs
+_G.SlashCmdList["FOREVERSUITE"]("")
 ns.UI.CommandHub:SelectPage("diagnostics")
-assert(string.find(ns.Features.DiagnosticsPage.readinessLabel:GetText(), "GodJohnson 미로드", 1, true))
+assert(string.find(ns.Features.DiagnosticsPage.readinessLabel:GetText(), "독립 실행: Zero-Taint", 1, true))
+assert(not string.find(ns.Features.DiagnosticsPage.readinessLabel:GetText(), "GodJohnson", 1, true), "Phase 3 standalone UI must NOT mention GodJohnson")
 
--- N3: Turning off all QoL toggles must show "비활성(설정 꺼짐)"!
+-- Turning off all QoL toggles must show "비활성(설정 꺼짐)"!
 for _, k in ipairs({ "fastLoot", "autoReleaseBG", "autoAcceptRes", "autoAcceptFriends", "maxCameraZoom" }) do
     ns.Api.ProfileStore:Set("qol", k, false)
 end
 ns.Features.DiagnosticsPage:OnShow()
-assert(ns.Features.DiagnosticsPage.moduleRows[3].row._right:GetText() == "비활성(설정 꺼짐)", "N3: disabled QoL must NOT show v2 활성")
-
--- N3 + N4: Erroring C_AddOns.IsAddOnLoaded must NOT fabricate "독립 완료" and IsV1Loaded must fail closed (true)!
-local origIsLoaded = C_AddOns.IsAddOnLoaded
-C_AddOns.IsAddOnLoaded = function() error("api_down") end
-assert(ns.Api.SafeAPI.IsV1Loaded() == true, "N4: unreadable IsAddOnLoaded must fail closed to true (yield)")
-ns.Features.DiagnosticsPage:OnShow()
-assert(string.find(ns.Features.DiagnosticsPage.readinessLabel:GetText(), "확인 불가", 1, true), "N3: erroring IsAddOnLoaded must show 확인 불가")
-C_AddOns.IsAddOnLoaded = origIsLoaded
+assert(ns.Features.DiagnosticsPage.moduleRows[3].row._right:GetText() == "비활성(설정 꺼짐)", "N3: disabled QoL must NOT show 활성")
 
 ns.Api.SafeAPI.LoadDataPack()
 local totalEntries = 0
