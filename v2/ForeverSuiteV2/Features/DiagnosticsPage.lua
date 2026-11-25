@@ -106,24 +106,30 @@ function DiagnosticsPage:OnShow()
     local hasV1Backup = (type(db) == "table" and type(db._v1_backup) == "table") and "보존됨" or "없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     local pending = ns.Secure.CombatQueue:PendingCount()
-    local taintTotal = 0
-    if not ns.Api.ProfileStore.readOnly and db and db.v2 and db.v2.diagnostics and type(db.v2.diagnostics.taintTotal) == "number" then
-        taintTotal = db.v2.diagnostics.taintTotal
+    local taintText
+    if ns.Api.ProfileStore.readOnly then
+        taintText = "읽기전용"
+    elseif db and db.v2 and db.v2.diagnostics and type(db.v2.diagnostics.taintTotal) == "number" then
+        taintText = tostring(db.v2.diagnostics.taintTotal) .. "건"
+    else
+        taintText = "집계 없음"
     end
 
     self.summaryLabel:SetText(
         "렐름: " .. realm ..
-        "  |  Taint: " .. (ns.Api.ProfileStore.readOnly and "읽기전용" or (tostring(taintTotal) .. "건")) ..
+        "  |  Taint: " .. taintText ..
         "  |  v1 백업: " .. hasV1Backup ..
         "  |  전투큐: " .. tostring(pending) .. "건"
     )
 
-    local gjState = ns.Api.SafeAPI.GetAddOnLoadedState("GodJohnson")
-    local bridgeState = ns.Api.SafeAPI.GetAddOnLoadedState("ForeverSuite_GJBridge")
+    local gjPres = ns.Api.SafeAPI.GetAddOnPresenceState("GodJohnson")
+    local bridgePres = ns.Api.SafeAPI.GetAddOnPresenceState("ForeverSuite_GJBridge")
     local gjText
-    if gjState == true or bridgeState == true then
+    if gjPres == "LOADED" or bridgePres == "LOADED" then
         gjText = "GodJohnson 공존 중"
-    elseif gjState == false and bridgeState == false then
+    elseif gjPres == "NOT_INSTALLED" and bridgePres == "NOT_INSTALLED" then
+        gjText = "GodJohnson 미설치 (완전 독립)"
+    elseif (gjPres == "DISABLED" or gjPres == "NOT_INSTALLED") and (bridgePres == "DISABLED" or bridgePres == "NOT_INSTALLED") then
         gjText = "GodJohnson 미로드 (독립 완료)"
     else
         gjText = "확인 불가 (AddOn API 오류)"

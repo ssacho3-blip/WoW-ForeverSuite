@@ -93,6 +93,11 @@ _G.__FS_MOCK = {
     superTrackedQuestID = 0,
     userWaypoint = nil,
     loadedAddOns = {},
+    addonExists = {},
+    unitExists = {},
+    cursorX = 0,
+    cursorY = 0,
+    tooltipPostCalls = {},
     frames = {},
     printed = {},
     events = {},
@@ -181,6 +186,15 @@ function UnitAffectingCombat(unit)
     end
     return _G.__FS_MOCK.affectingCombat
 end
+function UnitExists(unit)
+    if _G.__FS_MOCK.unitExists and _G.__FS_MOCK.unitExists[unit] ~= nil then
+        return _G.__FS_MOCK.unitExists[unit]
+    end
+    return unit ~= nil and unit ~= ""
+end
+function GetCursorPosition()
+    return _G.__FS_MOCK.cursorX or 0, _G.__FS_MOCK.cursorY or 0
+end
 function AcceptResurrect() _G.__FS_MOCK.acceptedRes = _G.__FS_MOCK.acceptedRes + 1 end
 function GetNumGuildMembers() return #(_G.__FS_MOCK.guildMembers or {}) end
 function GetGuildRosterInfo(i) return (_G.__FS_MOCK.guildMembers or {})[i] end
@@ -195,7 +209,7 @@ function GetPlayerFacing() return _G.__FS_MOCK.playerPos and _G.__FS_MOCK.player
 function UnitClass() return _G.__FS_MOCK.playerClass, _G.__FS_MOCK.playerClass end
 function UnitHealth() return _G.__FS_MOCK.hp end
 function UnitHealthMax() return _G.__FS_MOCK.hpMax end
-function UnitIsDeadOrGhost() return _G.__FS_MOCK.deadOrGhost == true end
+function UnitIsDeadOrGhost() return _G.__FS_MOCK.deadOrGhost end
 function GetWeaponEnchantInfo() return _G.__FS_MOCK.mainHandEnchant == true end
 function GetNumBuybackItems() return _G.__FS_MOCK.buybackCount end
 function GetGuildBankWithdrawMoney() return _G.__FS_MOCK.guildWithdraw end
@@ -479,6 +493,44 @@ WorldMapFrame = MakeMockFrame("Frame", "WorldMapFrame", UIParent, nil)
 WorldMapFrame:Hide()
 WorldMapFrame.IsShown = function() return _G.__FS_MOCK.worldMapShown end
 
+Minimap = MakeMockFrame("Frame", "Minimap", UIParent, nil)
+Minimap:SetSize(140, 140)
+function Minimap:GetCenter() return 1820, 980 end
+
+GameTooltip = MakeMockFrame("GameTooltip", "GameTooltip", UIParent, nil)
+GameTooltip._lines = {}
+GameTooltip._forbidden = false
+function GameTooltip:IsForbidden() return self._forbidden == true end
+function GameTooltip:SetOwner(owner, anchor)
+    self._owner = owner
+    self._anchor = anchor
+    self._lines = {}
+end
+function GameTooltip:AddLine(text, r, g, b)
+    table.insert(self._lines, { left = text, right = nil, r = r, g = g, b = b })
+end
+function GameTooltip:AddDoubleLine(left, right, r, g, b)
+    table.insert(self._lines, { left = left, right = right, r = r, g = g, b = b })
+end
+
+Enum = {
+    TooltipDataType = { Item = 0, Spell = 1 },
+}
+
+TooltipDataProcessor = {
+    AddTooltipPostCall = function(dataType, fn)
+        _G.__FS_MOCK.tooltipPostCalls[dataType] = _G.__FS_MOCK.tooltipPostCalls[dataType] or {}
+        table.insert(_G.__FS_MOCK.tooltipPostCalls[dataType], fn)
+    end,
+}
+
+function __FS_FIRE_TOOLTIP(dataType, tt, data)
+    local list = _G.__FS_MOCK.tooltipPostCalls[dataType] or {}
+    for _, fn in ipairs(list) do
+        fn(tt, data)
+    end
+end
+
 function CreateFont(name)
     local f = { _name = name }
     function f:SetFont(path, size, flags) self._path, self._size, self._flags = path, size, flags end
@@ -488,9 +540,14 @@ end
 
 C_AddOns = {
     GetAddOnMetadata = function(_, field)
-        if field == "Version" then return "2.0.0-alpha.1" end
+        if field == "Version" then return "2.0.0-alpha.4" end
         if field == "Interface" then return "16001, 120105" end
         return nil
+    end,
+    DoesAddOnExist = function(name)
+        local ex = _G.__FS_MOCK.addonExists
+        if ex and ex[name] ~= nil then return ex[name] end
+        return true
     end,
     IsAddOnLoaded = function(name) return _G.__FS_MOCK.loadedAddOns[name] == true end,
     LoadAddOn = function(name)

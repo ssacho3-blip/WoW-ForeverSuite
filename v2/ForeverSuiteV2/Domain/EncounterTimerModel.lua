@@ -103,8 +103,8 @@ function EncounterTimerModel.OnInstanceChange(state, inInstance, instanceType, i
     local hasReadableName = (type(instanceName) == "string" and instanceName ~= "")
 
     if not isDungeonOrRaid then
-        -- Ghost run-back outside dungeon after wipe: hold run state until player re-enters or revives outside
-        if isDeadOrGhost == true then
+        -- Ghost run-back OR unreadable dead/ghost state (nil): hold run state until confirmed alive outside!
+        if isDeadOrGhost ~= false then
             return nil
         end
         state.bossName = nil

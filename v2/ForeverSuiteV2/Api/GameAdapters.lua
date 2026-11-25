@@ -231,9 +231,19 @@ function GameAdapters.GetPlayerPosition()
     }
 end
 
-function GameAdapters.IsPlayerDeadOrGhost()
+function GameAdapters.IsPlayerDeadOrGhostState()
+    if type(_G.UnitIsDeadOrGhost) ~= "function" then
+        return nil
+    end
     local v = SafeAPI.SafeRead(_G.UnitIsDeadOrGhost, "player")
-    return v ~= UNAVAILABLE and IsTruthy(v)
+    if v == UNAVAILABLE then
+        return nil
+    end
+    return IsTruthy(v)
+end
+
+function GameAdapters.IsPlayerDeadOrGhost()
+    return GameAdapters.IsPlayerDeadOrGhostState() == true
 end
 
 function GameAdapters.GetPlayerClass()
@@ -545,11 +555,31 @@ function GameAdapters.IsResurrectInCombat(casterName, bossActive)
     if SafeAPI.IsSecret(casterName) or type(casterName) ~= "string" or casterName == "" then
         return true
     end
+    if type(_G.UnitExists) == "function" then
+        local ex = SafeAPI.SafeRead(_G.UnitExists, casterName)
+        if ex == UNAVAILABLE or not IsTruthy(ex) then
+            return true
+        end
+    end
     local okC, resC = pcall(_G.UnitAffectingCombat, casterName)
     if (not okC) or SafeAPI.IsSecret(resC) or IsTruthy(resC) then
         return true
     end
     return false
+end
+
+function GameAdapters.GetItemSellPrice(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then
+        return nil
+    end
+    if not (C_Item and type(C_Item.GetItemInfo) == "function") then
+        return nil
+    end
+    local ok, _, _, _, _, _, _, _, _, _, _, sellPrice = pcall(C_Item.GetItemInfo, itemID)
+    if ok and (not SafeAPI.IsSecret(sellPrice)) and type(sellPrice) == "number" and sellPrice > 0 then
+        return sellPrice
+    end
+    return nil
 end
 
 function GameAdapters.AcceptResurrectSafe(casterName, bossActive)

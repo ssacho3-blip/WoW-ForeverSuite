@@ -109,17 +109,38 @@ function SafeAPI.LoadDataPack()
     return false
 end
 
--- Returns tri-state: true (loaded), false (confirmed not loaded), nil (unreadable/error).
-function SafeAPI.GetAddOnLoadedState(name)
+-- Returns 4-state presence: "LOADED" | "DISABLED" | "NOT_INSTALLED" | "UNKNOWN"
+-- Checks C_AddOns.DoesAddOnExist first so uninstalled addons never trigger errors in C_AddOns.IsAddOnLoaded.
+function SafeAPI.GetAddOnPresenceState(name)
     if type(name) ~= "string" or name == "" then
-        return nil
+        return "UNKNOWN"
+    end
+    if C_AddOns and type(C_AddOns.DoesAddOnExist) == "function" then
+        local exists = SafeAPI.SafeRead(C_AddOns.DoesAddOnExist, name)
+        if exists == false then
+            return "NOT_INSTALLED"
+        elseif exists == UNAVAILABLE then
+            return "UNKNOWN"
+        end
     end
     if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
         local loaded = SafeAPI.SafeRead(C_AddOns.IsAddOnLoaded, name)
         if loaded == UNAVAILABLE or type(loaded) ~= "boolean" then
-            return nil
+            return "UNKNOWN"
         end
-        return loaded
+        return loaded and "LOADED" or "DISABLED"
+    end
+    return "UNKNOWN"
+end
+
+-- Returns tri-state: true (loaded), false (confirmed not loaded or not installed), nil (unreadable/error).
+function SafeAPI.GetAddOnLoadedState(name)
+    local p = SafeAPI.GetAddOnPresenceState(name)
+    if p == "LOADED" then
+        return true
+    end
+    if p == "DISABLED" or p == "NOT_INSTALLED" then
+        return false
     end
     return nil
 end

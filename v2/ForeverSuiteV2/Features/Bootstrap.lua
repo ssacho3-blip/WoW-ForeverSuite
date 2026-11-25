@@ -36,6 +36,24 @@ local DEFAULT_SCHEMAS = {
         combatSafe = true,
     },
     {
+        section = "ui",
+        key = "showMinimapButton",
+        type = "boolean",
+        default = true,
+        label = "미니맵 원형 버튼 표시 (드래그 이동 · 퀵액션)",
+        desc = "좌클릭 허브 / 우클릭 HUD 이동 / Shift+우클릭 원장",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "enhanceTooltips",
+        type = "boolean",
+        default = true,
+        label = "아이템·주문 툴팁 ID / 상점가 / 보호 배지 표시",
+        desc = "Zero-Taint 읽기 전용 후크(Forbidden 툴팁 제외)",
+        combatSafe = true,
+    },
+    {
         section = "quest",
         key = "autoAccept",
         type = "boolean",
@@ -231,6 +249,8 @@ function Bootstrap:Init()
             ApplyTrackerModeSafely(val)
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
+        elseif sec == "ui" and key == "showMinimapButton" then
+            ns.Features.MinimapButton:ApplyVisibility()
         elseif sec == "combat" and key == "showEncounterTimer" then
             ns.Features.EncounterTimerHud:Refresh()
         elseif sec == "combat" then
@@ -242,7 +262,7 @@ function Bootstrap:Init()
         end
     end)
 
-    -- Initialize L0/L1 HUDs
+    -- Initialize L0/L1 HUDs & Zero-Taint adapters
     ns.Features.QuestTrackerView:Init()
     ns.Features.QuestTrackerView:RefreshLive()
     ns.Features.StatusPillHud:Init()
@@ -253,6 +273,8 @@ function Bootstrap:Init()
     ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     ns.Features.FishingCardHud:Init()
     ns.Features.FishingCardHud:Refresh()
+    ns.Features.MinimapButton:Init()
+    ns.Features.TooltipEnhanceModule:Init()
     ns.Features.LedgerPage:SyncFromPlayerMoney()
     ns.Features.QoLModule:ResetSessionXP()
     ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
@@ -307,6 +329,12 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:playerDead", "PLAYER_DEAD", function()
         ns.Features.EncounterTimerHud:OnPlayerDead()
         ns.Features.QoLModule:OnPlayerDead()
+    end)
+    ns.Api.EventBus:OnEvent("v2:playerAlive", "PLAYER_ALIVE", function()
+        ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
+    end)
+    ns.Api.EventBus:OnEvent("v2:playerUnghost", "PLAYER_UNGHOST", function()
+        ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     end)
     ns.Api.EventBus:OnEvent("v2:resRequest", "RESURRECT_REQUEST", function(_, casterName)
         ns.Features.QoLModule:OnResurrectRequest(casterName)
@@ -389,6 +417,11 @@ function Bootstrap:Init()
                 ns.Features.EncounterTimerHud:HandlePullCommand(rest)
             elseif cmd == "timer" then
                 ns.Features.EncounterTimerHud:PrintStatus()
+            elseif cmd == "clearway" then
+                ns.Features.NavigationHud:Clear()
+                ns.Api.SafeAPI.Print("웨이포인트를 해제했습니다.")
+            elseif cmd == "help" then
+                ns.Api.SafeAPI.Print("명령어: /fs2 [ledger|codex|settings|move|protect <ID/링크>|cheap|layer|xp [reset]|pull <3~30|0>|timer|clearway] · /way2 <x> <y> [이름]")
             else
                 ns.UI.CommandHub:Toggle()
             end

@@ -157,8 +157,8 @@ function EncounterTimerHud:OnZoneOrInstanceChanged()
         return
     end
     local inInst, instType, instName = ns.Api.GameAdapters.GetInstanceContext()
-    local isDeadOrGhost = ns.Api.GameAdapters.IsPlayerDeadOrGhost()
-    local finished = ns.Domain.EncounterTimerModel.OnInstanceChange(self:EnsureState(), inInst, instType, instName, now, isDeadOrGhost)
+    local deadOrGhostState = ns.Api.GameAdapters.IsPlayerDeadOrGhostState()
+    local finished = ns.Domain.EncounterTimerModel.OnInstanceChange(self:EnsureState(), inInst, instType, instName, now, deadOrGhostState)
     if finished then
         ns.Api.SafeAPI.Print(string_format(
             "인스턴스 기록 [%s]: 경과 %s · 보스 처치 %d · 사망 %d",

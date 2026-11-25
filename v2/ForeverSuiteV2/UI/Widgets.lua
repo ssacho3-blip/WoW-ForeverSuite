@@ -411,3 +411,64 @@ function Widgets.Toast(titleText, bodyText, semanticKey)
     sharedToast:Show()
     return sharedToast
 end
+
+-- 13. MinimapButton (Obsidian & Burnished Gold draggable rim medallion)
+function Widgets.MinimapButton(name, initialAngle, onClick, onTooltip, onAngleChanged)
+    local anchorParent = _G.Minimap or _G.UIParent
+    local btn = CreateFrame("Button", name, anchorParent)
+    btn:SetSize(28, 28)
+    btn:SetFrameStrata(T.ELEVATION.L0_HUD)
+    btn:SetClampedToScreen(true)
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForDrag("LeftButton")
+    PaintBox(btn, T.SURFACE.CANVAS, T.BORDER.GOLD)
+
+    local glyph = Widgets.Label(btn, "✦", "heading", T.TEXT.GOLD)
+    glyph:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn._glyph = glyph
+    btn._angle = ns.Domain.MinimapModel.NormalizeAngle(initialAngle)
+
+    function btn:SetAngle(deg)
+        self._angle = ns.Domain.MinimapModel.NormalizeAngle(deg)
+        local dx, dy = ns.Domain.MinimapModel.AngleToOffset(self._angle)
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", anchorParent, "CENTER", dx, dy)
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        self._fsBg:SetColorTexture(T.SURFACE.GOLD_TINT[1], T.SURFACE.GOLD_TINT[2], T.SURFACE.GOLD_TINT[3], 1)
+        if onTooltip then onTooltip(self) end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        self._fsBg:SetColorTexture(T.SURFACE.CANVAS[1], T.SURFACE.CANVAS[2], T.SURFACE.CANVAS[3], T.SURFACE.CANVAS[4])
+        if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
+            pcall(_G.GameTooltip.Hide, _G.GameTooltip)
+        end
+    end)
+    btn:SetScript("OnClick", function(self, mouseBtn)
+        if onClick then onClick(self, mouseBtn) end
+    end)
+    btn:SetScript("OnDragStart", function(self)
+        self:SetScript("OnUpdate", function(f)
+            if type(_G.GetCursorPosition) == "function" and type(anchorParent.GetCenter) == "function" then
+                local okC, cx, cy = pcall(_G.GetCursorPosition)
+                local okM, mx, my = pcall(anchorParent.GetCenter, anchorParent)
+                local scale = (type(anchorParent.GetEffectiveScale) == "function" and anchorParent:GetEffectiveScale()) or 1
+                if okC and okM and type(cx) == "number" and type(cy) == "number" and type(mx) == "number" and type(my) == "number" and scale > 0 then
+                    local ang = ns.Domain.MinimapModel.CursorToAngle(cx / scale, cy / scale, mx, my)
+                    if ang then
+                        f:SetAngle(ang)
+                    end
+                end
+            end
+        end)
+    end)
+    btn:SetScript("OnDragStop", function(self)
+        self:SetScript("OnUpdate", nil)
+        if onAngleChanged then onAngleChanged(self._angle) end
+    end)
+
+    btn:SetAngle(btn._angle)
+    return btn
+end

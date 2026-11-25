@@ -155,23 +155,33 @@ function QoLModule:OnPartyInviteRequest(inviterName)
 end
 
 function QoLModule:ApplyCameraZoomIfEnabled()
+    local enabled = ns.Api.ProfileStore:Get("qol", "maxCameraZoom") == true
+    local savedPrev = ns.Api.ProfileStore:GetState("cameraZoomPrev") or self.savedCameraZoom
+
+    -- Restore BEFORE v1 yield check so disabling always restores cleanly even if v1 loads mid-session
+    if not enabled then
+        if savedPrev ~= nil and tostring(savedPrev) ~= "" then
+            local ok, reason = ns.Api.GameAdapters.SetCVarSafe("cameraDistanceMaxZoomFactor", savedPrev)
+            if ok then
+                self.savedCameraZoom = nil
+                ns.Api.ProfileStore:SetState("cameraZoomPrev", nil)
+            end
+            return ok, reason
+        end
+        return false, "DISABLED"
+    end
+
     if ns.Api.SafeAPI.IsV1Loaded() then
         return false, "YIELDED_TO_V1"
     end
-    local enabled = ns.Api.ProfileStore:Get("qol", "maxCameraZoom") == true
-    if enabled then
-        if self.savedCameraZoom == nil then
-            local prev = ns.Api.GameAdapters.GetCVarRaw("cameraDistanceMaxZoomFactor")
-            self.savedCameraZoom = (prev ~= nil and tostring(prev) ~= "") and tostring(prev) or "1.9"
+
+    if savedPrev == nil then
+        local prev = ns.Api.GameAdapters.GetCVarRaw("cameraDistanceMaxZoomFactor")
+        if prev ~= nil and tostring(prev) ~= "" then
+            local prevStr = tostring(prev)
+            self.savedCameraZoom = prevStr
+            ns.Api.ProfileStore:SetState("cameraZoomPrev", prevStr)
         end
-        return ns.Api.GameAdapters.SetCVarSafe("cameraDistanceMaxZoomFactor", "2.6")
     end
-    if self.savedCameraZoom ~= nil then
-        local ok, reason = ns.Api.GameAdapters.SetCVarSafe("cameraDistanceMaxZoomFactor", self.savedCameraZoom)
-        if ok then
-            self.savedCameraZoom = nil
-        end
-        return ok, reason
-    end
-    return false, "DISABLED"
+    return ns.Api.GameAdapters.SetCVarSafe("cameraDistanceMaxZoomFactor", "2.6")
 end

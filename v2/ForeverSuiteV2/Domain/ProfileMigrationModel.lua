@@ -44,6 +44,9 @@ local function EnsureShape(db, defaults)
     if type(db.v2.protectedItems) ~= "table" then
         db.v2.protectedItems = {}
     end
+    if type(db.v2.state) ~= "table" then
+        db.v2.state = {}
+    end
     if type(db.v2.diagnostics) ~= "table" then
         db.v2.diagnostics = {}
     end

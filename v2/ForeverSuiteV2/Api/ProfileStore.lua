@@ -75,3 +75,19 @@ function ProfileStore:SetLayout(widgetId, anchor)
     self.db.v2.layout[widgetId] = anchor
     return true
 end
+
+function ProfileStore:GetState(key)
+    if type(self.db) ~= "table" or type(self.db.v2) ~= "table" or type(self.db.v2.state) ~= "table" then
+        return nil
+    end
+    return self.db.v2.state[key]
+end
+
+function ProfileStore:SetState(key, val)
+    if not self:CanWrite() then
+        return false
+    end
+    self.db.v2.state = self.db.v2.state or {}
+    self.db.v2.state[key] = val
+    return true
+end
