@@ -3,6 +3,8 @@ local _, ns = ...
 local type = type
 local pairs = pairs
 local ipairs = ipairs
+local next = next
+local tonumber = tonumber
 local tostring = tostring
 local pcall = pcall
 local error = error
@@ -383,10 +385,84 @@ end
 
 ns._RefreshRecoveredPopupIcons = RefreshRecoveredPopupIcons
 
+local function ParseVersionTuple(v)
+    if type(v) ~= "string" then
+        return nil
+    end
+    local a, b, c = string_match(v, "^(%d+)%.(%d+)%.?(%d*)$")
+    if not a or not b then
+        return nil
+    end
+    return tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0
+end
+
+local function CompareVersionStrings(a, b)
+    local a1, a2, a3 = ParseVersionTuple(a)
+    local b1, b2, b3 = ParseVersionTuple(b)
+    if not a1 or not b1 then
+        return nil
+    end
+    if a1 ~= b1 then return (a1 > b1) and 1 or -1 end
+    if a2 ~= b2 then return (a2 > b2) and 1 or -1 end
+    if a3 ~= b3 then return (a3 > b3) and 1 or -1 end
+    return 0
+end
+
+local function HasMeaningfulCharData(row)
+    if type(row) ~= "table" then
+        return false
+    end
+    return row.popupIconLayout410 ~= nil
+        or row.authorPresetVersion ~= nil
+        or row.questTrackerGeometry248 ~= nil
+        or row.chatFontSizes ~= nil
+        or row.broadcastMemo ~= nil
+        or row.professionQuick410 ~= nil
+        or row.dungeonQuickLoot444 ~= nil
+        or row.libraryBooksAccess471 ~= nil
+        or row.hunterPetAccess4116 ~= nil
+        or row.navigation ~= nil
+end
+
+local function IsBlankPlaceholderRow(row, guid, realmID, engClass)
+    if row == nil then
+        return true
+    end
+    if type(row) ~= "table" or HasMeaningfulCharData(row) then
+        return false
+    end
+    if row.identityGUID297 ~= nil and row.identityGUID297 ~= guid then
+        return false
+    end
+    if row.identityRealmID297 ~= nil and (not realmID or row.identityRealmID297 ~= realmID) then
+        return false
+    end
+    if row.settingsClass5105 ~= nil and (not engClass or row.settingsClass5105 ~= engClass) then
+        return false
+    end
+    for k, v in pairs(row) do
+        if k == "checks" or k == "observed" then
+            if type(v) ~= "table" or next(v) ~= nil then
+                return false
+            end
+        elseif k ~= "identityGUID297" and k ~= "identityRealmID297" and k ~= "identityName297" and k ~= "settingsClass5105" then
+            return false
+        end
+    end
+    return true
+end
+
+local function IsRowCompatibleWithPlayer(row, realmID, engClass)
+    return type(row) == "table"
+        and not row.identityGUID297
+        and (not realmID or not row.identityRealmID297 or row.identityRealmID297 == realmID)
+        and (not engClass or row.settingsClass5105 == nil or row.settingsClass5105 == engClass)
+end
+
 -- GodJohnson v5.311+ CompanionCore.lua deadlocks (returns nil, "realm") on WoW Forever KR
--- when GetRealmName() is empty (realm fallback source == "id") and a pre-5.311 character row
--- ("<RealmName>:<PlayerName>") exists without identityGUID297. That traps C.Char() on an
--- unsaved empty table so popupIconLayout410 resets and only 3 default-visible icons remain.
+-- when GetRealmName() is empty (realm fallback source == "id") and pre-5.311 character rows
+-- ("<RealmName>:<PlayerName>") exist without identityGUID297, OR silently orphans pre-5.311
+-- empty-realm rows (":<PlayerName>") onto a fresh blank "realm-id-<id>:<PlayerName>" row.
 function ns._RecoverGJLegacyCharacterIdentity(C)
     if type(C) ~= "table" or C.savedVariablesReady ~= true or ns._IsForeverSuiteReadOnly() then
         return false
@@ -395,7 +471,16 @@ function ns._RecoverGJLegacyCharacterIdentity(C)
         return false
     end
     local okKey, key, reason = pcall(C.CurrentCharacterKey297)
-    if not okKey or key ~= nil or reason ~= "realm" then
+    if not okKey then
+        return false
+    end
+    local isDeadlock = (key == nil and reason == "realm")
+    local keyRealmIdStr, keyCharName = nil, nil
+    if type(key) == "string" then
+        keyRealmIdStr, keyCharName = string_match(key, "^realm%-id%-(%d+):(.+)$")
+    end
+    local isRealmIdFallback = (keyRealmIdStr ~= nil and keyCharName ~= nil)
+    if not isDeadlock and not isRealmIdFallback then
         return false
     end
     if type(_G.UnitName) ~= "function" or type(_G.UnitGUID) ~= "function" then
@@ -403,6 +488,9 @@ function ns._RecoverGJLegacyCharacterIdentity(C)
     end
     local okName, name = pcall(_G.UnitName, "player")
     if not okName or not IsSafeIdentityText(name) then
+        return false
+    end
+    if isRealmIdFallback and keyCharName ~= name then
         return false
     end
     local okGuid, guid = pcall(_G.UnitGUID, "player")
@@ -423,48 +511,122 @@ function ns._RecoverGJLegacyCharacterIdentity(C)
             engClass = cls
         end
     end
+    if isRealmIdFallback and (not engClass or not realmID or tonumber(keyRealmIdStr) ~= realmID) then
+        return false
+    end
     local okDb, db = pcall(C.DB)
     if not okDb or type(db) ~= "table" or type(db.characters) ~= "table" then
         return false
     end
     local chars = db.characters
-    for _, row in pairs(chars) do
-        if type(row) == "table" and row.identityGUID297 == guid then
-            return false
-        end
-    end
-    local allLegacy, classMatches = {}, {}
     for candidate, row in pairs(chars) do
-        if type(candidate) == "string" and type(row) == "table" and not row.identityGUID297
-            and (not realmID or not row.identityRealmID297 or row.identityRealmID297 == realmID)
-        then
-            local oldRealm, oldName = string_match(candidate, "^([^:]*):(.+)$")
-            if oldName == name and IsSafeIdentityText(oldRealm) and oldRealm ~= "guid" and not string_match(oldRealm, "^realm%-id%-%d+$") then
-                allLegacy[#allLegacy + 1] = { key = candidate, row = row }
-                if not engClass or row.settingsClass5105 == nil or row.settingsClass5105 == engClass then
-                    classMatches[#classMatches + 1] = { key = candidate, row = row }
-                end
+        if type(row) == "table" and row.identityGUID297 == guid then
+            if not (isRealmIdFallback and candidate == key and IsBlankPlaceholderRow(row, guid, realmID, engClass)) then
+                return false
             end
         end
     end
-    if #allLegacy == 0 then
-        return false
-    end
+
+    local emptyKey = ":" .. name
+    local emptyRow = chars[emptyKey]
+    local emptyEligible = IsRowCompatibleWithPlayer(emptyRow, realmID, engClass) and HasMeaningfulCharData(emptyRow)
     local targetRow = nil
     local createdAltKey = nil
-    if #classMatches == 1 then
-        targetRow = classMatches[1].row
-    elseif #classMatches == 0 and engClass then
-        local altKey = "guid:" .. guid
-        if chars[altKey] ~= nil then
+    local orphanFallbackKey = nil
+    local prevOrphanVal = nil
+    local sentinelPlaceholder = nil
+
+    if isDeadlock then
+        local allLegacy, classMatches = {}, {}
+        for candidate, row in pairs(chars) do
+            if type(candidate) == "string" and type(row) == "table" and not row.identityGUID297
+                and (not realmID or not row.identityRealmID297 or row.identityRealmID297 == realmID)
+            then
+                local oldRealm, oldName = string_match(candidate, "^([^:]*):(.+)$")
+                if oldName == name and IsSafeIdentityText(oldRealm) and oldRealm ~= "guid" and not string_match(oldRealm, "^realm%-id%-%d+$") then
+                    allLegacy[#allLegacy + 1] = { key = candidate, row = row }
+                    if not engClass or row.settingsClass5105 == nil or row.settingsClass5105 == engClass then
+                        classMatches[#classMatches + 1] = { key = candidate, row = row }
+                    end
+                end
+            end
+        end
+        if #allLegacy == 0 then
+            if emptyEligible and (not engClass or emptyRow.settingsClass5105 == nil or emptyRow.settingsClass5105 == engClass) then
+                targetRow = emptyRow
+            else
+                return false
+            end
+        elseif #classMatches == 1 then
+            local matchRow = classMatches[1].row
+            local matchHasExplicitClass = (engClass ~= nil and matchRow.settingsClass5105 == engClass)
+            local emptyHasExplicitClass = (emptyEligible and engClass ~= nil and emptyRow.settingsClass5105 == engClass)
+            if emptyHasExplicitClass and not matchHasExplicitClass then
+                targetRow = emptyRow
+            elseif emptyEligible and not matchHasExplicitClass
+                and ((not HasMeaningfulCharData(matchRow))
+                    or (emptyRow.popupIconLayout410 ~= nil and matchRow.popupIconLayout410 == nil)
+                    or (CompareVersionStrings(emptyRow.authorPresetVersion, matchRow.authorPresetVersion) == 1))
+            then
+                targetRow = emptyRow
+            else
+                targetRow = matchRow
+            end
+        elseif #classMatches > 1 then
+            if emptyEligible and engClass and emptyRow.settingsClass5105 == engClass then
+                targetRow = emptyRow
+            elseif emptyEligible and emptyRow.settingsClass5105 == nil then
+                local anyExplicitClass = false
+                local strictlyNewerThanAll = (emptyRow.authorPresetVersion ~= nil)
+                for i = 1, #classMatches do
+                    local r = classMatches[i].row
+                    if r.settingsClass5105 ~= nil then
+                        anyExplicitClass = true
+                    end
+                    if strictlyNewerThanAll and CompareVersionStrings(emptyRow.authorPresetVersion, r.authorPresetVersion) ~= 1 then
+                        strictlyNewerThanAll = false
+                    end
+                end
+                if (not anyExplicitClass) and strictlyNewerThanAll then
+                    targetRow = emptyRow
+                else
+                    return false
+                end
+            else
+                return false
+            end
+        elseif #classMatches == 0 and engClass then
+            if emptyEligible and emptyRow.settingsClass5105 == engClass then
+                targetRow = emptyRow
+            else
+                local altKey = "guid:" .. guid
+                if chars[altKey] ~= nil then
+                    return false
+                end
+                chars[altKey] = {}
+                targetRow = chars[altKey]
+                createdAltKey = altKey
+            end
+        else
             return false
         end
-        chars[altKey] = {}
-        targetRow = chars[altKey]
-        createdAltKey = altKey
     else
-        return false
+        if not emptyEligible or not IsBlankPlaceholderRow(chars[key], guid, realmID, engClass) then
+            return false
+        end
+        targetRow = emptyRow
+        orphanFallbackKey = key
+        prevOrphanVal = chars[key]
+        -- Break CompanionCore resolvedIdentity297 cache (chars[previous.key] == previous.row)
+        -- whether previous.row was nil or a freshly auto-created blank table.
+        if prevOrphanVal == nil then
+            sentinelPlaceholder = {}
+            chars[orphanFallbackKey] = sentinelPlaceholder
+        else
+            chars[orphanFallbackKey] = nil
+        end
     end
+
     local prevGuid = targetRow.identityGUID297
     local prevName = targetRow.identityName297
     local prevRealm = targetRow.identityRealmID297
@@ -476,12 +638,21 @@ function ns._RecoverGJLegacyCharacterIdentity(C)
         targetRow.identityRealmID297 = realmID
     end
     local okAfter, resolvedKey = pcall(C.CurrentCharacterKey297)
+    if orphanFallbackKey and sentinelPlaceholder ~= nil and chars[orphanFallbackKey] == sentinelPlaceholder then
+        chars[orphanFallbackKey] = nil
+    end
     local resolvedRow = okAfter and type(resolvedKey) == "string" and resolvedKey ~= ""
         and type(chars[resolvedKey]) == "table" and chars[resolvedKey] or nil
     if resolvedRow ~= targetRow or resolvedRow.identityGUID297 ~= guid then
         targetRow.identityGUID297 = prevGuid
         targetRow.identityName297 = prevName
         targetRow.identityRealmID297 = prevRealm
+        if targetRow == emptyRow then
+            chars[emptyKey] = emptyRow
+        end
+        if orphanFallbackKey then
+            chars[orphanFallbackKey] = prevOrphanVal
+        end
         if createdAltKey then
             chars[createdAltKey] = nil
         end

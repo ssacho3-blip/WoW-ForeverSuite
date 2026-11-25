@@ -140,7 +140,11 @@ function QuestTracker:SyncDefaultTrackerVisibility()
             end
 
             if shouldHide then
-                local currentlyShown = (not targetFrame.IsShown) or (targetFrame:IsShown() and true or false)
+                local currentlyShown = true
+                if type(targetFrame.IsShown) == "function" then
+                    local okShown, shownVal = pcall(targetFrame.IsShown, targetFrame)
+                    currentlyShown = (not okShown) or ns.IsSecret(shownVal) or (shownVal and true or false)
+                end
                 if currentlyShown and not IsEditModeActive() then
                     if TrySetAlpha(targetFrame, 0) then
                         alphaZeroedByUs[targetFrame] = true

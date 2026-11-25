@@ -607,7 +607,8 @@ def test_v030_ac7_secure_quest_item_buttons_uiparent_isolation_and_combat_deferr
         btn = rt.vm.G[f"ForeverSuiteQuestItemBtn{idx}"]
         assert btn["_parent"] is ui_parent
         assert btn["_parent"] is not tracker_frame
-        assert btn["_registered_clicks"] == ("AnyUp", "AnyDown")
+        assert btn["_registered_clicks"] == ("LeftButtonUp",)
+        assert btn["_attrs"].get("useOnKeyDown") is False
 
     assert btn1["_shown"] is True and btn2["_shown"] is True and btn3["_shown"] is False
     assert btn1["_point"][1] is ui_parent
@@ -1202,9 +1203,70 @@ def test_v036_combat_alpha_zero_tracker_collapse_persist_and_zone_debounce() -> 
     assert len(refresh_calls) == 1
 
 
+def test_v055_combat_supertrack_deferral_prevents_map_pin_taint_and_auto_supertrack_in_combat() -> None:
+    rt = WoWForeverMockRuntime(ADDON_ROOT)
+    _seed_sample_quest_log(rt)
+    ns = rt.boot_session()
+    tracker = ns["QuestTracker"]
 
+    # 1. Left-clicking a quest row during combat defers SetSuperTrackedQuestID until PLAYER_REGEN_ENABLED
+    rt.super_tracked_quest_id = 0
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    row_101 = _find_quest_row_widget(tracker, 101)
+    rt.chat_messages.clear()
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")
+    assert rt.super_tracked_quest_id == 0
+    assert any("전투 종료 후" in m for m in rt.chat_messages)
 
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.super_tracked_quest_id == 101
 
+    # 2. QUEST_ACCEPTED during combat also defers autoSuperTrack via CombatQueue
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    rt.quest_log_entries.append({"questID": 777, "title": "전투 중 수락 퀘스트", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 777)
+    assert rt.super_tracked_quest_id == 101  # Not mutated synchronously mid-combat
 
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.super_tracked_quest_id == 777
 
+    # 3. Second click in combat toggles/cancels pending SuperTrack; manual click beats earlier autoSuperTrack (shared key)
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    rt.quest_log_entries.append({"questID": 778, "title": "전투 중 두번째 수락", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 778)
+    row_101 = _find_quest_row_widget(tracker, 101)
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")  # queues 101 (overwrites autoSuperTrack 778)
+    rt._fire_widget_script(row_101, "OnClick", "LeftButton")  # toggles 101 -> 0 (cancels!)
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.super_tracked_quest_id == 0
 
+    # 4. Waypoint activated mid-combat prevents deferred autoSuperTrack from clobbering it at drain
+    rt.super_tracked_quest_id = 0
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    rt.quest_log_entries.append({"questID": 779, "title": "전투 중 세번째 수락", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 779)
+    ns["Map"]["userWaypointActive"] = True
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.super_tracked_quest_id == 0
+    assert tracker["_pendingSuperTrackQID"] is None
+
+    # 5. Quest abandoned/removed mid-combat is skipped cleanly at drain via verified GetLogIndexForQuestID
+    ns["Map"]["userWaypointActive"] = False
+    rt.super_tracked_quest_id = 0
+    rt.combat_lockdown = True
+    rt.fire_event("PLAYER_REGEN_DISABLED")
+    rt.quest_log_entries.append({"questID": 780, "title": "전투 중 포기 예정", "level": 24})
+    rt.fire_event("QUEST_ACCEPTED", 780)
+    rt.quest_log_entries = [q for q in rt.quest_log_entries if q.get("questID") != 780]
+    rt.combat_lockdown = False
+    rt.fire_event("PLAYER_REGEN_ENABLED")
+    assert rt.super_tracked_quest_id == 0
+    assert tracker["_pendingSuperTrackQID"] is None

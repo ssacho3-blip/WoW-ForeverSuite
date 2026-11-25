@@ -58,12 +58,7 @@ local function ResolveRowTheme(d)
     if type(d) ~= "table" then return ROW_THEMES.empty end
     if d.visualState and ROW_THEMES[d.visualState] then return ROW_THEMES[d.visualState] end
     if d.kind == "group" then return d.isCurrentZone and ROW_THEMES.group_current or ROW_THEMES.group_other end
-    if d.kind == "quest" then
-        if d.isSuperTracked then return ROW_THEMES.quest_super end
-        if d.isComplete then return ROW_THEMES.quest_complete end
-        if d.isFailed then return ROW_THEMES.quest_failed end
-        return ROW_THEMES.quest_active
-    end
+    if d.kind == "quest" then return d.isSuperTracked and ROW_THEMES.quest_super or (d.isComplete and ROW_THEMES.quest_complete or (d.isFailed and ROW_THEMES.quest_failed or ROW_THEMES.quest_active)) end
     if d.kind == "objective" then return d.finished and ROW_THEMES.obj_done or ROW_THEMES.obj_pending end
     return ROW_THEMES.empty
 end
@@ -196,13 +191,23 @@ function QuestTracker:OnRowClicked(rowWidget, mouseBtn)
     end
 
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
-        local currentSuper = self:QuerySuperTrackedQuestID()
-        local nextSuper = (currentSuper == qid) and 0 or qid
-        pcall(C_SuperTrack.SetSuperTrackedQuestID, nextSuper)
-        if nextSuper > 0 and ns.Map then ns.Map.userWaypointActive = false end
-        if C_QuestLog and C_QuestLog.SetSelectedQuest then pcall(C_QuestLog.SetSelectedQuest, qid) end
-        if type(ns.SyncExternalQuestNavigation) == "function" then pcall(ns.SyncExternalQuestNavigation, nextSuper, qid) end
-        self:Refresh()
+        local curSuper = (self._pendingSuperTrackQID ~= nil) and self._pendingSuperTrackQID or self:QuerySuperTrackedQuestID()
+        local nextSuper, wasQueued, deferred = (curSuper == qid) and 0 or qid, self._pendingSuperTrackQID ~= nil, ns.InCombat()
+        self._pendingSuperTrackQID = nextSuper
+        local ranNow = ns.CombatQueue:RunOrDefer("quest:superTrack", function()
+            QuestTracker._pendingSuperTrackQID = nil
+            if not QuestTracker.active then return end
+            if deferred and nextSuper > 0 and C_QuestLog and type(C_QuestLog.GetLogIndexForQuestID) == "function" then
+                local okIdx, logIdx = pcall(C_QuestLog.GetLogIndexForQuestID, nextSuper)
+                if okIdx and not ns.IsSecret(logIdx) and logIdx == nil then return end
+            end
+            pcall(C_SuperTrack.SetSuperTrackedQuestID, nextSuper)
+            if nextSuper > 0 and ns.Map then ns.Map.userWaypointActive = false end
+            if C_QuestLog and C_QuestLog.SetSelectedQuest then pcall(C_QuestLog.SetSelectedQuest, qid) end
+            if type(ns.SyncExternalQuestNavigation) == "function" then pcall(ns.SyncExternalQuestNavigation, nextSuper, qid) end
+            QuestTracker:Refresh()
+        end)
+        if not ranNow and not wasQueued then ns.Print("전투 종료 후 퀘스트 포커스(화살표)를 전환합니다.") end
     end
 end
 
@@ -214,14 +219,12 @@ end
 
 local function TriggerRowFlash(widget)
     QuestTracker._flashSeq = (QuestTracker._flashSeq or 0) + 1
-    local tok = QuestTracker._flashSeq
-    widget._flashToken = tok
+    local tok = QuestTracker._flashSeq; widget._flashToken = tok
     if widget._bg and widget._bg.SetColorTexture then widget._bg:SetColorTexture(0.98, 0.80, 0.22, 0.56) end
     if _G.C_Timer and _G.C_Timer.After then
         _G.C_Timer.After(0.45, function()
             if widget._flashToken == tok then
-                widget._flashToken = nil
-                if not widget._hovered then ApplyRowRestingBg(widget._bg, widget._rowData) end
+                widget._flashToken = nil; if not widget._hovered then ApplyRowRestingBg(widget._bg, widget._rowData) end
             end
         end)
     end
@@ -362,10 +365,9 @@ function QuestTracker:EnsureItemButtonPool()
                 end
                 if btn then
                     btn:SetSize(22, 22)
-                    if btn.RegisterForClicks then btn:RegisterForClicks("AnyUp", "AnyDown") end
-                    if btn.CreateTexture and not btn._fsIcon then
-                        local icon = btn:CreateTexture(nil, "ARTWORK"); icon:SetAllPoints(btn); btn._fsIcon = icon
-                    end
+                    if btn.RegisterForClicks then btn:RegisterForClicks("LeftButtonUp") end
+                    if btn.SetAttribute then btn:SetAttribute("useOnKeyDown", false) end
+                    if btn.CreateTexture and not btn._fsIcon then local icon = btn:CreateTexture(nil, "ARTWORK"); icon:SetAllPoints(btn); btn._fsIcon = icon end
                     btn:SetScript("OnEnter", function(selfBtn)
                         if _G.GameTooltip and _G.GameTooltip.SetOwner and selfBtn._fsItemLink then
                             _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_LEFT")
@@ -682,17 +684,11 @@ function QuestTracker:Refresh()
     return snapshot
 end
 
-function QuestTracker:Enable(ctx)
-    self.active = true; self:EnsureItemButtonPool(); self:EnsureFrame(ctx); self:Refresh()
-end
+function QuestTracker:Enable(ctx) self.active = true; self:EnsureItemButtonPool(); self:EnsureFrame(ctx); self:Refresh() end
 
 function QuestTracker:Disable()
-    self.active, self.progressState = false, nil
+    self.active, self.progressState, self._pendingSuperTrackQID = false, nil, nil
     self:SyncDefaultTrackerVisibility(); self:SyncQuestItemButtons()
-    local targetFrame = self.frame; self.frame = nil
-    if targetFrame and targetFrame.Hide then
-        ns.CombatQueue:RunOrDefer("quest:hideTrackerFrame", function()
-            if (not self.active) and targetFrame.Hide then targetFrame:Hide() end
-        end)
-    end
+    local tf = self.frame; self.frame = nil
+    if tf and tf.Hide then ns.CombatQueue:RunOrDefer("quest:hideTrackerFrame", function() if (not self.active) and tf.Hide then tf:Hide() end end) end
 end

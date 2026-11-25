@@ -2581,6 +2581,281 @@ def test_v055_gj_legacy_character_identity_deadlock_recovery() -> None:
     assert rt_rb2.vm.run_chunk('return GJCompanion._db.characters["guid:Player-6785-00777777"]') == (None,)
 
 
+def test_v055_gj_kr_empty_realm_multi_legacy_and_realm_id_orphan_recovery() -> None:
+    # 5. Real user account pattern ("삼성전자"): active ":삼성전자" (v5.278 + popupIconLayout410)
+    #    alongside 2 pre-5.311 server rows ("서버 1 PvE" & "서버 2 PvP", no settingsClass5105).
+    #    Must resolve deadlock onto ":삼성전자" without touching either legacy server row.
+    rt_multi = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_multi.boot_session()
+    rt_multi.vm.run_chunk(
+        """
+        _G._multiCommits = 0
+        _G._multiLayoutRefreshes = 0
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00D25DE1" end
+        GetRealmID = function() return 6785 end
+        UnitClass = function() return "주술사", "SHAMAN" end
+        InCombatLockdown = function() return false end
+
+        local db = {
+            characters = {
+                [":삼성전자"] = {
+                    authorPresetVersion = "5.278",
+                    popupIconLayout410 = { enabled = true, schema = 2, groups = { { columns = 7 } } },
+                },
+                ["CAMWOW KR 서버 2 PvP:삼성전자"] = { authorPresetVersion = "5.0.213" },
+                ["CAMWOW KR 서버 1 PvE:삼성전자"] = {
+                    authorPresetVersion = "5.0.132",
+                    popupIconLayout410 = { enabled = true },
+                },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function()
+                local guid = UnitGUID("player")
+                for k, row in pairs(db.characters) do
+                    if type(row) == "table" and row.identityGUID297 == guid then
+                        return k, nil, guid, 6785, "삼성전자"
+                    end
+                end
+                return nil, "realm"
+            end,
+            Char = function()
+                local k = GJCompanion.CurrentCharacterKey297()
+                return k and db.characters[k] or {}
+            end,
+            CommitSettings = function() _G._multiCommits = _G._multiCommits + 1 end,
+            RefreshPopupIconLayout410 = function() _G._multiLayoutRefreshes = _G._multiLayoutRefreshes + 1 end,
+        }
+        """
+    )
+    load_bridge(rt_multi)
+    rt_multi.fire_event("PLAYER_LOGIN")
+    res_multi = rt_multi.vm.run_chunk(
+        """
+        local c = GJCompanion._db.characters
+        return GJCompanion.CurrentCharacterKey297(),
+            c[":삼성전자"].identityGUID297,
+            c["CAMWOW KR 서버 2 PvP:삼성전자"].identityGUID297,
+            c["CAMWOW KR 서버 1 PvE:삼성전자"].identityGUID297,
+            _G._multiCommits,
+            _G._multiLayoutRefreshes
+        """
+    )
+    assert res_multi == (":삼성전자", "Player-6785-00D25DE1", None, None, 1, 1)
+
+    # 6. Real user account pattern ("하이닉스"): only ":하이닉스" exists, so CompanionCore does NOT deadlock;
+    #    it returns "realm-id-6785:하이닉스" and caches resolvedIdentity297 (and C.Char may pre-create a blank row).
+    #    Must bind ":하이닉스", remove blank orphan row, and invalidate CompanionCore's resolvedIdentity297 cache.
+    for precreate_blank in (False, True):
+        rt_hy = WoWForeverMockRuntime(ADDON_ROOT)
+        rt_hy.boot_session()
+        precreate_lua = (
+            'db.characters["realm-id-6785:하이닉스"] = { checks = {}, observed = {}, identityGUID297 = "Player-6785-00112233", identityRealmID297 = 6785, identityName297 = "하이닉스" }'
+            if precreate_blank
+            else ""
+        )
+        rt_hy.vm.run_chunk(
+            f"""
+            _G._hyLayoutRefreshes = 0
+            UnitName = function() return "하이닉스" end
+            UnitGUID = function() return "Player-6785-00112233" end
+            GetRealmID = function() return 6785 end
+            UnitClass = function() return "전사", "WARRIOR" end
+            InCombatLockdown = function() return false end
+
+            local db = {{
+                characters = {{
+                    [":하이닉스"] = {{
+                        authorPresetVersion = "5.278",
+                        chatFontSizes = {{ 18, 18 }},
+                    }},
+                }},
+            }}
+            {precreate_lua}
+            -- Emulate CompanionCore.lua:166-168 resolvedIdentity297 cache semantics faithfully
+            local resolvedCache = nil
+            GJCompanion = {{
+                savedVariablesReady = true,
+                _db = db,
+                DB = function() return db end,
+                CurrentCharacterKey297 = function()
+                    local chars = db.characters
+                    if resolvedCache and chars[resolvedCache.key] == resolvedCache.row then
+                        return resolvedCache.key, nil, "Player-6785-00112233", 6785, "하이닉스"
+                    end
+                    local guid = UnitGUID("player")
+                    local found = nil
+                    for k, row in pairs(chars) do
+                        if type(row) == "table" and row.identityGUID297 == guid then
+                            found = k
+                            break
+                        end
+                    end
+                    local key = found or "realm-id-6785:하이닉스"
+                    resolvedCache = {{ key = key, row = chars[key] }}
+                    return key, nil, guid, 6785, "하이닉스"
+                end,
+                Char = function()
+                    local k = GJCompanion.CurrentCharacterKey297()
+                    if not db.characters[k] then db.characters[k] = {{}} end
+                    return db.characters[k]
+                end,
+                CommitSettings = function() end,
+                RefreshPopupIconLayout410 = function() _G._hyLayoutRefreshes = _G._hyLayoutRefreshes + 1 end,
+            }}
+            -- Prime resolvedCache BEFORE bridge loads (just like GodJohnson startup)
+            GJCompanion.CurrentCharacterKey297()
+            """
+        )
+        load_bridge(rt_hy)
+        rt_hy.fire_event("PLAYER_LOGIN")
+        res_hy = rt_hy.vm.run_chunk(
+            """
+            local c = GJCompanion._db.characters
+            return GJCompanion.CurrentCharacterKey297(),
+                c[":하이닉스"].identityGUID297,
+                c["realm-id-6785:하이닉스"],
+                _G._hyLayoutRefreshes
+            """
+        )
+        assert res_hy == (":하이닉스", "Player-6785-00112233", None, 1), f"precreate_blank={precreate_blank}"
+
+    # 7. Fail-Closed: if "realm-id-6785:하이닉스" ALREADY has real user settings, never delete or overwrite it
+    rt_keep = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_keep.boot_session()
+    rt_keep.vm.run_chunk(
+        """
+        UnitName = function() return "하이닉스" end
+        UnitGUID = function() return "Player-6785-00445566" end
+        GetRealmID = function() return 6785 end
+        UnitClass = function() return "전사", "WARRIOR" end
+        local db = {
+            characters = {
+                [":하이닉스"] = { authorPresetVersion = "5.278" },
+                ["realm-id-6785:하이닉스"] = {
+                    authorPresetVersion = "5.312",
+                    popupIconLayout410 = { enabled = true },
+                    identityGUID297 = "Player-6785-00445566",
+                },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function() return "realm-id-6785:하이닉스" end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    load_bridge(rt_keep)
+    rt_keep.fire_event("PLAYER_LOGIN")
+    assert rt_keep.vm.run_chunk(
+        'return GJCompanion._db.characters[":하이닉스"].identityGUID297, GJCompanion._db.characters["realm-id-6785:하이닉스"].authorPresetVersion'
+    ) == (None, "5.312")
+
+    # 8. Opus B1/B2/B3/S1 guards:
+    #    - B1: #allLegacy == 0 with class-nil ":Name" adopts ":Name" (never strands behind blank guid: row)
+    #    - B2a: #classMatches > 1 with explicit class rows + class-nil ":Name" stays Fail-Closed
+    #    - B2b: realm-id branch fails closed when engClass or realmID is missing or mismatched
+    #    - S1: blank realm-id row owned by DIFFERENT GUID is never dropped
+    rt_b1 = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_b1.boot_session()
+    rt_b1.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00B10001" end
+        GetRealmID = function() return 6785 end
+        UnitClass = function() return "주술사", "SHAMAN" end
+        local db = {
+            characters = {
+                [":삼성전자"] = { authorPresetVersion = "5.278", popupIconLayout410 = { enabled = true } },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function()
+                for k, row in pairs(db.characters) do
+                    if type(row) == "table" and row.identityGUID297 == "Player-6785-00B10001" then return k end
+                end
+                return nil, "realm"
+            end,
+            CommitSettings = function() end,
+        }
+        """
+    )
+    load_bridge(rt_b1)
+    rt_b1.fire_event("PLAYER_LOGIN")
+    assert rt_b1.vm.run_chunk(
+        'return GJCompanion._db.characters[":삼성전자"].identityGUID297, GJCompanion._db.characters["guid:Player-6785-00B10001"]'
+    ) == ("Player-6785-00B10001", None)
+
+    rt_b2a = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_b2a.boot_session()
+    rt_b2a.vm.run_chunk(
+        """
+        UnitName = function() return "삼성전자" end
+        UnitGUID = function() return "Player-6785-00B20001" end
+        GetRealmID = function() return 6785 end
+        UnitClass = function() return "마법사", "MAGE" end
+        local db = {
+            characters = {
+                [":삼성전자"] = { authorPresetVersion = "5.278" },
+                ["서버1:삼성전자"] = { settingsClass5105 = "MAGE", authorPresetVersion = "5.0.132" },
+                ["서버2:삼성전자"] = { settingsClass5105 = "MAGE", authorPresetVersion = "5.0.213" },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function() return nil, "realm" end,
+        }
+        """
+    )
+    load_bridge(rt_b2a)
+    rt_b2a.fire_event("PLAYER_LOGIN")
+    assert rt_b2a.vm.run_chunk(
+        'local c = GJCompanion._db.characters; return c[":삼성전자"].identityGUID297, c["서버1:삼성전자"].identityGUID297, c["서버2:삼성전자"].identityGUID297'
+    ) == (None, None, None)
+
+    rt_s1 = WoWForeverMockRuntime(ADDON_ROOT)
+    rt_s1.boot_session()
+    rt_s1.vm.run_chunk(
+        """
+        UnitName = function() return "하이닉스" end
+        UnitGUID = function() return "Player-6785-00AA1111" end
+        GetRealmID = function() return 6785 end
+        UnitClass = function() return "전사", "WARRIOR" end
+        local db = {
+            characters = {
+                [":하이닉스"] = { authorPresetVersion = "5.278" },
+                ["realm-id-6785:하이닉스"] = { checks = {}, observed = {}, identityGUID297 = "Player-6785-00BB2222" },
+            },
+        }
+        GJCompanion = {
+            savedVariablesReady = true,
+            _db = db,
+            DB = function() return db end,
+            CurrentCharacterKey297 = function() return "realm-id-6785:하이닉스" end,
+        }
+        """
+    )
+    load_bridge(rt_s1)
+    rt_s1.fire_event("PLAYER_LOGIN")
+    assert rt_s1.vm.run_chunk(
+        'local c = GJCompanion._db.characters; return c[":하이닉스"].identityGUID297, c["realm-id-6785:하이닉스"].identityGUID297'
+    ) == (None, "Player-6785-00BB2222")
+
+
+
+
 
 
 

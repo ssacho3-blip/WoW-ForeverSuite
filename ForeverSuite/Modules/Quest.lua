@@ -147,16 +147,35 @@ function Quest:OnQuestAccepted(_, arg1, arg2)
                 pcall(C_QuestLog.AddQuestWatch, questID)
             end
         end
-        local noSuperTrackedQuest = true
-        if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
-            local okS, rawSuper = pcall(C_SuperTrack.GetSuperTrackedQuestID)
-            noSuperTrackedQuest = okS and (not ns.IsSecret(rawSuper)) and (rawSuper == 0)
+        local function ShouldPreserveNavNow()
+            local noSuper = true
+            if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+                local okS, rawSuper = pcall(C_SuperTrack.GetSuperTrackedQuestID)
+                noSuper = okS and (not ns.IsSecret(rawSuper)) and (rawSuper == 0)
+            end
+            return (ns.Map and ns.Map.userWaypointActive == true and noSuper)
+                or (type(ns.ShouldPreserveActiveNavigation) == "function" and ns.ShouldPreserveActiveNavigation())
         end
-        local hasActiveWay = ns.Map and ns.Map.userWaypointActive == true and noSuperTrackedQuest
-        local preserveNav = hasActiveWay
-            or (type(ns.ShouldPreserveActiveNavigation) == "function" and ns.ShouldPreserveActiveNavigation())
-        if (not preserveNav) and ns.ProfileManager:Get("quest", "autoSuperTrack") and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
-            pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
+        if (not ShouldPreserveNavNow()) and ns.ProfileManager:Get("quest", "autoSuperTrack") and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+            local deferred = ns.InCombat()
+            if deferred and ns.QuestTracker then
+                ns.QuestTracker._pendingSuperTrackQID = questID
+            end
+            ns.CombatQueue:RunOrDefer("quest:superTrack", function()
+                if ns.QuestTracker then
+                    ns.QuestTracker._pendingSuperTrackQID = nil
+                end
+                if not Quest.active or not ns.ProfileManager:Get("quest", "autoSuperTrack") or ShouldPreserveNavNow() then
+                    return
+                end
+                if deferred and C_QuestLog and type(C_QuestLog.GetLogIndexForQuestID) == "function" then
+                    local okIdx, logIdx = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+                    if okIdx and not ns.IsSecret(logIdx) and logIdx == nil then
+                        return
+                    end
+                end
+                pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
+            end)
         end
     end
     self:OnTrackerRefreshEvent()
