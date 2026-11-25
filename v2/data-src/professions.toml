@@ -1,0 +1,27 @@
+[pack]
+id = "professions"
+title = "전문기술 1-300 숙련 & 채집 루트"
+category = "profession"
+license = "MIT-Personal"
+source = "ForeverSuite v2 Curated"
+
+[[entries]]
+title = "[약초채집 1-75] 평온초 · 은엽수 · 대지뿌리"
+zone = "듀로타 · 엘윈 숲"
+mapID = 1411
+x = 0.45
+y = 0.42
+
+[[entries]]
+title = "[채광 125-175] 철광석 · 금광석 루트"
+zone = "버섯구름 봉우리 · 아라시 고원"
+mapID = 1417
+x = 0.54
+y = 0.48
+
+[[entries]]
+title = "[낚시 225-300] 장인 낚시 퀘스트 — 내트 페이글"
+zone = "먼지진흙 습지대"
+mapID = 1445
+x = 0.58
+y = 0.60

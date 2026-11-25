@@ -40,14 +40,21 @@ function CodexPage:EnsureRow(idx)
             return
         end
         if type(entry.mapID) == "number" and type(entry.x) == "number" and type(entry.y) == "number" then
-            local ok, status = ns.Api.NavPort.SetWaypoint(entry.mapID, entry.x, entry.y)
             local title = tostring(entry.title or "항목")
-            if ok and status == "APPLIED" then
-                ns.Api.SafeAPI.Print("도감 좌표 연결: " .. title)
-            elseif status == "DEFERRED" then
-                ns.Api.SafeAPI.Print("전투/지도 종료 후 도감 좌표를 적용합니다: " .. title)
+            local ok, status
+            if ns.Features.NavigationHud then
+                ok, status = ns.Features.NavigationHud:SetTarget(entry.mapID, entry.x, entry.y, title)
             else
-                ns.Api.SafeAPI.Print("좌표를 설정할 수 없습니다: " .. title)
+                ok, status = ns.Api.NavPort.SetWaypoint(entry.mapID, entry.x, entry.y)
+            end
+            if status == "ARRIVED" then
+                return
+            elseif ok and status == "APPLIED" then
+                ns.Api.SafeAPI.Print("도감 내비게이션 연결: " .. title)
+            elseif status == "DEFERRED" then
+                ns.Api.SafeAPI.Print("화살표 활성화 (기본 핀은 전투/지도 종료 후 적용): " .. title)
+            else
+                ns.Api.SafeAPI.Print("화살표 활성화 (기본 핀 미지원 지역): " .. title)
             end
         end
     end)
@@ -120,10 +127,11 @@ function CodexPage:Build(parent)
     hdr:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
 
     local bar = W.PillBar(parent, {
-        { value = "fishing", label = "낚시·전문", width = 88 },
-        { value = "dungeons", label = "던전·드랍", width = 88 },
-        { value = "bis", label = "BiS 장비", width = 84 },
-        { value = "rewards", label = "포에버 보상", width = 94 },
+        { value = "fishing", label = "낚시", width = 68 },
+        { value = "professions", label = "전문기술", width = 82 },
+        { value = "dungeons", label = "던전·드랍", width = 86 },
+        { value = "bis", label = "BiS 장비", width = 82 },
+        { value = "rewards", label = "포에버 보상", width = 92 },
     }, self.activePack, function(v)
         CodexPage.activePack = v
         CodexPage:RenderPack(ns.UI.CommandHub.lastQuery or "")

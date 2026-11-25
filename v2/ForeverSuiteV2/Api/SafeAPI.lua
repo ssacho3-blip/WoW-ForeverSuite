@@ -92,7 +92,7 @@ function SafeAPI.IsQuestInLog(questID)
         local idx = SafeAPI.SafeRead(C_QuestLog.GetLogIndexForQuestID, questID)
         return idx ~= UNAVAILABLE and type(idx) == "number" and idx > 0
     end
-    return true
+    return false
 end
 
 function SafeAPI.LoadDataPack()
@@ -227,11 +227,44 @@ end
 
 -- NavPort: Single write path for C_SuperTrack & C_Map.SetUserWaypoint.
 -- Never calls C_QuestLog.SetSelectedQuest; retains pending state across BOTH InCombat() and WorldMapFrame:IsShown().
+-- Tracks exact owned waypoint coordinates and re-verifies against C_Map.GetUserWaypoint() before clearing.
+local math_abs = math.abs
 local NavPort = {
     pendingSuperTrack = nil,
     pendingWaypoint = nil,
+    pendingClearWaypoint = false,
+    ownedWaypoint = nil, -- { mapID = number, x = number, y = number }
 }
 ns.Api.NavPort = NavPort
+
+local function IsOwnedWaypointStillActive()
+    local owned = NavPort.ownedWaypoint
+    if not owned then
+        return false
+    end
+    if not (C_Map and type(C_Map.GetUserWaypoint) == "function") then
+        return false
+    end
+    local cur = SafeAPI.SafeRead(C_Map.GetUserWaypoint)
+    if cur == UNAVAILABLE or type(cur) ~= "table" then
+        return false
+    end
+    local curMap = (not SafeAPI.IsSecret(cur.uiMapID)) and cur.uiMapID or nil
+    local curPos = (not SafeAPI.IsSecret(cur.position)) and cur.position or nil
+    if type(curMap) ~= "number" or type(curPos) ~= "table" then
+        return false
+    end
+    local cx = (not SafeAPI.IsSecret(curPos.x)) and curPos.x or nil
+    local cy = (not SafeAPI.IsSecret(curPos.y)) and curPos.y or nil
+    if type(cx) ~= "number" or type(cy) ~= "number" then
+        return false
+    end
+    if curMap ~= owned.mapID or math_abs(cx - owned.x) > 0.0005 or math_abs(cy - owned.y) > 0.0005 then
+        NavPort.ownedWaypoint = nil
+        return false
+    end
+    return true
+end
 
 local function ApplySuperTrackNow(target)
     if target > 0 and not SafeAPI.IsQuestInLog(target) then
@@ -255,10 +288,30 @@ local function ApplyWaypointNow(wp)
         end
     end
     local ok = pcall(C_Map.SetUserWaypoint, { uiMapID = wp.mapID, position = { x = wp.x, y = wp.y } })
-    if ok and C_SuperTrack and type(C_SuperTrack.SetSuperTrackedUserWaypoint) == "function" then
-        pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+    if ok then
+        NavPort.ownedWaypoint = { mapID = wp.mapID, x = wp.x, y = wp.y }
+        NavPort.pendingClearWaypoint = false
+        if C_SuperTrack and type(C_SuperTrack.SetSuperTrackedUserWaypoint) == "function" then
+            pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+        end
     end
     return ok and true or false, ok and "APPLIED" or "FAILED"
+end
+
+local function ApplyClearWaypointNow()
+    if not IsOwnedWaypointStillActive() then
+        NavPort.ownedWaypoint = nil
+        return true, "NOT_OWNED"
+    end
+    if not (C_Map and type(C_Map.ClearUserWaypoint) == "function") then
+        NavPort.ownedWaypoint = nil
+        return false, "UNSUPPORTED"
+    end
+    local ok = pcall(C_Map.ClearUserWaypoint)
+    if ok then
+        NavPort.ownedWaypoint = nil
+    end
+    return ok and true or false, ok and "CLEARED" or "FAILED"
 end
 
 function NavPort.RequestSuperTrack(questID)
@@ -287,6 +340,24 @@ function NavPort.SetWaypoint(mapID, x, y)
     return ApplyWaypointNow(wp)
 end
 
+function NavPort.ClearWaypoint()
+    NavPort.pendingWaypoint = nil
+    if not NavPort.ownedWaypoint then
+        NavPort.pendingClearWaypoint = false
+        return true, "NOT_OWNED"
+    end
+    if SafeAPI.InCombat() or SafeAPI.IsWorldMapShown() then
+        NavPort.pendingClearWaypoint = true
+        return false, "DEFERRED"
+    end
+    NavPort.pendingClearWaypoint = false
+    local ok, reason = ApplyClearWaypointNow()
+    if (not ok) and reason ~= "UNSUPPORTED" then
+        NavPort.pendingClearWaypoint = true
+    end
+    return ok, reason
+end
+
 function NavPort.FlushIfSafe()
     if SafeAPI.InCombat() or SafeAPI.IsWorldMapShown() then
         return false
@@ -297,6 +368,13 @@ function NavPort.FlushIfSafe()
         NavPort.pendingSuperTrack = nil
         local ok = ApplySuperTrackNow(target)
         if ok then flushedAny = true end
+    end
+    if NavPort.pendingClearWaypoint then
+        local ok, reason = ApplyClearWaypointNow()
+        if ok or reason == "UNSUPPORTED" then
+            NavPort.pendingClearWaypoint = false
+            if ok then flushedAny = true end
+        end
     end
     if NavPort.pendingWaypoint ~= nil then
         local wp = NavPort.pendingWaypoint

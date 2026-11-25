@@ -2,16 +2,20 @@
 ## Title: |cffd4af37Forever|rSuite v2 (Preview)
 ## Notes: WoW Forever 1.60.1 Zero-Taint · Obsidian & Burnished Gold 통일 UI 통합 애드온 (v1과 안전 공존)
 ## Author: Youngseo Cho
-## Version: 2.0.0-alpha.1
+## Version: 2.0.0-alpha.2
 ## SavedVariables: ForeverSuiteV2DB
 ## SavedVariablesPerCharacter: ForeverSuiteV2CharDB
 ## OptionalDeps: ForeverSuite_Media
 
 Domain/QuestTrackerModel.lua
 Domain/LedgerModel.lua
+Domain/MerchantModel.lua
+Domain/NavigationModel.lua
+Domain/CombatAlertModel.lua
 Domain/SettingsSchemaModel.lua
 Domain/ProfileMigrationModel.lua
 Api/SafeAPI.lua
+Api/GameAdapters.lua
 Api/EventBus.lua
 Api/ProfileStore.lua
 Secure/CombatQueue.lua
@@ -24,6 +28,12 @@ UI/HudLayout.lua
 UI/CommandHub.lua
 Features/QuestTrackerView.lua
 Features/StatusPillHud.lua
+Features/NavigationHud.lua
+Features/CombatAssistHud.lua
+Features/FishingCardHud.lua
+Features/MerchantModule.lua
+Features/QuestAutomation.lua
+Features/LedgerPage.lua
 Features/SettingsPage.lua
 Features/CodexPage.lua
 Features/DiagnosticsPage.lua

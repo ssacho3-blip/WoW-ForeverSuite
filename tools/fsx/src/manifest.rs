@@ -29,6 +29,7 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_Map.GetBestMapForUnit",
             "C_Map.GetMapInfo",
             "C_Map.GetPlayerMapPosition",
+            "C_Map.GetUserWaypoint",
             "C_Map.SetUserWaypoint",
             "C_Minimap.GetNumTrackingTypes",
             "C_Minimap.GetTrackingInfo",

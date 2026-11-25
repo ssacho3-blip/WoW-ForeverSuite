@@ -112,7 +112,7 @@ local framesAfterCodex = #_G.__FS_MOCK.frames
 hub.pages["codex"]:OnSearch("뱀장어")
 hub.pages["codex"]:OnSearch("")
 assert(#_G.__FS_MOCK.frames == framesAfterCodex)
-ns.Features.CodexPage.activePack = "bis"
+ns.Features.CodexPage.activePack = "unbuilt_pack"
 ns.Features.CodexPage:RenderPack("")
 assert(ns.Features.CodexPage.visibleRows == 0)
 

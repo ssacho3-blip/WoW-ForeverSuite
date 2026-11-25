@@ -381,19 +381,30 @@ function Widgets.Badge(parent, text, semanticKey)
     return f
 end
 
+local sharedToast = nil
+
 function Widgets.Toast(titleText, bodyText, semanticKey)
-    local card = Widgets.Card(_G.UIParent, 280, 58)
-    card:SetFrameStrata(T.ELEVATION.L1_CARD)
-    card:SetPoint("TOP", _G.UIParent, "TOP", 0, -96)
-    local accent = card:CreateTexture(nil, "ARTWORK")
-    accent:SetWidth(3)
-    accent:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
-    accent:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
     local col = T.SEMANTIC[semanticKey] or T.BORDER.GOLD
-    accent:SetColorTexture(col[1], col[2], col[3], 1)
-    local t = Widgets.Label(card, titleText, "heading", T.TEXT.PRIMARY)
-    t:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
-    local b = Widgets.Label(card, bodyText, "small", T.TEXT.SECONDARY)
-    b:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -4)
-    return card
+    if not sharedToast then
+        local card = Widgets.Card(_G.UIParent, 300, 58)
+        card:SetFrameStrata(T.ELEVATION.L1_CARD)
+        card:SetPoint("TOP", _G.UIParent, "TOP", 0, -96)
+        local accent = card:CreateTexture(nil, "ARTWORK")
+        accent:SetWidth(3)
+        accent:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+        accent:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
+        local t = Widgets.Label(card, "", "heading", T.TEXT.PRIMARY)
+        t:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
+        local b = Widgets.Label(card, "", "small", T.TEXT.SECONDARY)
+        b:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -4)
+        card._accent = accent
+        card._title = t
+        card._body = b
+        sharedToast = card
+    end
+    sharedToast._accent:SetColorTexture(col[1], col[2], col[3], 1)
+    sharedToast._title:SetText(tostring(titleText or ""))
+    sharedToast._body:SetText(tostring(bodyText or ""))
+    sharedToast:Show()
+    return sharedToast
 end

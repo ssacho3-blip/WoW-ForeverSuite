@@ -2,6 +2,16 @@
   "generator": "fsx 0.1.0",
   "packs": [
     {
+      "id": "bis",
+      "category": "bis",
+      "license": "MIT-Personal",
+      "source": "ForeverSuite v2 Curated",
+      "source_sha256": "f81a4ae636d85db7159d9580ed8c2987484061bb78a9b195957714239891aab4",
+      "entry_count": 4,
+      "output_file": "Pack_bis.lua",
+      "output_sha256": "c97144480fed7438c8ff8857e5acc7244d175f4d3f619976885a40cddb499d30"
+    },
+    {
       "id": "dungeons",
       "category": "dungeon",
       "license": "MIT-Personal",
@@ -20,6 +30,26 @@
       "entry_count": 3,
       "output_file": "Pack_fishing.lua",
       "output_sha256": "50f9e4d30a60c2f0f8bed421a2ec5a7eec0cc7ba2fb20048f6662798a0a3a635"
+    },
+    {
+      "id": "professions",
+      "category": "profession",
+      "license": "MIT-Personal",
+      "source": "ForeverSuite v2 Curated",
+      "source_sha256": "5d67454ac552c294b95c501c9d9715a733f691fd9af1143a56baf5b9f97b0f53",
+      "entry_count": 3,
+      "output_file": "Pack_professions.lua",
+      "output_sha256": "627d594b1eb9f023aaabeb273bdd1b153f3aeb293929698cf262e9d87c00aa9c"
+    },
+    {
+      "id": "rewards",
+      "category": "rewards",
+      "license": "MIT-Personal",
+      "source": "ForeverSuite v2 Curated",
+      "source_sha256": "40a240e676e6e27ef452c7b1e451545934752fa66db1466a5cdcb1cb47e6e62c",
+      "entry_count": 3,
+      "output_file": "Pack_rewards.lua",
+      "output_sha256": "011828e62aa660a60c62a76ba4dfae53b2eb2ea79463c33b6a2e8d2c3fdd2e42"
     }
   ]
 }

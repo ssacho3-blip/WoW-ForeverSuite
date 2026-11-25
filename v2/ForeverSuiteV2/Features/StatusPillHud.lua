@@ -1,5 +1,5 @@
 -- Module: Features/StatusPillHud.lua
--- Responsibility: L0 compact Status Pill Bar (live free bag slots · session gold delta · canonical realm; zero fabricated zeros).
+-- Responsibility: L0 compact Status Pill Bar (live bag slots · durability% · session gold · canonical realm; zero fabricated zeros).
 -- Layer: Features
 local _, ns = ...
 ns.Features = ns.Features or {}
@@ -18,7 +18,7 @@ function StatusPillHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 280, 26, "ForeverSuiteV2StatusPill")
+    local card = W.Card(nil, 336, 26, "ForeverSuiteV2StatusPill")
     local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY)
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.card = card
@@ -58,15 +58,18 @@ function StatusPillHud:RefreshLive()
         end
         delta = curMoney - self.baselineMoney
     end
-    self:Refresh(free, delta)
+    local durSlots = ns.Api.GameAdapters and ns.Api.GameAdapters.GetDurabilitySlots()
+    local durPct = ns.Domain.MerchantModel and ns.Domain.MerchantModel.ComputeDurabilityPct(durSlots) or nil
+    self:Refresh(free, delta, durPct)
 end
 
-function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper)
+function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper, durPct)
     if not self.label then
         self:Init()
     end
     local bagTxt = (type(freeSlots) == "number") and ("가방 " .. tostring(freeSlots) .. "칸") or "가방 집계 없음"
+    local durTxt = (type(durPct) == "number") and ("내구 " .. tostring(durPct) .. "%") or "내구 —"
     local moneyTxt = (type(sessionDeltaCopper) == "number") and ns.Domain.LedgerModel.FormatCopper(sessionDeltaCopper) or "골드 집계 없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
-    self.label:SetText(bagTxt .. "  ·  " .. moneyTxt .. "  ·  " .. realm)
+    self.label:SetText(bagTxt .. " · " .. durTxt .. " · " .. moneyTxt .. " · " .. realm)
 end

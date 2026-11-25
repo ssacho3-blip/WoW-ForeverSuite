@@ -104,7 +104,128 @@ _G.__FS_MOCK = {
     questSpecialItems = {},
     errorsForwarded = {},
     objTrackerTouches = 0,
+    shiftDown = false,
+    zoneText = "",
+    durability = {},
+    bagItems = {},
+    soldItems = {},
+    canRepair = false,
+    repairCost = 0,
+    canGuildRepair = false,
+    guildWithdraw = -1,
+    guildMoney = 100000,
+    guildRepairShouldFail = false,
+    asyncGuildRepair = false,
+    deferMoneyEvents = false,
+    auraSecret = false,
+    clearWaypointCalls = 0,
+    repairedGuild = false,
+    repairedPersonal = false,
+    buybackCount = 0,
+    acceptedQuests = 0,
+    turnedInQuests = 0,
+    questChoices = 1,
+    questPvp = false,
+    questReqMoney = 0,
+    questReqItems = 0,
+    playerPos = nil,
+    playerClass = "WARRIOR",
+    knownSpells = {},
+    activeAuras = {},
+    mainHandEnchant = true,
+    hp = 1000,
+    hpMax = 1000,
+    deadOrGhost = false,
+    mainHandItemID = nil,
+    targetGUID = nil,
+    tickers = {},
+    afterTimers = {},
 }
+
+function IsShiftKeyDown() return _G.__FS_MOCK.shiftDown == true end
+function GetRealZoneText() return _G.__FS_MOCK.zoneText or "" end
+function GetPlayerFacing() return _G.__FS_MOCK.playerPos and _G.__FS_MOCK.playerPos.facing or nil end
+function UnitClass() return _G.__FS_MOCK.playerClass, _G.__FS_MOCK.playerClass end
+function UnitHealth() return _G.__FS_MOCK.hp end
+function UnitHealthMax() return _G.__FS_MOCK.hpMax end
+function UnitIsDeadOrGhost() return _G.__FS_MOCK.deadOrGhost == true end
+function GetWeaponEnchantInfo() return _G.__FS_MOCK.mainHandEnchant == true end
+function GetNumBuybackItems() return _G.__FS_MOCK.buybackCount end
+function GetGuildBankWithdrawMoney() return _G.__FS_MOCK.guildWithdraw end
+function GetGuildBankMoney() return _G.__FS_MOCK.guildMoney end
+function GetInventoryItemDurability(slot)
+    local d = (_G.__FS_MOCK.durability or {})[slot]
+    if d then return d[1], d[2] end
+    return nil, nil
+end
+function GetInventoryItemID(_, slot)
+    if slot == 16 then return _G.__FS_MOCK.mainHandItemID end
+    return nil
+end
+function UnitGUID(unit)
+    if unit == "target" then return _G.__FS_MOCK.targetGUID end
+    return nil
+end
+function CanMerchantRepair() return _G.__FS_MOCK.canRepair == true end
+function GetRepairAllCost()
+    local c = _G.__FS_MOCK.repairCost
+    if issecretvalue(c) then return c, true end
+    local flag = _G.__FS_MOCK.repairAllCanFlag
+    if flag == nil then flag = (c or 0) > 0 end
+    return c or 0, flag
+end
+function CanGuildBankRepair() return _G.__FS_MOCK.canGuildRepair == true end
+function RepairAllItems(useGuild)
+    if useGuild then
+        _G.__FS_MOCK.repairedGuild = true
+        if not _G.__FS_MOCK.asyncGuildRepair and not _G.__FS_MOCK.guildRepairShouldFail then
+            _G.__FS_MOCK.repairCost = 0
+            __FS_FIRE_EVENT("UPDATE_INVENTORY_DURABILITY")
+        end
+    else
+        _G.__FS_MOCK.repairedPersonal = true
+        local c = _G.__FS_MOCK.repairCost or 0
+        _G.__FS_MOCK.repairCost = 0
+        _G.__FS_MOCK.money = (_G.__FS_MOCK.money or 0) - c
+        if not _G.__FS_MOCK.deferMoneyEvents then
+            __FS_FIRE_EVENT("PLAYER_MONEY")
+        end
+    end
+end
+function QuestFlagsPVP() return _G.__FS_MOCK.questPvp end
+function GetQuestMoneyToGet() return _G.__FS_MOCK.questReqMoney or 0 end
+function GetNumQuestItems() return _G.__FS_MOCK.questReqItems or 0 end
+function AcceptQuest() _G.__FS_MOCK.acceptedQuests = _G.__FS_MOCK.acceptedQuests + 1 end
+function IsQuestCompletable() return true end
+function CompleteQuest() _G.__FS_MOCK.completedQuests = (_G.__FS_MOCK.completedQuests or 0) + 1 end
+function GetNumQuestChoices() return _G.__FS_MOCK.questChoices end
+function GetQuestReward() _G.__FS_MOCK.turnedInQuests = _G.__FS_MOCK.turnedInQuests + 1 end
+
+C_Timer = {
+    After = function(delay, fn)
+        local t = { _delay = delay, _fn = fn, _fired = false }
+        table.insert(_G.__FS_MOCK.afterTimers, t)
+        return t
+    end,
+    NewTicker = function(interval, fn)
+        local t = { _interval = interval, _fn = fn, _cancelled = false }
+        function t:Cancel() self._cancelled = true end
+        function t:Tick() if not self._cancelled then self._fn() end end
+        table.insert(_G.__FS_MOCK.tickers, t)
+        return t
+    end,
+}
+
+function __FS_FLUSH_AFTER_TIMERS()
+    local list = _G.__FS_MOCK.afterTimers
+    _G.__FS_MOCK.afterTimers = {}
+    for _, t in ipairs(list) do
+        if not t._fired then
+            t._fired = true
+            t._fn()
+        end
+    end
+end
 
 function geterrorhandler()
     return function(err)
@@ -343,13 +464,51 @@ C_SuperTrack = {
 }
 
 C_Map = {
-    GetBestMapForUnit = function() return 1411 end,
+    GetBestMapForUnit = function()
+        return (_G.__FS_MOCK.playerPos and _G.__FS_MOCK.playerPos.mapID) or 1411
+    end,
+    GetPlayerMapPosition = function()
+        local p = _G.__FS_MOCK.playerPos
+        if p then return { x = p.x, y = p.y } end
+        return nil
+    end,
     CanSetUserWaypointOnMap = function() return true end,
+    GetUserWaypoint = function() return _G.__FS_MOCK.userWaypoint end,
     SetUserWaypoint = function(wp)
         if _G.__FS_MOCK.inCombat then error("ADDON_ACTION_BLOCKED: SetUserWaypoint in combat") end
         _G.__FS_MOCK.userWaypoint = wp
     end,
-    ClearUserWaypoint = function() _G.__FS_MOCK.userWaypoint = nil end,
+    ClearUserWaypoint = function()
+        _G.__FS_MOCK.clearWaypointCalls = (_G.__FS_MOCK.clearWaypointCalls or 0) + 1
+        _G.__FS_MOCK.userWaypoint = nil
+    end,
+}
+
+C_Spell = {
+    IsSpellKnown = function(sid) return (_G.__FS_MOCK.knownSpells or {})[sid] == true end,
+}
+
+C_UnitAuras = {
+    GetPlayerAuraBySpellID = function(sid)
+        if _G.__FS_MOCK.auraSecret then
+            return FS_MakeSecret("aura", "table")
+        end
+        return (_G.__FS_MOCK.activeAuras or {})[sid] and { spellId = sid } or nil
+    end,
+}
+
+C_Item = {
+    GetItemInfo = function(itemID)
+        if itemID == 6256 then
+            return "낚싯대", "|Hitem:6256|h[낚싯대]|h", 1, 5, 1, "무기", "낚싯대", 1, "", 132932, 20, 2, 20
+        end
+        for _, it in ipairs(_G.__FS_MOCK.bagItems or {}) do
+            if it.itemID == itemID then
+                return it.name, nil, it.quality, 1, 1, "기타", "잡템", 20, "", 134400, it.unitPrice, 15, 0
+            end
+        end
+        return nil
+    end,
 }
 
 C_QuestLog = {
@@ -369,7 +528,30 @@ C_QuestLog = {
 
 C_Container = {
     GetContainerNumFreeSlots = function() return _G.__FS_MOCK.bagFreeSlots, 0 end,
-    GetContainerNumSlots = function() return 20 end,
+    GetContainerNumSlots = function(bag)
+        if bag == 0 then return math.max(20, #(_G.__FS_MOCK.bagItems or {})) end
+        return 0
+    end,
+    GetContainerItemInfo = function(bag, slot)
+        for _, it in ipairs(_G.__FS_MOCK.bagItems or {}) do
+            if it.bag == bag and it.slot == slot then
+                return { itemID = it.itemID, quality = it.quality, stackCount = it.stackCount, isLocked = it.isLocked, itemName = it.name }
+            end
+        end
+        return nil
+    end,
+    UseContainerItem = function(bag, slot)
+        table.insert(_G.__FS_MOCK.soldItems, { bag = bag, slot = slot })
+        for _, it in ipairs(_G.__FS_MOCK.bagItems or {}) do
+            if it.bag == bag and it.slot == slot then
+                _G.__FS_MOCK.money = (_G.__FS_MOCK.money or 0) + (it.unitPrice * (it.stackCount or 1))
+                if not _G.__FS_MOCK.deferMoneyEvents then
+                    __FS_FIRE_EVENT("PLAYER_MONEY")
+                end
+                break
+            end
+        end
+    end,
 }
 
 function __FS_FIRE_EVENT(ev, ...)

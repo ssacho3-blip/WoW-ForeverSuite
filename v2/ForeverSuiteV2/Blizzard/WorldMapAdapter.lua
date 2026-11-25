@@ -17,13 +17,15 @@ function WorldMapAdapter:Init()
     end
     local wmf = _G.WorldMapFrame
     if type(wmf) == "table" and type(wmf.HookScript) == "function" then
-        self.hooked = true
-        pcall(wmf.HookScript, wmf, "OnHide", function()
+        local ok = pcall(wmf.HookScript, wmf, "OnHide", function()
             if ns.Api and ns.Api.NavPort then
                 ns.Api.NavPort.FlushIfSafe()
             end
         end)
-        return true
+        if ok then
+            self.hooked = true
+            return true
+        end
     end
     return false
 end
