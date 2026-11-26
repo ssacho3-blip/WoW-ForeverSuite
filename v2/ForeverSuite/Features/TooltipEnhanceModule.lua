@@ -23,10 +23,12 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
         return 0
     end
     local sellPrice = ns.Api.GameAdapters.GetItemSellPrice(itemID)
+    local itemLevel = ns.Api.GameAdapters.GetItemLevel(itemID)
     local protected = ns.Api.ProfileStore.db and ns.Api.ProfileStore.db.v2 and ns.Api.ProfileStore.db.v2.protectedItems
     local lines = ns.Domain.TooltipModel.BuildItemLines(itemID, sellPrice, 1, protected, {
         showItemID = true,
         showVendorPrice = true,
+        itemLevel = itemLevel,
     })
     local added = 0
     for _, ln in ipairs(lines) do

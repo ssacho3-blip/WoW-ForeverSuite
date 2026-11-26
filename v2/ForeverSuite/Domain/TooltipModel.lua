@@ -27,6 +27,8 @@ function TooltipModel.BuildItemLines(itemID, sellPrice, stackCount, protectedSet
     end
     local showID = (type(opts) ~= "table") or (opts.showItemID ~= false)
     local showPrice = (type(opts) ~= "table") or (opts.showVendorPrice ~= false)
+    local itemLevel = (type(opts) == "table" and type(opts.itemLevel) == "number" and opts.itemLevel > 0)
+        and math_floor(opts.itemLevel) or nil
 
     local idPart = showID and ("#" .. tostring(math_floor(itemID))) or nil
     local pricePart = nil
@@ -37,6 +39,14 @@ function TooltipModel.BuildItemLines(itemID, sellPrice, stackCount, protectedSet
         else
             pricePart = FormatCopperSafe(sellPrice)
         end
+    end
+
+    if itemLevel then
+        lines[#lines + 1] = {
+            left = "아이템 레벨",
+            right = "iLvl " .. tostring(itemLevel),
+            tone = "GOLD",
+        }
     end
 
     if idPart or pricePart then

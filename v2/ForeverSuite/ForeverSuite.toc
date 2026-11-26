@@ -2,12 +2,13 @@
 ## Title: |cffd4af37Forever|rSuite
 ## Notes: WoW Forever 1.60.1 Zero-Taint · Obsidian & Burnished Gold 통일 UI 통합 애드온
 ## Author: Youngseo Cho
-## Version: 2.0.0
+## Version: 2.3.0
 ## SavedVariables: ForeverSuiteV2DB, ForeverSuiteDB
 ## SavedVariablesPerCharacter: ForeverSuiteV2CharDB, ForeverSuiteCharDB
 ## OptionalDeps: ForeverSuite_Media
 
 Domain/QuestTrackerModel.lua
+Domain/WorldMapModel.lua
 Domain/LedgerModel.lua
 Domain/MerchantModel.lua
 Domain/NavigationModel.lua
@@ -16,6 +17,22 @@ Domain/QoLModel.lua
 Domain/EncounterTimerModel.lua
 Domain/MinimapModel.lua
 Domain/TooltipModel.lua
+Domain/ThreatModel.lua
+Domain/CharacterGuideModel.lua
+Domain/AutoGreetingModel.lua
+Domain/ChatToolsModel.lua
+Domain/AltInventoryModel.lua
+Domain/GdkpModel.lua
+Domain/FontModel.lua
+Domain/DungeonBrowserModel.lua
+Domain/BiSBrowserModel.lua
+Domain/ProfessionBrowserModel.lua
+Domain/PetRewardModel.lua
+Domain/QuestGuideModel.lua
+Domain/PartyFinderModel.lua
+Domain/CombatHudModel.lua
+Domain/TravelQuestModel.lua
+Domain/PowerQoLModel.lua
 Domain/SettingsSchemaModel.lua
 Domain/ProfileMigrationModel.lua
 Api/SafeAPI.lua
@@ -32,9 +49,16 @@ UI/Widgets.lua
 UI/HudLayout.lua
 UI/CommandHub.lua
 Features/QuestTrackerView.lua
+Features/WorldMapOverlay.lua
 Features/StatusPillHud.lua
 Features/NavigationHud.lua
 Features/CombatAssistHud.lua
+Features/ThreatMeterHud.lua
+Features/CursorTrailHud.lua
+Features/CombatHudPack.lua
+Features/CorpseGuideModule.lua
+Features/QuestAnnounceModule.lua
+Features/TradeLogModule.lua
 Features/EncounterTimerHud.lua
 Features/FishingCardHud.lua
 Features/MinimapButton.lua
@@ -42,8 +66,18 @@ Features/TooltipEnhanceModule.lua
 Features/MerchantModule.lua
 Features/QuestAutomation.lua
 Features/QoLModule.lua
+Features/CharacterAssistModule.lua
+Features/AutoGreetingModule.lua
+Features/ChatToolsModule.lua
 Features/LedgerPage.lua
 Features/SettingsPage.lua
 Features/CodexPage.lua
+Features/DungeonBrowserPage.lua
+Features/BiSBrowserPage.lua
+Features/ProfessionPage.lua
+Features/QuestGuidePage.lua
+Features/PartyFinderPage.lua
+Features/UtilitiesPage.lua
+Features/FontsPage.lua
 Features/DiagnosticsPage.lua
 Features/Bootstrap.lua

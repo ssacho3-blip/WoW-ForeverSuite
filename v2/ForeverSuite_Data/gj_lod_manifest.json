@@ -1,0 +1,304 @@
+{
+  "generator": "fsx 0.1.0",
+  "source_zip": "Legacy_addons_backup_1795614105.zip",
+  "source_zip_sha256": "26476f6a286753c309a1144ee327bb0cc77423dc4c63071295ee92dd40fd5fd6",
+  "packs": [
+    {
+      "addon_name": "ForeverSuite_Data_Dungeon",
+      "pack_id": "dungeons",
+      "title": "던전 가이드 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/DungeonData.lua",
+        "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
+        "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
+        "GodJohnsonGoldBorder/DungeonWetlands.lua",
+        "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
+        "GodJohnsonGoldBorder/Dungeon196Data.lua",
+        "GodJohnsonGoldBorder/DungeonPublicReference.lua",
+        "GodJohnsonGoldBorder/DungeonLootDetails4201.lua",
+        "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua"
+      ],
+      "input_count": 45,
+      "output_count": 40,
+      "skipped_count": 0,
+      "shards": 1,
+      "output_sha256": "f1526fceb1af4d37267228e9769743da248004d77793419e05f005e124ca81fe"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Dungeon",
+      "pack_id": "dungeon_bosses",
+      "title": "던전 보스 및 드랍 매핑",
+      "source_files": [
+        "GodJohnsonGoldBorder/DungeonData.lua",
+        "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
+        "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
+        "GodJohnsonGoldBorder/DungeonWetlands.lua",
+        "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
+        "GodJohnsonGoldBorder/Dungeon196Data.lua",
+        "GodJohnsonGoldBorder/DungeonPublicReference.lua",
+        "GodJohnsonGoldBorder/DungeonLootDetails4201.lua",
+        "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua"
+      ],
+      "input_count": 272,
+      "output_count": 272,
+      "skipped_count": 0,
+      "shards": 1,
+      "output_sha256": "4ab9eee8818103d8b9c89bfdc5a61acc65de43a68ec22b3a41715701dc200256"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Dungeon",
+      "pack_id": "dungeon_quests",
+      "title": "던전 퀘스트 준비 목록",
+      "source_files": [
+        "GodJohnsonGoldBorder/DungeonData.lua",
+        "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
+        "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
+        "GodJohnsonGoldBorder/DungeonWetlands.lua",
+        "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
+        "GodJohnsonGoldBorder/Dungeon196Data.lua",
+        "GodJohnsonGoldBorder/DungeonPublicReference.lua",
+        "GodJohnsonGoldBorder/DungeonLootDetails4201.lua",
+        "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua"
+      ],
+      "input_count": 432,
+      "output_count": 432,
+      "skipped_count": 0,
+      "shards": 1,
+      "output_sha256": "bfb192df742197460320c2fb05d89338ad8f447bc3f19c62eb608581de43567e"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Dungeon",
+      "pack_id": "dungeon_loot",
+      "title": "던전 드랍 아이템 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/DungeonData.lua",
+        "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
+        "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
+        "GodJohnsonGoldBorder/DungeonWetlands.lua",
+        "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
+        "GodJohnsonGoldBorder/Dungeon196Data.lua",
+        "GodJohnsonGoldBorder/DungeonPublicReference.lua",
+        "GodJohnsonGoldBorder/DungeonLootDetails4201.lua",
+        "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua"
+      ],
+      "input_count": 5050,
+      "output_count": 5050,
+      "skipped_count": 0,
+      "shards": 12,
+      "output_sha256": "21ef760b250ba9250bd9d948bdb7da3a0bdff60344c4825bb465eb15b207dad6"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_BiS",
+      "pack_id": "bis",
+      "title": "BiS 장비 및 획득처 전체",
+      "source_files": [
+        "GodJohnsonBiSData/BiSData.lua",
+        "GodJohnsonBiSData/Acquisitions408.lua",
+        "GodJohnsonBiSData/BiSQuestRewards452.lua"
+      ],
+      "input_count": 573,
+      "output_count": 573,
+      "skipped_count": 0,
+      "shards": 2,
+      "output_sha256": "950837dfbac8251d1292ac5cab352038d05e1f87caa51f0a6dd1888a9b561de0"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Profession",
+      "pack_id": "prof_guides",
+      "title": "전문기술 구간별 육성 가이드",
+      "source_files": [
+        "GodJohnsonProfessionData/ProfessionData472.lua",
+        "GodJohnsonProfessionData/ProfessionPracticalData5165.lua",
+        "GodJohnsonProfessionData/RoguePoisonCatalogue204.lua",
+        "GodJohnsonProfessionData/FishingDirections205.lua",
+        "GodJohnsonProfessionData/CookingDirections205.lua",
+        "GodJohnsonProfessionData/ProfessionMasters279.lua"
+      ],
+      "input_count": 13,
+      "output_count": 13,
+      "skipped_count": 0,
+      "shards": 1,
+      "output_sha256": "b9c022a35b76f25b7298d5b5ba03009b802e035c35f7958fef0de924ed55aed3"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Profession",
+      "pack_id": "professions",
+      "title": "전문기술 제조법 전체",
+      "source_files": [
+        "GodJohnsonProfessionData/ProfessionData472.lua",
+        "GodJohnsonProfessionData/ProfessionPracticalData5165.lua",
+        "GodJohnsonProfessionData/RoguePoisonCatalogue204.lua",
+        "GodJohnsonProfessionData/FishingDirections205.lua",
+        "GodJohnsonProfessionData/CookingDirections205.lua",
+        "GodJohnsonProfessionData/ProfessionMasters279.lua"
+      ],
+      "input_count": 2541,
+      "output_count": 2541,
+      "skipped_count": 0,
+      "shards": 6,
+      "output_sha256": "ed75d887fa709ce6cd868558ea94d9c7e4d1d0caf06ae4c370827e031d70d972"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Profession",
+      "pack_id": "prof_trainers",
+      "title": "전문기술 교관·대가·낚시/요리 길안내",
+      "source_files": [
+        "GodJohnsonProfessionData/ProfessionData472.lua",
+        "GodJohnsonProfessionData/ProfessionPracticalData5165.lua",
+        "GodJohnsonProfessionData/RoguePoisonCatalogue204.lua",
+        "GodJohnsonProfessionData/FishingDirections205.lua",
+        "GodJohnsonProfessionData/CookingDirections205.lua",
+        "GodJohnsonProfessionData/ProfessionMasters279.lua"
+      ],
+      "input_count": 586,
+      "output_count": 582,
+      "skipped_count": 4,
+      "shards": 2,
+      "output_sha256": "486ba6f8cd0710ddc412ef88b4ec66c475e9f1eebea1ab9555e85659da002afa"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Reward",
+      "pack_id": "rewards",
+      "title": "포에버 보상·상인 전체",
+      "source_files": [
+        "GodJohnsonRewardData/Data416.lua",
+        "GodJohnsonRewardData/MerchantGuideData4111.lua"
+      ],
+      "input_count": 1540,
+      "output_count": 1540,
+      "skipped_count": 0,
+      "shards": 4,
+      "output_sha256": "15565511c57fcaf0bdc903dcfd45e5fd0841e8c5a32b462dfc98b30b3070e08a"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Pet",
+      "pack_id": "hunter_pets",
+      "title": "사냥꾼 야수 도감 전체",
+      "source_files": [
+        "GodJohnsonHunterPetData/Data4114.lua"
+      ],
+      "input_count": 605,
+      "output_count": 605,
+      "skipped_count": 0,
+      "shards": 2,
+      "output_sha256": "b69c7746226841d4bb0916c5ef7a2062e906f1a50ef506dd098c1b743e193caa"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Atlas",
+      "pack_id": "atlas_npcs",
+      "title": "서비스 NPC · 직업 상급자 · 교통편 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapServiceNPCData.lua",
+        "GodJohnsonGoldBorder/ClassTrainerLocations.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua",
+        "GodJohnsonGoldBorder/LibraryBooksData450.lua",
+        "GodJohnsonGoldBorder/ClassQuestData.lua",
+        "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua",
+        "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
+        "GodJohnsonGoldBorder/QuestChainData270.lua",
+        "GodJohnsonGoldBorder/TrainingData.lua"
+      ],
+      "input_count": 642,
+      "output_count": 599,
+      "skipped_count": 0,
+      "shards": 2,
+      "output_sha256": "a902b5ce38f08c9e27c9cb65986b50ce1759a0135aae8822d60798f5365a3905"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Atlas",
+      "pack_id": "class_quests",
+      "title": "직업 퀘스트 및 단계별 공략서 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapServiceNPCData.lua",
+        "GodJohnsonGoldBorder/ClassTrainerLocations.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua",
+        "GodJohnsonGoldBorder/LibraryBooksData450.lua",
+        "GodJohnsonGoldBorder/ClassQuestData.lua",
+        "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua",
+        "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
+        "GodJohnsonGoldBorder/QuestChainData270.lua",
+        "GodJohnsonGoldBorder/TrainingData.lua"
+      ],
+      "input_count": 638,
+      "output_count": 638,
+      "skipped_count": 0,
+      "shards": 2,
+      "output_sha256": "2b55eaf4163aaf9af921021a87dff3bc60751f4d7b55f31f40753c34ef8ed1d0"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Atlas",
+      "pack_id": "special_guides",
+      "title": "특수 퀘스트 · 포에버 도서관 책 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapServiceNPCData.lua",
+        "GodJohnsonGoldBorder/ClassTrainerLocations.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua",
+        "GodJohnsonGoldBorder/LibraryBooksData450.lua",
+        "GodJohnsonGoldBorder/ClassQuestData.lua",
+        "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua",
+        "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
+        "GodJohnsonGoldBorder/QuestChainData270.lua",
+        "GodJohnsonGoldBorder/TrainingData.lua"
+      ],
+      "input_count": 44,
+      "output_count": 44,
+      "skipped_count": 0,
+      "shards": 1,
+      "output_sha256": "a6ffd8c56af6b1fe8404e210cf445b758309b7efb6cbf9cbfa7aff647759c9bc"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Atlas",
+      "pack_id": "training_spells",
+      "title": "직업별 스킬 습득 테이블",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapServiceNPCData.lua",
+        "GodJohnsonGoldBorder/ClassTrainerLocations.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua",
+        "GodJohnsonGoldBorder/LibraryBooksData450.lua",
+        "GodJohnsonGoldBorder/ClassQuestData.lua",
+        "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua",
+        "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
+        "GodJohnsonGoldBorder/QuestChainData270.lua",
+        "GodJohnsonGoldBorder/TrainingData.lua"
+      ],
+      "input_count": 1443,
+      "output_count": 1443,
+      "skipped_count": 0,
+      "shards": 4,
+      "output_sha256": "7dc522842d7d0b244fd4f8c57958d120b974bce5be08c0bdfbd614e86e1bb0d3"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_MapPins",
+      "pack_id": "map_quest_starts",
+      "title": "월드맵 미수락 퀘스트 시작 핀",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapQuestStartData.lua"
+      ],
+      "input_count": 3609,
+      "output_count": 3609,
+      "skipped_count": 0,
+      "shards": 9,
+      "output_sha256": "fa6ff22b563ed781e81a547f28ce2b36be04c9c61779722bf06184ae016cf751"
+    }
+  ]
+}

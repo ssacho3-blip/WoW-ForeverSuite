@@ -1,0 +1,17 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Atlas, Quests & Training DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 서비스 NPC·교통편·직업 퀘스트·특수 퀘스트·도서관 책·스킬 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 2.2.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_atlas_npcs_01.lua
+Pack_atlas_npcs_02.lua
+Pack_class_quests_01.lua
+Pack_class_quests_02.lua
+Pack_special_guides_01.lua
+Pack_training_spells_01.lua
+Pack_training_spells_02.lua
+Pack_training_spells_03.lua
+Pack_training_spells_04.lua

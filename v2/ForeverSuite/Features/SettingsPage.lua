@@ -38,7 +38,7 @@ local function MatchesSection(section, activeSec)
         return true
     end
     if activeSec == "other" then
-        return section == "ui" or section == "profession"
+        return section == "ui" or section == "profession" or section == "social"
     end
     return section == activeSec
 end

@@ -1,0 +1,17 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Profession DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 12대 전문기술(독 제조 포함) 육성 가이드·제조법·교관 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 2.2.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_prof_guides_01.lua
+Pack_professions_01.lua
+Pack_professions_02.lua
+Pack_professions_03.lua
+Pack_professions_04.lua
+Pack_professions_05.lua
+Pack_professions_06.lua
+Pack_prof_trainers_01.lua
+Pack_prof_trainers_02.lua

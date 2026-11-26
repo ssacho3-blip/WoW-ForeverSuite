@@ -57,11 +57,25 @@ function Widgets.SetBorderColor(frame, col)
     end
 end
 
-function Widgets.Label(parent, text, role, color)
+function Widgets.Label(parent, text, role, color, opts)
     local fs = parent:CreateFontString(nil, "OVERLAY", T.GetFont(role or "body"))
     fs:SetText(tostring(text or ""))
     local c = color or T.TEXT.PRIMARY
     fs:SetTextColor(c[1], c[2], c[3], c[4] or 1)
+    if type(fs.SetShadowColor) == "function" then
+        fs:SetShadowColor(0, 0, 0, 0.95)
+    end
+    if type(fs.SetShadowOffset) == "function" then
+        fs:SetShadowOffset(1, -1)
+    end
+    if type(opts) == "table" then
+        if opts.justifyH and type(fs.SetJustifyH) == "function" then
+            fs:SetJustifyH(opts.justifyH)
+        end
+        if opts.wordWrap ~= nil and type(fs.SetWordWrap) == "function" then
+            fs:SetWordWrap(opts.wordWrap)
+        end
+    end
     return fs
 end
 
@@ -166,20 +180,132 @@ function Widgets.Button(parent, label, width, height, onClick, isGoldAccent)
     return btn
 end
 
--- 6. ListRow (interactive flat row with hover highlight)
+-- 5b. MiniButton (compact HUD/header toolbar button with gold active state & hover tooltip)
+function Widgets.MiniButton(parent, label, width, height, onClick, tooltipText)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(width or 42, height or 20)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn._active = false
+    btn._tooltipText = tooltipText
+    PaintBox(btn, T.SURFACE.ELEVATED, T.BORDER.HAIRLINE)
+    local lbl = Widgets.Label(btn, label, "small", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false })
+    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn._label = lbl
+
+    local function SyncStyle(self)
+        local bg = self._active and T.SURFACE.GOLD_TINT or T.SURFACE.ELEVATED
+        local bd = self._active and T.BORDER.GOLD or T.BORDER.HAIRLINE
+        local tc = self._active and T.TEXT.GOLD or T.TEXT.SECONDARY
+        self._fsBg:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
+        Widgets.SetBorderColor(self, bd)
+        self._label:SetTextColor(tc[1], tc[2], tc[3], tc[4])
+    end
+
+    function btn:SetActive(flag)
+        self._active = flag and true or false
+        SyncStyle(self)
+    end
+
+    function btn:SetLabel(text)
+        self._label:SetText(tostring(text or ""))
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        self._fsBg:SetColorTexture(T.SURFACE.HOVER[1], T.SURFACE.HOVER[2], T.SURFACE.HOVER[3], 1)
+        if self._tooltipText and _G.GameTooltip and type(_G.GameTooltip.SetOwner) == "function" then
+            pcall(function()
+                _G.GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine(self._tooltipText, T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3])
+                _G.GameTooltip:Show()
+            end)
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        SyncStyle(self)
+        if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
+            pcall(_G.GameTooltip.Hide, _G.GameTooltip)
+        end
+    end)
+    btn:SetScript("OnClick", function(self, mouseBtn)
+        if onClick then onClick(self, mouseBtn) end
+    end)
+    SyncStyle(btn)
+    return btn
+end
+
+-- 6. ListRow (interactive clipped flat row with left status accent, bottom separator, hover highlight & tooltip)
 function Widgets.ListRow(parent, height, onClick)
     local row = CreateFrame("Button", nil, parent)
     row:SetHeight(height or 24)
-    PaintBox(row, { 0, 0, 0, 0 }, nil)
-    row._left = Widgets.Label(row, "", "body", T.TEXT.PRIMARY)
-    row._left:SetPoint("LEFT", row, "LEFT", T.SPACE.SM, 0)
-    row._right = Widgets.Label(row, "", "mono", T.TEXT.SECONDARY)
+    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    row._baseBg = { 0, 0, 0, 0 }
+    PaintBox(row, row._baseBg, nil)
+
+    local accent = row:CreateTexture(nil, "ARTWORK")
+    accent:SetWidth(3)
+    accent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
+    accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 2)
+    accent:Hide()
+    row._accent = accent
+
+    local sep = row:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(T.PixelSize(row, 1))
+    sep:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    sep:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+    sep:Hide()
+    row._sep = sep
+
+    row._right = Widgets.Label(row, "", "mono", T.TEXT.SECONDARY, { justifyH = "RIGHT", wordWrap = false })
     row._right:SetPoint("RIGHT", row, "RIGHT", -T.SPACE.SM, 0)
+
+    row._left = Widgets.Label(row, "", "body", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
+    row._left:SetPoint("LEFT", row, "LEFT", T.SPACE.SM, 0)
+    row._left:SetPoint("RIGHT", row._right, "LEFT", -6, 0)
+
+    function row:SetRowStyle(bgCol, accentCol, accentX, accentW, sepCol, leftPad)
+        self._baseBg = bgCol or { 0, 0, 0, 0 }
+        self._fsBg:SetColorTexture(self._baseBg[1], self._baseBg[2], self._baseBg[3], self._baseBg[4] or 0)
+        if accentCol and (accentW or 3) > 0 then
+            self._accent:ClearAllPoints()
+            self._accent:SetWidth(accentW or 3)
+            self._accent:SetPoint("TOPLEFT", self, "TOPLEFT", accentX or 0, -2)
+            self._accent:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", accentX or 0, 2)
+            self._accent:SetColorTexture(accentCol[1], accentCol[2], accentCol[3], accentCol[4] or 1)
+            self._accent:Show()
+        else
+            self._accent:Hide()
+        end
+        if sepCol then
+            self._sep:SetColorTexture(sepCol[1], sepCol[2], sepCol[3], sepCol[4] or 0.5)
+            self._sep:Show()
+        else
+            self._sep:Hide()
+        end
+        if type(leftPad) == "number" then
+            self._left:ClearAllPoints()
+            self._left:SetPoint("LEFT", self, "LEFT", leftPad, 0)
+            self._left:SetPoint("RIGHT", self._right, "LEFT", -6, 0)
+        end
+    end
+
+    function row:SetTooltipHandler(onEnterFn, onLeaveFn)
+        self._onTooltipEnter = onEnterFn
+        self._onTooltipLeave = onLeaveFn
+    end
+
     row:SetScript("OnEnter", function(self)
-        self._fsBg:SetColorTexture(T.SURFACE.HOVER[1], T.SURFACE.HOVER[2], T.SURFACE.HOVER[3], 0.55)
+        self._fsBg:SetColorTexture(T.SURFACE.HOVER[1], T.SURFACE.HOVER[2], T.SURFACE.HOVER[3], 0.65)
+        if type(self._onTooltipEnter) == "function" then
+            self._onTooltipEnter(self)
+        end
     end)
     row:SetScript("OnLeave", function(self)
-        self._fsBg:SetColorTexture(0, 0, 0, 0)
+        local bg = self._baseBg or { 0, 0, 0, 0 }
+        self._fsBg:SetColorTexture(bg[1], bg[2], bg[3], bg[4] or 0)
+        if type(self._onTooltipLeave) == "function" then
+            self._onTooltipLeave(self)
+        end
     end)
     row:SetScript("OnClick", function(self, mouseBtn)
         if onClick then onClick(self, mouseBtn) end
@@ -210,7 +336,7 @@ function Widgets.TabRail(parent, width, items, onSelect)
     local y = -T.SPACE.SM
     for _, def in ipairs(items or {}) do
         local btn = CreateFrame("Button", nil, rail)
-        btn:SetHeight(30)
+        btn:SetHeight(26)
         btn:SetPoint("TOPLEFT", rail, "TOPLEFT", T.SPACE.XS, y)
         btn:SetPoint("TOPRIGHT", rail, "TOPRIGHT", -T.SPACE.XS, y)
         PaintBox(btn, { 0, 0, 0, 0 }, nil)
@@ -228,7 +354,7 @@ function Widgets.TabRail(parent, width, items, onSelect)
             if onSelect then onSelect(def.id) end
         end)
         table_insert(rail._buttons, { id = def.id, btn = btn, accent = accent })
-        y = y - 34
+        y = y - 29
     end
     return rail
 end
@@ -385,30 +511,43 @@ function Widgets.Badge(parent, text, semanticKey)
 end
 
 local sharedToast = nil
+local toastGen = 0
 
-function Widgets.Toast(titleText, bodyText, semanticKey)
+function Widgets.Toast(titleText, bodyText, semanticKey, durationSec)
     local col = T.SEMANTIC[semanticKey] or T.BORDER.GOLD
     if not sharedToast then
-        local card = Widgets.Card(_G.UIParent, 300, 58)
+        local card = Widgets.Card(_G.UIParent, 340, 58)
         card:SetFrameStrata(T.ELEVATION.L1_CARD)
         card:SetPoint("TOP", _G.UIParent, "TOP", 0, -96)
         local accent = card:CreateTexture(nil, "ARTWORK")
         accent:SetWidth(3)
         accent:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
         accent:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 1, 1)
-        local t = Widgets.Label(card, "", "heading", T.TEXT.PRIMARY)
+        local t = Widgets.Label(card, "", "heading", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
         t:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
-        local b = Widgets.Label(card, "", "small", T.TEXT.SECONDARY)
+        t:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -10)
+        local b = Widgets.Label(card, "", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
         b:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -4)
+        b:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -30)
         card._accent = accent
         card._title = t
         card._body = b
         sharedToast = card
     end
+    toastGen = toastGen + 1
+    local myGen = toastGen
     sharedToast._accent:SetColorTexture(col[1], col[2], col[3], 1)
     sharedToast._title:SetText(tostring(titleText or ""))
     sharedToast._body:SetText(tostring(bodyText or ""))
     sharedToast:Show()
+    local sec = (type(durationSec) == "number" and durationSec > 0) and durationSec or 4.5
+    if ns.Api and ns.Api.GameAdapters and type(ns.Api.GameAdapters.RunAfter) == "function" then
+        ns.Api.GameAdapters.RunAfter(sec, function()
+            if toastGen == myGen and sharedToast then
+                sharedToast:Hide()
+            end
+        end)
+    end
     return sharedToast
 end
 
@@ -467,6 +606,9 @@ function Widgets.MinimapButton(name, initialAngle, onClick, onTooltip, onAngleCh
     btn:SetScript("OnDragStop", function(self)
         self:SetScript("OnUpdate", nil)
         if onAngleChanged then onAngleChanged(self._angle) end
+    end)
+    btn:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
     end)
 
     btn:SetAngle(btn._angle)

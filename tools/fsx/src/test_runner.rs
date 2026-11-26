@@ -110,6 +110,29 @@ _G.__FS_MOCK = {
     errorsForwarded = {},
     objTrackerTouches = 0,
     shiftDown = false,
+    ctrlDown = false,
+    altDown = false,
+    activeChatEdit = nil,
+    insertedLinks = {},
+    questWatched = {},
+    questFlaggedCompleted = {},
+    itemLevels = {},
+    worldMapID = 1453,
+    mapNames = { [1453] = "스톰윈드", [1454] = "오그리마", [1411] = "듀로타", [1429] = "엘윈 숲" },
+    playerName = "영웅",
+    unspentTalents = 0,
+    inGroup = false,
+    inRaid = false,
+    groupMembers = 0,
+    unitNames = { player = "영웅" },
+    threatData = {},
+    chatLockdown = false,
+    sentChats = {},
+    sentEmotes = {},
+    spellNames = {},
+    fontSetShouldFail = {},
+    playerFaction = "Alliance",
+    equippedItems = {},
     zoneText = "",
     durability = {},
     bagItems = {},
@@ -168,6 +191,17 @@ _G.__FS_MOCK = {
 }
 
 function IsShiftKeyDown() return _G.__FS_MOCK.shiftDown == true end
+function IsControlKeyDown() return _G.__FS_MOCK.ctrlDown == true end
+function IsAltKeyDown() return _G.__FS_MOCK.altDown == true end
+function GetQuestLink(qid) return "|cffffff00|Hquest:" .. tostring(qid) .. ":60|h[퀘스트 #" .. tostring(qid) .. "]|h|r" end
+function ChatEdit_GetActiveWindow() return _G.__FS_MOCK.activeChatEdit end
+function ChatEdit_InsertLink(link)
+    if _G.__FS_MOCK.activeChatEdit then
+        table.insert(_G.__FS_MOCK.insertedLinks, link)
+        return true
+    end
+    return false
+end
 function IsModifiedClick(action)
     local mc = _G.__FS_MOCK.modifiedClicks
     if mc and mc[action] ~= nil then return mc[action] end
@@ -206,7 +240,42 @@ function GetMaxPlayerLevel() return _G.__FS_MOCK.maxLevel end
 function GetXPExhaustion() return _G.__FS_MOCK.restedXP end
 function GetRealZoneText() return _G.__FS_MOCK.zoneText or "" end
 function GetPlayerFacing() return _G.__FS_MOCK.playerPos and _G.__FS_MOCK.playerPos.facing or nil end
-function UnitClass() return _G.__FS_MOCK.playerClass, _G.__FS_MOCK.playerClass end
+function UnitClass(u)
+    local c = _G.__FS_MOCK.playerClass
+    return c, c
+end
+function UnitName(u)
+    if u == "player" or not u then return _G.__FS_MOCK.playerName end
+    return (_G.__FS_MOCK.unitNames or {})[u]
+end
+function UnitIsUnit(a, b)
+    if a == b then return true end
+    local map = _G.__FS_MOCK.unitIsPlayer or {}
+    if b == "player" and map[a] == true then return true end
+    if a == "player" and map[b] == true then return true end
+    return false
+end
+function UnitCharacterPoints() return _G.__FS_MOCK.unspentTalents end
+function IsInGroup() return _G.__FS_MOCK.inGroup == true end
+function IsInRaid() return _G.__FS_MOCK.inRaid == true end
+function GetNumGroupMembers() return _G.__FS_MOCK.groupMembers or 0 end
+function UnitDetailedThreatSituation(unit, target)
+    local d = (_G.__FS_MOCK.threatData or {})[unit]
+    if not d then return nil end
+    return d[1], d[2], d[3], d[4], d[5]
+end
+function SendChatMessage(msg, ch, _, tgt)
+    table.insert(_G.__FS_MOCK.sentChats, { msg = msg, channel = ch, target = tgt })
+end
+function DoEmote(tok, tgt)
+    table.insert(_G.__FS_MOCK.sentEmotes, { token = tok, target = tgt })
+end
+C_ChatInfo = {
+    InChatMessagingLockdown = function() return _G.__FS_MOCK.chatLockdown end,
+    SendChatMessage = function(msg, ch, _, tgt)
+        table.insert(_G.__FS_MOCK.sentChats, { msg = msg, channel = ch, target = tgt })
+    end,
+}
 function UnitHealth() return _G.__FS_MOCK.hp end
 function UnitHealthMax() return _G.__FS_MOCK.hpMax end
 function UnitIsDeadOrGhost() return _G.__FS_MOCK.deadOrGhost end
@@ -219,9 +288,10 @@ function GetInventoryItemDurability(slot)
     if d then return d[1], d[2] end
     return nil, nil
 end
+function UnitFactionGroup() return _G.__FS_MOCK.playerFaction or "Alliance", _G.__FS_MOCK.playerFaction or "Alliance" end
 function GetInventoryItemID(_, slot)
-    if slot == 16 then return _G.__FS_MOCK.mainHandItemID end
-    return nil
+    if slot == 16 and _G.__FS_MOCK.mainHandItemID then return _G.__FS_MOCK.mainHandItemID end
+    return (_G.__FS_MOCK.equippedItems or {})[slot]
 end
 function UnitGUID(unit)
     if unit == "target" then return _G.__FS_MOCK.targetGUID end
@@ -370,12 +440,19 @@ local function MakeMockRegion(kind, parent)
     function r:SetJustifyH(j) self._justifyH = j end
     function r:SetJustifyV(j) self._justifyV = j end
     function r:SetWordWrap(w) self._wordWrap = w end
+    function r:SetNonSpaceWrap(w) self._nonSpaceWrap = w end
+    function r:SetShadowColor(r1, g1, b1, a1) self._shadowColor = { r1, g1, b1, a1 } end
+    function r:SetShadowOffset(x, y) self._shadowOffset = { x, y } end
     function r:SetFontObject(f) self._fontObject = f end
     function r:Show() self._shown = true end
     function r:Hide() self._shown = false end
     function r:IsShown() return self._shown end
     function r:SetAlpha(a) self._alpha = a end
     function r:GetAlpha() return self._alpha end
+    function r:GetLeft() return self._rect and self._rect.left or nil end
+    function r:GetRight() return self._rect and (self._rect.left + self._rect.width) or nil end
+    function r:GetBottom() return self._rect and self._rect.bottom or nil end
+    function r:GetTop() return self._rect and (self._rect.bottom + self._rect.height) or nil end
     return r
 end
 
@@ -402,6 +479,7 @@ local function MakeMockFrame(frameType, name, parent, template)
     function f:SetClampedToScreen(v) self._clamped = v end
     function f:SetMovable(v) self._movable = v end
     function f:EnableMouse(v) self._mouse = v end
+    function f:EnableMouseWheel(v) self._mouseWheel = v end
     function f:RegisterForDrag(...) self._dragButtons = { ... } end
     function f:StartMoving() self._moving = true end
     function f:StopMovingOrSizing() self._moving = false end
@@ -492,6 +570,12 @@ end
 WorldMapFrame = MakeMockFrame("Frame", "WorldMapFrame", UIParent, nil)
 WorldMapFrame:Hide()
 WorldMapFrame.IsShown = function() return _G.__FS_MOCK.worldMapShown end
+WorldMapFrame.GetMapID = function() return _G.__FS_MOCK.worldMapID end
+WorldMapFrame.ScrollContainer = MakeMockFrame("Frame", nil, WorldMapFrame, nil)
+WorldMapFrame.ScrollContainer._rect = { left = 100, bottom = 100, width = 800, height = 600 }
+WorldMapFrame.ScrollContainer:SetSize(800, 600)
+WorldMapFrame._rect = { left = 100, bottom = 100, width = 800, height = 600 }
+WorldMapFrame:SetSize(800, 600)
 
 Minimap = MakeMockFrame("Frame", "Minimap", UIParent, nil)
 Minimap:SetSize(140, 140)
@@ -512,6 +596,8 @@ end
 function GameTooltip:AddDoubleLine(left, right, r, g, b)
     table.insert(self._lines, { left = left, right = right, r = r, g = g, b = b })
 end
+function GameTooltip:ClearLines() self._lines = {} end
+function GameTooltip:SetHyperlink(link) self._hyperlink = link end
 
 Enum = {
     TooltipDataType = { Item = 0, Spell = 1 },
@@ -533,7 +619,14 @@ end
 
 function CreateFont(name)
     local f = { _name = name }
-    function f:SetFont(path, size, flags) self._path, self._size, self._flags = path, size, flags end
+    function f:SetFont(path, size, flags)
+        if _G.__FS_MOCK.fontSetShouldFail and _G.__FS_MOCK.fontSetShouldFail[path] then
+            return false
+        end
+        self._path, self._size, self._flags = path, size, flags
+        return true
+    end
+    function f:GetFont() return self._path, self._size, self._flags end
     _G[name] = f
     return f
 end
@@ -571,6 +664,10 @@ C_Map = {
     GetBestMapForUnit = function()
         return (_G.__FS_MOCK.playerPos and _G.__FS_MOCK.playerPos.mapID) or 1411
     end,
+    GetMapInfo = function(mapID)
+        local n = (_G.__FS_MOCK.mapNames or {})[mapID]
+        return n and { mapID = mapID, name = n } or nil
+    end,
     GetPlayerMapPosition = function()
         local p = _G.__FS_MOCK.playerPos
         if p then return { x = p.x, y = p.y } end
@@ -607,6 +704,10 @@ C_FriendList = {
 
 C_Spell = {
     IsSpellKnown = function(sid) return (_G.__FS_MOCK.knownSpells or {})[sid] == true end,
+    GetSpellInfo = function(sid)
+        local n = (_G.__FS_MOCK.spellNames or {})[sid]
+        return n and { name = n, spellID = sid } or nil
+    end,
 }
 
 C_UnitAuras = {
@@ -616,9 +717,19 @@ C_UnitAuras = {
         end
         return (_G.__FS_MOCK.activeAuras or {})[sid] and { spellId = sid } or nil
     end,
+    GetAuraDataByIndex = function(unit, idx)
+        if _G.__FS_MOCK.auraListSecret then
+            return FS_MakeSecret("aura_row", "table")
+        end
+        local list = _G.__FS_MOCK.auraList or {}
+        return list[idx]
+    end,
 }
 
 C_Item = {
+    GetDetailedItemLevelInfo = function(itemID)
+        return (_G.__FS_MOCK.itemLevels or {})[itemID]
+    end,
     GetItemInfo = function(itemID)
         if itemID == 6256 then
             return "낚싯대", "|Hitem:6256|h[낚싯대]|h", 1, 5, 1, "무기", "낚싯대", 1, "", 132932, 20, 2, 20
@@ -642,9 +753,24 @@ C_QuestLog = {
     GetInfo = function(idx)
         return (_G.__FS_MOCK.questEntries or {})[idx]
     end,
-    GetQuestObjectives = function() return {} end,
+    GetQuestObjectives = function(qid)
+        return (_G.__FS_MOCK.questObjectives and _G.__FS_MOCK.questObjectives[qid]) or {}
+    end,
     GetQuestExpansion = function() return 0 end,
     IsComplete = function(qid) return (_G.__FS_MOCK.questComplete or {})[qid] == true end,
+    IsQuestFlaggedCompleted = function(qid)
+        return (_G.__FS_MOCK.questFlaggedCompleted or {})[qid] == true
+    end,
+    GetQuestWatchType = function(qid)
+        return (_G.__FS_MOCK.questWatched and _G.__FS_MOCK.questWatched[qid]) and 0 or nil
+    end,
+    AddQuestWatch = function(qid)
+        _G.__FS_MOCK.questWatched = _G.__FS_MOCK.questWatched or {}
+        _G.__FS_MOCK.questWatched[qid] = true
+    end,
+    RemoveQuestWatch = function(qid)
+        if _G.__FS_MOCK.questWatched then _G.__FS_MOCK.questWatched[qid] = nil end
+    end,
 }
 
 C_Container = {
@@ -730,10 +856,13 @@ fn setup_vm(v2_root: &Path) -> Result<Lua> {
         load_addon_into_vm(&lua, &addon_dir)?;
     }
 
-    let data_dir = v2_root.join("ForeverSuite_Data");
-    let data_dir_str = data_dir.to_string_lossy().to_string();
-    let loader_fn = lua_err(lua.create_function(move |lua_ctx, ()| {
-        let p = PathBuf::from(&data_dir_str);
+    let v2_root_str = v2_root.to_string_lossy().to_string();
+    let loader_fn = lua_err(lua.create_function(move |lua_ctx, addon_name: Option<String>| {
+        let folder = addon_name.unwrap_or_else(|| "ForeverSuite_Data".to_string());
+        if folder.contains("..") || folder.contains('/') || folder.contains('\\') {
+            return Ok(false);
+        }
+        let p = PathBuf::from(&v2_root_str).join(&folder);
         if p.is_dir() {
             load_addon_into_vm(lua_ctx, &p)
                 .map_err(|e| mlua::Error::RuntimeError(e.to_string()))?;

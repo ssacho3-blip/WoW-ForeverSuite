@@ -1,0 +1,12 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Rewards & Merchant DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 포에버 명예/평판/상인 보상 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 2.2.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_rewards_01.lua
+Pack_rewards_02.lua
+Pack_rewards_03.lua
+Pack_rewards_04.lua

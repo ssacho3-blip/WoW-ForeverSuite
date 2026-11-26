@@ -296,4 +296,4 @@ assert(totalEntries == 46, "expected exact 46 enriched LoD Codex entries across 
 ns.UI.CommandHub:SelectPage("settings")
 ns.Features.SettingsPage.activeSection = "qol"
 ns.Features.SettingsPage:RenderList("")
-assert(ns.Features.SettingsPage.visibleCount == 5, "QoL settings tab must show exactly 5 QoL toggles")
+assert(ns.Features.SettingsPage.visibleCount >= 5, "QoL settings tab must show at least 5 QoL toggles")

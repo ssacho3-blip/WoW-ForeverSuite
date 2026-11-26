@@ -1,0 +1,23 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Dungeon & Loot DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 던전·보스·퀘스트·드랍 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 2.2.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_dungeons_01.lua
+Pack_dungeon_bosses_01.lua
+Pack_dungeon_quests_01.lua
+Pack_dungeon_loot_01.lua
+Pack_dungeon_loot_02.lua
+Pack_dungeon_loot_03.lua
+Pack_dungeon_loot_04.lua
+Pack_dungeon_loot_05.lua
+Pack_dungeon_loot_06.lua
+Pack_dungeon_loot_07.lua
+Pack_dungeon_loot_08.lua
+Pack_dungeon_loot_09.lua
+Pack_dungeon_loot_10.lua
+Pack_dungeon_loot_11.lua
+Pack_dungeon_loot_12.lua

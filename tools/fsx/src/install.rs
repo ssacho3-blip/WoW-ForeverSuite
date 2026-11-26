@@ -11,6 +11,15 @@ use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 const V2_ADDON_FOLDERS: &[&str] = &["ForeverSuite", "ForeverSuite_Media", "ForeverSuite_Data"];
+const OPTIONAL_LOD_DATA_FOLDERS: &[&str] = &[
+    "ForeverSuite_Data_Dungeon",
+    "ForeverSuite_Data_BiS",
+    "ForeverSuite_Data_Profession",
+    "ForeverSuite_Data_Reward",
+    "ForeverSuite_Data_Pet",
+    "ForeverSuite_Data_Atlas",
+    "ForeverSuite_Data_MapPins",
+];
 
 fn is_legacy_addon_folder(name: &str) -> bool {
     name == "ForeverSuiteV2" || name == "ForeverSuite_GJBridge" || name.starts_with("GodJohnson")
@@ -282,6 +291,26 @@ fn run_install_inner(
             if full.is_symlink() || !full.is_file() {
                 bail!(
                     "TOC file missing or symlink on disk: {}/{}",
+                    folder,
+                    rel.display()
+                );
+            }
+        }
+        let sha = compute_dir_sha256(&src)?;
+        folders_to_deploy.push(((*folder).to_string(), src, sha));
+    }
+    for folder in OPTIONAL_LOD_DATA_FOLDERS {
+        let src = source_root.join(folder);
+        if !src.is_dir() {
+            continue;
+        }
+        let toc =
+            parse_toc(&src).with_context(|| format!("Invalid LoD addon TOC in {}", src.display()))?;
+        for rel in &toc.files {
+            let full = src.join(rel);
+            if full.is_symlink() || !full.is_file() {
+                bail!(
+                    "LoD TOC file missing or symlink on disk: {}/{}",
                     folder,
                     rel.display()
                 );

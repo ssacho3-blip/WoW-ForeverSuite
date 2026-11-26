@@ -95,18 +95,77 @@ function SafeAPI.IsQuestInLog(questID)
     return false
 end
 
-function SafeAPI.LoadDataPack()
-    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
-        local loaded = SafeAPI.SafeRead(C_AddOns.IsAddOnLoaded, "ForeverSuite_Data")
-        if loaded == true then
-            return true
+-- Single global registration entry point for sharded LoadOnDemand data packs (Contract I5).
+function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalShards, entries)
+    if type(packId) ~= "string" or packId == "" or schemaVer ~= 2 or type(entries) ~= "table" then
+        return false, "INVALID_SCHEMA"
+    end
+    if type(shardIdx) ~= "number" or type(totalShards) ~= "number"
+        or shardIdx ~= math.floor(shardIdx) or totalShards ~= math.floor(totalShards)
+        or shardIdx < 1 or totalShards < 1 or shardIdx > totalShards
+    then
+        return false, "INVALID_SHARD"
+    end
+    local idx = shardIdx
+    local tot = totalShards
+    _G.ForeverSuiteData = _G.ForeverSuiteData or { version = "2.1.0", packs = {} }
+    _G.ForeverSuiteData.packs = _G.ForeverSuiteData.packs or {}
+    local pack = _G.ForeverSuiteData.packs[packId]
+    if type(pack) ~= "table" or pack._schema ~= 2 then
+        local m = type(meta) == "table" and meta or {}
+        pack = {
+            id = packId,
+            _schema = 2,
+            title = tostring(m.title or packId),
+            category = tostring(m.category or "general"),
+            source = tostring(m.source or "ForeverSuite"),
+            license = tostring(m.license or "Personal-Local"),
+            entries = {},
+            _shardsSeen = {},
+            _shardCount = 0,
+            _totalShards = tot,
+            _complete = false,
+        }
+        _G.ForeverSuiteData.packs[packId] = pack
+    elseif pack._totalShards ~= tot then
+        return false, "SHARD_MISMATCH"
+    end
+    if not pack._shardsSeen[idx] then
+        pack._shardsSeen[idx] = true
+        pack._shardCount = pack._shardCount + 1
+        local dst = pack.entries
+        for i = 1, #entries do
+            dst[#dst + 1] = entries[i]
         end
     end
-    if C_AddOns and type(C_AddOns.LoadAddOn) == "function" then
-        local ok = SafeAPI.SafeRead(C_AddOns.LoadAddOn, "ForeverSuite_Data")
-        return ok == true
+    pack._complete = (pack._shardCount == pack._totalShards)
+    return true, pack._complete and "COMPLETE" or "PARTIAL"
+end
+
+-- Loads an optional LoadOnDemand data pack OOC only; returns (ok, 5-state status).
+function SafeAPI.LoadDataPack(addonName)
+    local target = (type(addonName) == "string" and addonName ~= "") and addonName or "ForeverSuite_Data"
+    local presence = SafeAPI.GetAddOnPresenceState(target)
+    if presence == "LOADED" then
+        return true, "LOADED"
     end
-    return false
+    if presence == "NOT_INSTALLED" then
+        return false, "NOT_INSTALLED"
+    end
+    if SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    if C_AddOns and type(C_AddOns.LoadAddOn) == "function" then
+        local ok, loaded, reason = pcall(C_AddOns.LoadAddOn, target)
+        if ok and (not SafeAPI.IsSecret(loaded)) and loaded == true then
+            return true, "LOADED"
+        end
+        if ok and (not SafeAPI.IsSecret(reason)) and reason == "DISABLED" then
+            return false, "DISABLED"
+        end
+        return false, "LOAD_FAILED"
+    end
+    return false, "LOAD_FAILED"
 end
 
 -- Returns 4-state presence: "LOADED" | "DISABLED" | "NOT_INSTALLED" | "UNKNOWN"
@@ -240,12 +299,22 @@ function SafeAPI.CollectQuestLog()
                         end
                     end
                 end
+                local isWatched = false
+                if type(C_QuestLog.GetQuestWatchType) == "function" then
+                    local wt = SafeAPI.SafeRead(C_QuestLog.GetQuestWatchType, qid)
+                    if wt ~= UNAVAILABLE and wt ~= nil then
+                        isWatched = true
+                    end
+                end
+                local isFailed = (not SafeAPI.IsSecret(info.isFailed)) and (info.isFailed == true)
                 quests[#quests + 1] = {
                     questID = qid,
                     title = ((not SafeAPI.IsSecret(info.title)) and type(info.title) == "string" and info.title) or ("퀘스트 #" .. tostring(qid)),
                     zone = curZone,
                     level = ((not SafeAPI.IsSecret(info.level)) and type(info.level) == "number") and info.level or 0,
                     isComplete = isComplete,
+                    isFailed = isFailed,
+                    isWatched = isWatched,
                     isForever = isForever,
                     itemLink = itemLink,
                     itemIcon = itemIcon,

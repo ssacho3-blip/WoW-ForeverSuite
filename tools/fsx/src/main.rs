@@ -1,5 +1,6 @@
 mod check;
 mod data;
+mod gj_compiler;
 mod install;
 mod manifest;
 mod taint_report;
@@ -87,6 +88,13 @@ enum DataAction {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Compile all 6 real GodJohnson databases from backup ZIP into sharded LoadOnDemand ForeverSuite_Data_* addons
+    CompileGj {
+        #[arg(long)]
+        zip: PathBuf,
+        #[arg(long)]
+        v2_root: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -113,6 +121,9 @@ fn main() -> Result<()> {
             DataAction::InspectGj { zip_path } => data::inspect_gj_zip(&zip_path),
             DataAction::Compile { src, out } => data::compile_toml_to_lod(&src, &out),
             DataAction::ExtractGj { zip, out } => data::extract_gj_to_toml(&zip, &out),
+            DataAction::CompileGj { zip, v2_root } => {
+                gj_compiler::compile_gj_lod_packs(&zip, &v2_root)
+            }
         },
         Commands::Install {
             source,

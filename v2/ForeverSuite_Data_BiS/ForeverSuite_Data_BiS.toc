@@ -1,0 +1,10 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · BiS Gear DB (LoD)
+## Notes: ForeverSuite LoadOnDemand BiS 장비·비교·획득처 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 2.2.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_bis_01.lua
+Pack_bis_02.lua

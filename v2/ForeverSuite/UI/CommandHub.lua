@@ -35,7 +35,7 @@ function CommandHub:EnsureWindow()
     if self.window then
         return self.window
     end
-    local win = W.Window("ForeverSuiteV2CommandHub", 760, 520, "✦ ForeverSuite")
+    local win = W.Window("ForeverSuiteV2CommandHub", 880, 580, "✦ ForeverSuite")
     win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 20)
 
     local search = W.SearchBox(win._header, 210, "설정 · 도감 전역 검색...", function(q)
