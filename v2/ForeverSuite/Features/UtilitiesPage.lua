@@ -622,7 +622,8 @@ function UtilitiesPage:Render(query)
                     right = right,
                     color = h.matchedKeyword and T.SEMANTIC.WARN or T.TEXT.PRIMARY,
                     rightCol = hasUrl and T.TEXT.GOLD or T.SEMANTIC.WARN,
-                    glyph = hasUrl and "URL" or "채팅",
+                    icon = hasUrl and "Interface\\Icons\\INV_Misc_Note_01" or "Interface\\Icons\\UI_Chat",
+                    glyph = hasUrl and "↗" or "말",
                     onClick = hasUrl and function()
                         W.CopyPasteModal():OpenExport(
                             "채팅 URL 복사",

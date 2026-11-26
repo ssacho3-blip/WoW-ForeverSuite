@@ -53,5 +53,8 @@ function QuestAutomation:OnQuestAccepted(questID)
         return false
     end
     local ok, status = ns.Api.NavPort.RequestSuperTrack(questID)
+    if ns.Features.NavigationHud and type(ns.Features.NavigationHud.TrackQuest) == "function" then
+        ns.Features.NavigationHud:TrackQuest(questID, nil, { allowLoadPacks = false, explicit = true })
+    end
     return ok, status
 end

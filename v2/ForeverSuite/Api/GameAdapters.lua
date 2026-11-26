@@ -687,6 +687,190 @@ function GameAdapters.IsQuestCompleted(questID)
     return nil
 end
 
+local function IsValidWaypoint(m, x, y)
+    if SafeAPI.IsSecret(m) or SafeAPI.IsSecret(x) or SafeAPI.IsSecret(y) then
+        return false
+    end
+    if type(m) ~= "number" or m <= 0 or math.floor(m) ~= m then
+        return false
+    end
+    if type(x) ~= "number" or type(y) ~= "number" then
+        return false
+    end
+    if x < 0 or x > 1 or y < 0 or y > 1 then
+        return false
+    end
+    return (x > 0 or y > 0)
+end
+
+local function ReadQuestTitleSafe(questID)
+    if C_QuestLog and type(C_QuestLog.GetTitleForQuestID) == "function" then
+        local t = SafeAPI.SafeRead(C_QuestLog.GetTitleForQuestID, questID)
+        if t ~= UNAVAILABLE and type(t) == "string" and t ~= "" then
+            return t
+        end
+    end
+    if C_QuestLog and type(C_QuestLog.GetLogIndexForQuestID) == "function" and type(C_QuestLog.GetInfo) == "function" then
+        local idx = SafeAPI.SafeRead(C_QuestLog.GetLogIndexForQuestID, questID)
+        if idx ~= UNAVAILABLE and type(idx) == "number" and idx > 0 then
+            local info = SafeAPI.SafeRead(C_QuestLog.GetInfo, idx)
+            if info ~= UNAVAILABLE and type(info) == "table" and not SafeAPI.IsSecret(info.title) and type(info.title) == "string" and info.title ~= "" then
+                return info.title
+            end
+        end
+    end
+    return nil
+end
+
+local function ReadQuestReadyState(questID)
+    if C_QuestLog and type(C_QuestLog.IsComplete) == "function" then
+        local v = SafeAPI.SafeRead(C_QuestLog.IsComplete, questID)
+        if v ~= UNAVAILABLE and IsTruthy(v) then
+            return true
+        end
+    end
+    if C_QuestLog and type(C_QuestLog.ReadyForTurnIn) == "function" then
+        local v = SafeAPI.SafeRead(C_QuestLog.ReadyForTurnIn, questID)
+        if v ~= UNAVAILABLE and IsTruthy(v) then
+            return true
+        end
+    end
+    return false
+end
+
+local CAPITAL_MAP_IDS = { 1453, 1454, 1455, 1456, 1457, 1458 }
+
+-- 4-Tier Zero-Taint, C_Secrets-safe Quest Waypoint Resolver (WoW Forever 1.60.1 + ForeverSuite LoD DB fallback).
+-- Returns { mapID, x, y, isComplete, title, waypointText, source } or nil.
+function GameAdapters.ResolveQuestWaypoint(questID, allowLoadPacks)
+    if SafeAPI.IsSecret(questID) or type(questID) ~= "number" or questID <= 0 then
+        return nil
+    end
+    local isComplete = ReadQuestReadyState(questID)
+    local title = ReadQuestTitleSafe(questID)
+    local wpText = ""
+    if C_QuestLog and type(C_QuestLog.GetNextWaypointText) == "function" then
+        local t = SafeAPI.SafeRead(C_QuestLog.GetNextWaypointText, questID)
+        if t ~= UNAVAILABLE and type(t) == "string" then
+            wpText = t
+        end
+    end
+
+    -- Tier 1: Native Blizzard C_QuestLog.GetNextWaypoint(questID) -> (mapID, x, y)
+    if C_QuestLog and type(C_QuestLog.GetNextWaypoint) == "function" then
+        local ok, m, x, y = pcall(C_QuestLog.GetNextWaypoint, questID)
+        if ok and IsValidWaypoint(m, x, y) then
+            return { mapID = m, x = x, y = y, isComplete = isComplete, title = title, waypointText = wpText, source = "blizz_waypoint" }
+        end
+    end
+
+    -- Tier 2: Native Blizzard QuestPOIGetIconInfo(questID) + GetQuestUiMapID(questID, true)
+    local questUiMapID = nil
+    if type(_G.GetQuestUiMapID) == "function" then
+        local okM, qm = pcall(_G.GetQuestUiMapID, questID, true)
+        if okM and not SafeAPI.IsSecret(qm) and type(qm) == "number" and qm > 0 then
+            questUiMapID = qm
+        end
+    end
+    if type(_G.QuestPOIGetIconInfo) == "function" and questUiMapID then
+        local okP, ended, px, py = pcall(_G.QuestPOIGetIconInfo, questID)
+        if okP and not SafeAPI.IsSecret(ended) and IsValidWaypoint(questUiMapID, px, py) then
+            if (not isComplete) or IsTruthy(ended) then
+                return { mapID = questUiMapID, x = px, y = py, isComplete = isComplete, title = title, waypointText = wpText, source = "blizz_poi_icon" }
+            end
+        end
+    end
+
+    -- Tier 3: Per-map waypoint & quest POI scan (skip multi-map scan in combat to avoid burst allocations)
+    if C_QuestLog and not SafeAPI.InCombat() then
+        local candidates = {}
+        local seenMap = {}
+        local function AddMap(m)
+            if type(m) == "number" and m > 0 and math.floor(m) == m and not seenMap[m] then
+                seenMap[m] = true
+                candidates[#candidates + 1] = m
+            end
+        end
+        local pos = GameAdapters.GetPlayerPosition()
+        if pos and type(pos.mapID) == "number" then
+            AddMap(pos.mapID)
+            if C_Map and type(C_Map.GetMapInfo) == "function" then
+                local info = SafeAPI.SafeRead(C_Map.GetMapInfo, pos.mapID)
+                if info ~= UNAVAILABLE and type(info) == "table" and not SafeAPI.IsSecret(info.parentMapID) then
+                    AddMap(info.parentMapID)
+                end
+            end
+        end
+        AddMap(questUiMapID)
+        if isComplete then
+            for _, cm in ipairs(CAPITAL_MAP_IDS) do
+                AddMap(cm)
+            end
+        end
+        for _, m in ipairs(candidates) do
+            if type(C_QuestLog.GetNextWaypointForMap) == "function" then
+                local okW, wx, wy = pcall(C_QuestLog.GetNextWaypointForMap, questID, m)
+                if okW and IsValidWaypoint(m, wx, wy) then
+                    return { mapID = m, x = wx, y = wy, isComplete = isComplete, title = title, waypointText = wpText, source = "blizz_map_waypoint" }
+                end
+            end
+            if type(C_QuestLog.GetQuestsOnMap) == "function" then
+                local okQ, pois = pcall(C_QuestLog.GetQuestsOnMap, m)
+                if okQ and not SafeAPI.IsSecret(pois) and type(pois) == "table" then
+                    for _, poi in ipairs(pois) do
+                        if type(poi) == "table" and not SafeAPI.IsSecret(poi) then
+                            local okF, pqid, isStart, isEnd, px, py = pcall(function()
+                                return poi.questID, poi.isQuestStart, poi.isQuestEnd, poi.x, poi.y
+                            end)
+                            if okF and (not SafeAPI.IsSecret(pqid)) and pqid == questID
+                                and (not SafeAPI.IsSecret(isStart)) and (not isStart)
+                                and IsValidWaypoint(m, px, py)
+                            then
+                                if (not isComplete) or (not SafeAPI.IsSecret(isEnd) and isEnd == true) or (isEnd == nil) then
+                                    return { mapID = m, x = px, y = py, isComplete = isComplete, title = title, waypointText = wpText, source = "blizz_map_poi" }
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Tier 4: ForeverSuite compiled LoD Quest Coordinate DB fallback (OOC lazy-load only when requested)
+    if allowLoadPacks and not SafeAPI.InCombat() then
+        SafeAPI.LoadDataPack("ForeverSuite_Data_QuestExtra")
+        SafeAPI.LoadDataPack("ForeverSuite_Data_MapPins")
+    end
+    local packs = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
+    if type(packs) == "table" then
+        local order = { "quest_routes", "class_quests", "dungeon_quests", "map_quest_starts" }
+        for _, packKey in ipairs(order) do
+            local pack = packs[packKey]
+            if type(pack) == "table" and type(pack.entries) == "table" then
+                for _, e in ipairs(pack.entries) do
+                    if type(e) == "table" and e.questID == questID and IsValidWaypoint(e.mapID, e.x, e.y) then
+                        local note = (type(e.npc) == "string" and e.npc ~= "" and ("NPC: " .. e.npc))
+                            or (type(e.giver) == "string" and e.giver ~= "" and ("NPC: " .. e.giver))
+                            or (type(e.title) == "string" and e.title) or wpText
+                        return {
+                            mapID = e.mapID,
+                            x = e.x,
+                            y = e.y,
+                            isComplete = isComplete,
+                            title = title or e.title,
+                            waypointText = note,
+                            source = "fs_pack_" .. packKey,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
 function GameAdapters.GetCursorScreenPosition()
     if type(_G.GetCursorPosition) ~= "function" then
         return nil, nil
@@ -1606,7 +1790,9 @@ function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel)
     if type(_G.PlaySoundFile) == "function" then
         local vol = tonumber(volumePct) or 75
         local step = (vol <= 35) and 25 or ((vol <= 62) and 50 or ((vol <= 87) and 75 or 100))
-        local path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Notifications\\" .. soundKey .. "_" .. tostring(step) .. ".ogg"
+        local ext = (soundKey == "cash") and ".wav"
+            or ((soundKey == "cooking_master" and step == 100) and ".mp3" or ".ogg")
+        local path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Notifications\\" .. soundKey .. "_" .. tostring(step) .. ext
         local ok = pcall(_G.PlaySoundFile, path, ch)
         if ok then return true end
     end

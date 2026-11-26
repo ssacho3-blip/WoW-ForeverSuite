@@ -55,18 +55,19 @@ function ProcCooldownHud:Init()
     if self.initialized then return true end
     self.initialized = true
 
-    -- 1. Proc Alert Banner
-    local pc = W.Card(_G.UIParent, 244, 44, "ForeverSuiteProcAlertHud", T.ELEVATION.L1_CARD)
+    -- 1. Proc Alert Banner (WeakAuras-style borderless floating gold gradient ribbon + radial glow + 32px IconRing!)
+    local pc = W.HudFloating(_G.UIParent, 244, 44, "ForeverSuiteProcAlertHud", T.ELEVATION.L1_CARD)
+    pc:SetRadialScrim(0.46, 0.34, 0.24, 0.05)
+    pc:SetRibbon({ 0.28, 0.20, 0.05 }, 0.78, 0, 0)
     pc:EnableMouse(false)
-    W.SetBorderColor(pc, T.BORDER.GOLD)
-    local ico = W.IconFrame(pc, 28)
-    ico:SetPoint("LEFT", pc, "LEFT", 8, 0)
-    local pt = W.Label(pc, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
-    pt:SetPoint("TOPLEFT", pc, "TOPLEFT", 44, -6)
-    pt:SetPoint("TOPRIGHT", pc, "TOPRIGHT", -8, -6)
-    local ps = W.Label(pc, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
-    ps:SetPoint("BOTTOMLEFT", pc, "BOTTOMLEFT", 44, 6)
-    ps:SetPoint("BOTTOMRIGHT", pc, "BOTTOMRIGHT", -8, 6)
+    local ico = W.IconFrame(pc, 32)
+    ico:SetPoint("LEFT", pc, "LEFT", 12, 0)
+    local pt = W.Label(pc, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    pt:SetPoint("TOPLEFT", pc, "TOPLEFT", 50, -6)
+    pt:SetPoint("TOPRIGHT", pc, "TOPRIGHT", -10, -6)
+    local ps = W.Label(pc, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    ps:SetPoint("BOTTOMLEFT", pc, "BOTTOMLEFT", 50, 6)
+    ps:SetPoint("BOTTOMRIGHT", pc, "BOTTOMRIGHT", -10, 6)
     pc:Hide()
     self.procCard = pc
     self.procIcon = ico
@@ -79,14 +80,19 @@ function ProcCooldownHud:Init()
         y = 112,
     }, "전투 발동(Proc) 경보 HUD")
 
-    -- 2. Skill Cooldown Tracker HUD
-    local cc = W.Card(_G.UIParent, 212, 92, "ForeverSuiteCooldownHud", T.ELEVATION.L1_CARD)
+    -- 2. Skill Cooldown Tracker HUD (v5.0 Borderless floating countdown bars + subtle radial scrim)
+    local cc = W.HudFloating(_G.UIParent, 212, 92, "ForeverSuiteCooldownHud", T.ELEVATION.L1_CARD)
+    cc:SetRadialScrim(0.32, 0.03, 0.03, 0.04)
     cc:EnableMouse(false)
-    W.SetBorderColor(cc, T.BORDER.GOLD_SOFT)
+    self.cdBars = {}
     for i = 1, 4 do
-        local lbl = W.Label(cc, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
-        lbl:SetPoint("TOPLEFT", cc, "TOPLEFT", 8, -(8 + (i - 1) * 20))
-        lbl:SetPoint("TOPRIGHT", cc, "TOPRIGHT", -8, -(8 + (i - 1) * 20))
+        local track = W.StatusBarTrack(cc, 196, 16)
+        track:SetPoint("TOPLEFT", cc, "TOPLEFT", 8, -(8 + (i - 1) * 20))
+        track:Hide()
+        self.cdBars[i] = track
+        local lbl = W.Label(cc, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+        lbl:SetPoint("TOPLEFT", cc, "TOPLEFT", 12, -(9 + (i - 1) * 20))
+        lbl:SetPoint("TOPRIGHT", cc, "TOPRIGHT", -10, -(9 + (i - 1) * 20))
         self.cdRows[i] = lbl
     end
     cc:Hide()
@@ -94,7 +100,7 @@ function ProcCooldownHud:Init()
     ns.UI.HudLayout:Register("skillCooldownHud", cc, {
         point = "CENTER",
         relPoint = "CENTER",
-        x = -184,
+        x = -210,
         y = -84,
     }, "주요 쿨다운 추적 HUD")
 
@@ -205,7 +211,7 @@ function ProcCooldownHud:RefreshCooldowns()
         if type(st) == "number" and type(dur) == "number" and dur > 2.0 and st > 0 then
             local rem = (st + dur) - now
             if rem > 0.2 then
-                active[#active + 1] = { name = sp.name, remaining = rem }
+                active[#active + 1] = { name = sp.name, remaining = rem, duration = dur }
             end
         end
     end
@@ -219,14 +225,21 @@ function ProcCooldownHud:RefreshCooldowns()
     for i = 1, 4 do
         local r = active[i]
         local lbl = self.cdRows[i]
+        local bar = self.cdBars and self.cdBars[i]
         if r and i <= shown then
             lbl:SetText(string_format("%s  %.1fs", r.name, r.remaining))
             local col = (r.remaining <= 5.0) and T.SEMANTIC.SUCCESS or T.TEXT.GOLD
             lbl:SetTextColor(col[1], col[2], col[3], 1)
             lbl:Show()
+            if bar then
+                local dur = (type(r.duration) == "number" and r.duration > 0) and r.duration or 60
+                bar:SetProgress(math.min(1, math.max(0.04, r.remaining / dur)), { col[1], col[2], col[3], 0.42 }, 196)
+                bar:Show()
+            end
         else
             lbl:SetText("")
             lbl:Hide()
+            if bar then bar:Hide() end
         end
     end
     self.cdCard:SetHeight(16 + shown * 20)

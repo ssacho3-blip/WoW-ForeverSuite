@@ -74,13 +74,28 @@ function W.IconFrame(parent, size)
     glyph:SetPoint("CENTER", f, "CENTER", 0, 0)
     glyph:Hide()
 
+    local ring = f:CreateTexture(nil, "OVERLAY")
+    ring:SetAllPoints(f)
+    if T.UI_ART and T.UI_ART.iconRing and type(ring.SetTexture) == "function" then
+        pcall(ring.SetTexture, ring, T.UI_ART.iconRing)
+        if type(ring.SetVertexColor) == "function" then
+            pcall(ring.SetVertexColor, ring, T.BORDER.HAIRLINE[1], T.BORDER.HAIRLINE[2], T.BORDER.HAIRLINE[3], 0.85)
+        end
+    else
+        ring:Hide()
+    end
+
     f._tex = tex
     f._glyph = glyph
+    f._ring = ring
     f._iconPath = nil
 
     function f:SetIcon(iconTex, borderCol, fallbackGlyph)
         local bd = borderCol or T.BORDER.HAIRLINE
         W.SetBorderColor(self, bd)
+        if self._ring and type(self._ring.SetVertexColor) == "function" then
+            pcall(self._ring.SetVertexColor, self._ring, bd[1], bd[2], bd[3], bd[4] or 0.90)
+        end
         if iconTex and iconTex ~= "" then
             self._iconPath = iconTex
             if type(self._tex.SetTexture) == "function" then
@@ -263,22 +278,24 @@ function W.IconRow(parent, height, onClick)
     return row
 end
 
--- 16. ScrollBar: 100% procedural 8px Obsidian/Slate scrollbar with real drag & track click (zero XML template taint)
+-- 16. ScrollBar: 100% procedural 10px warm antique-bronze scrollbar with real drag & track click (zero XML template taint)
 function W.ScrollBar(parent, height, onChange)
     local sb = CreateFrame("Frame", nil, parent)
-    sb:SetSize(8, height or 200)
+    sb:SetSize(10, height or 200)
     sb:EnableMouse(true)
     PaintBox(sb, T.SURFACE.SUNKEN, T.BORDER.SUBTLE)
 
-    local THUMB_IDLE = { 0.30, 0.36, 0.46, 0.85 }
+    local function GetThumbIdle()
+        return (T.BORDER and T.BORDER.THUMB_IDLE) or { 0.47, 0.37, 0.21, 0.88 }
+    end
     local thumb = CreateFrame("Button", nil, sb)
-    thumb:SetSize(6, 36)
+    thumb:SetSize(8, 36)
     thumb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     if type(thumb.RegisterForDrag) == "function" then
         thumb:RegisterForDrag("LeftButton")
     end
     thumb:SetPoint("TOP", sb, "TOP", 0, -1)
-    PaintBox(thumb, THUMB_IDLE, nil)
+    PaintBox(thumb, GetThumbIdle(), nil)
 
     sb._thumb = thumb
     sb._offset = 0
@@ -346,7 +363,8 @@ function W.ScrollBar(parent, height, onChange)
     local function StopDrag()
         sb._dragging = false
         thumb:SetScript("OnUpdate", nil)
-        thumb._fsBg:SetColorTexture(THUMB_IDLE[1], THUMB_IDLE[2], THUMB_IDLE[3], THUMB_IDLE[4])
+        local ti = GetThumbIdle()
+        thumb._fsBg:SetColorTexture(ti[1], ti[2], ti[3], ti[4])
     end
 
     thumb:SetScript("OnEnter", function(self)
@@ -354,7 +372,8 @@ function W.ScrollBar(parent, height, onChange)
     end)
     thumb:SetScript("OnLeave", function(self)
         if not sb._dragging then
-            self._fsBg:SetColorTexture(THUMB_IDLE[1], THUMB_IDLE[2], THUMB_IDLE[3], THUMB_IDLE[4])
+            local ti = GetThumbIdle()
+            self._fsBg:SetColorTexture(ti[1], ti[2], ti[3], ti[4])
         end
     end)
     thumb:SetScript("OnDragStart", function()
@@ -376,15 +395,6 @@ function W.ScrollBar(parent, height, onChange)
     end)
     thumb:SetScript("OnDragStop", StopDrag)
     thumb:SetScript("OnHide", StopDrag)
-    thumb:SetScript("OnClick", function(_, mouseBtn)
-        if sb._dragging then return end
-        local page = math_max(1, math_floor((sb._visible or 4) / 2))
-        if mouseBtn == "RightButton" then
-            sb:Step(-page)
-        else
-            sb:Step(page)
-        end
-    end)
 
     sb:SetScript("OnMouseDown", function(_, mouseBtn)
         local page = math_max(1, math_floor((sb._visible or 4) / 2))
@@ -841,6 +851,13 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
             item.btn._fsBg:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
             local tc = active and T.TEXT.GOLD or T.TEXT.SECONDARY
             item.btn._label:SetTextColor(tc[1], tc[2], tc[3], tc[4])
+            if item.icon and type(item.icon.SetVertexColor) == "function" then
+                if active then
+                    pcall(item.icon.SetVertexColor, item.icon, 1.0, 0.96, 0.86, 1.0)
+                else
+                    pcall(item.icon.SetVertexColor, item.icon, 0.78, 0.75, 0.70, 0.85)
+                end
+            end
             if active then item.accent:Show() else item.accent:Hide() end
         end
     end
@@ -888,8 +905,28 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
             accent:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 1)
             accent:Hide()
 
+            local iconTex = nil
+            local textLeft = 11
+            if def.icon and def.icon ~= "" then
+                iconTex = btn:CreateTexture(nil, "ARTWORK")
+                iconTex:SetSize(16, 16)
+                iconTex:SetPoint("LEFT", btn, "LEFT", 9, 0)
+                if type(iconTex.SetTexture) == "function" then
+                    pcall(iconTex.SetTexture, iconTex, def.icon)
+                end
+                if type(iconTex.SetTexCoord) == "function" then
+                    local tr = T.ICON.TRIM
+                    pcall(iconTex.SetTexCoord, iconTex, tr[1], tr[2], tr[3], tr[4])
+                end
+                if type(iconTex.SetVertexColor) == "function" then
+                    pcall(iconTex.SetVertexColor, iconTex, 0.78, 0.75, 0.70, 0.85)
+                end
+                btn._icon = iconTex
+                textLeft = 30
+            end
+
             local lbl = W.Label(btn, def.label or def.id, "body", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
-            lbl:SetPoint("LEFT", btn, "LEFT", 11, 0)
+            lbl:SetPoint("LEFT", btn, "LEFT", textLeft, 0)
             btn._label = lbl
 
             local badge = W.Label(btn, "", "small", T.TEXT.GOLD, { justifyH = "RIGHT", wordWrap = false })
@@ -911,7 +948,7 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
                 if onSelect then onSelect(def.id) end
             end)
 
-            local rec = { id = def.id, btn = btn, accent = accent, badge = badge }
+            local rec = { id = def.id, btn = btn, accent = accent, badge = badge, icon = iconTex }
             table_insert(rail._buttons, rec)
             rail._byId[def.id] = rec
             y = y - 28

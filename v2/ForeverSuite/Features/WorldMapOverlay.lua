@@ -71,9 +71,8 @@ function WorldMapOverlay:EnsureCard()
     if self.card then
         return self.card
     end
-    local card = W.Card(_G.UIParent, OVERLAY_WIDTH, 240, "ForeverSuiteWorldMapOverlay", T.ELEVATION.L2_HUB)
+    local card = W.PopupCard(_G.UIParent, OVERLAY_WIDTH, 240, "ForeverSuiteWorldMapOverlay", T.ELEVATION.L3_OVERLAY)
     W.MakeDraggable(card, "worldMapOverlay", { point = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 24, y = 24 })
-    W.SetBorderColor(card, T.BORDER.GOLD_SOFT)
 
     local hdr = W.Label(card, "✦ 월드맵 좌표 · 안개 · 히트맵 (Alt+좌클릭 /way)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     hdr:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -8)
@@ -227,11 +226,37 @@ function WorldMapOverlay:EnsurePinLayer()
     end
     -- Zero-Taint UIParent-owned pin overlay (NEVER AddDataProvider / AcquirePin / child of WorldMapFrame!)
     local layer = W.HudContainer("ForeverSuiteWorldMapPinLayer", 1, 1)
-    layer:SetFrameStrata(T.ELEVATION.L2_HUB)
+    layer:SetFrameStrata(T.ELEVATION.L3_OVERLAY)
     layer:EnableMouse(false)
     layer:Hide()
     self.pinLayer = layer
     return layer
+end
+
+function WorldMapOverlay:SyncMapStrata(metrics)
+    local targetStrata = (type(metrics) == "table" and type(metrics.strata) == "string" and metrics.strata ~= "")
+        and metrics.strata or T.ELEVATION.L3_OVERLAY
+    -- Ensure maximized FULLSCREEN_DIALOG WorldMapFrame never occludes pins or the coordinate card
+    if targetStrata == "BACKGROUND" or targetStrata == "LOW" or targetStrata == "MEDIUM" then
+        targetStrata = T.ELEVATION.L2_HUB
+    end
+    local baseLevel = (type(metrics) == "table" and type(metrics.level) == "number") and metrics.level or 10
+    if self.pinLayer then
+        if type(self.pinLayer.SetFrameStrata) == "function" then
+            pcall(self.pinLayer.SetFrameStrata, self.pinLayer, targetStrata)
+        end
+        if type(self.pinLayer.SetFrameLevel) == "function" then
+            pcall(self.pinLayer.SetFrameLevel, self.pinLayer, baseLevel + 20)
+        end
+    end
+    if self.card then
+        if type(self.card.SetFrameStrata) == "function" then
+            pcall(self.card.SetFrameStrata, self.card, targetStrata)
+        end
+        if type(self.card.SetFrameLevel) == "function" then
+            pcall(self.card.SetFrameLevel, self.card, baseLevel + 35)
+        end
+    end
 end
 
 function WorldMapOverlay:EnsureCanvasPin(idx)
@@ -325,20 +350,30 @@ function WorldMapOverlay:RenderMapExtras(mapID, metrics)
             local subTiles = ns.Domain.WorldMapModel.ExpandRevealSubTiles(tile, exploredSet)
             for _, sub in ipairs(subTiles) do
                 if revCount >= 64 then break end
-                revCount = revCount + 1
-                local tx = self.revealTexPool[revCount]
-                if not tx then
-                    tx = layer:CreateTexture(nil, "BACKGROUND")
-                    self.revealTexPool[revCount] = tx
+                local rLeft = metrics.left + ((sub.x / 1002.0) * metrics.width)
+                local rTop = metrics.bottom + ((1 - (sub.y / 668.0)) * metrics.height)
+                local rW = (sub.w / 1002.0) * metrics.width
+                local rH = (sub.h / 668.0) * metrics.height
+                local cl, cb, cw, ch, nu1, nu2, nv1, nv2 = ns.Domain.WorldMapModel.ClipOverlayRect(
+                    rLeft, rTop - rH, rLeft + rW, rTop, 0, sub.u2 or 1, 0, sub.v2 or 1, metrics.clip
+                )
+                if cl and cw > 0.5 and ch > 0.5 then
+                    revCount = revCount + 1
+                    local tx = self.revealTexPool[revCount]
+                    if not tx then
+                        tx = layer:CreateTexture(nil, "BACKGROUND")
+                        self.revealTexPool[revCount] = tx
+                    end
+                    pcall(tx.SetTexture, tx, sub.fileID)
+                    if type(tx.SetTexCoord) == "function" then
+                        pcall(tx.SetTexCoord, tx, nu1, nu2, nv1, nv2)
+                    end
+                    tx:SetAlpha(0.55)
+                    tx:SetSize(cw, ch)
+                    tx:ClearAllPoints()
+                    tx:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", cl, cb)
+                    tx:Show()
                 end
-                local sx = metrics.left + ((sub.x / 1002.0) * metrics.width)
-                local sy = metrics.bottom + ((1 - (sub.y / 668.0)) * metrics.height)
-                tx:SetTexture(sub.fileID)
-                tx:SetAlpha(0.55)
-                tx:SetSize((sub.w / 1002.0) * metrics.width, (sub.h / 668.0) * metrics.height)
-                tx:ClearAllPoints()
-                tx:SetPoint("TOPLEFT", _G.UIParent, "BOTTOMLEFT", sx, sy)
-                tx:Show()
             end
         end
     end
@@ -346,50 +381,64 @@ function WorldMapOverlay:RenderMapExtras(mapID, metrics)
     if wantHeat and packs.gather_heatmap and type(packs.gather_heatmap.entries) == "table" then
         local heats = ns.Domain.WorldMapModel.FilterGatherHeatmaps(packs.gather_heatmap.entries, mapID, 4)
         for _, h in ipairs(heats) do
-            heatCount = heatCount + 1
-            local tx = self.heatTexPool[heatCount]
-            if not tx then
-                tx = layer:CreateTexture(nil, "ARTWORK")
-                self.heatTexPool[heatCount] = tx
+            local cl, cb, cw, ch, nu1, nu2, nv1, nv2 = ns.Domain.WorldMapModel.ClipOverlayRect(
+                metrics.left, metrics.bottom, metrics.left + metrics.width, metrics.bottom + metrics.height,
+                h.u1 or 0, h.u2 or 1, h.v1 or 0, h.v2 or 1, metrics.clip
+            )
+            if cl and cw > 0.5 and ch > 0.5 then
+                heatCount = heatCount + 1
+                local tx = self.heatTexPool[heatCount]
+                if not tx then
+                    tx = layer:CreateTexture(nil, "ARTWORK")
+                    self.heatTexPool[heatCount] = tx
+                end
+                pcall(tx.SetTexture, tx, h.file)
+                if type(tx.SetTexCoord) == "function" then
+                    pcall(tx.SetTexCoord, tx, nu1, nu2, nv1, nv2)
+                end
+                tx:SetAlpha(0.45)
+                tx:SetSize(cw, ch)
+                tx:ClearAllPoints()
+                tx:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", cl, cb)
+                tx:Show()
             end
-            tx:SetTexture(h.file)
-            if type(tx.SetTexCoord) == "function" then
-                tx:SetTexCoord(h.u1 or 0, h.u2 or 1, h.v1 or 0, h.v2 or 1)
-            end
-            tx:SetAlpha(0.45)
-            tx:SetSize(metrics.width, metrics.height)
-            tx:ClearAllPoints()
-            tx:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", metrics.left, metrics.bottom)
-            tx:Show()
         end
     end
 
     if wantPetHeat and packs.pet_heatmap and type(packs.pet_heatmap.entries) == "table" then
         local pHeats = ns.Domain.WorldMapModel.FilterPetHeatmaps(packs.pet_heatmap.entries, mapID, 12)
         for _, ph in ipairs(pHeats) do
-            petHeatCount = petHeatCount + 1
-            local tx = self.petHeatTexPool[petHeatCount]
-            if not tx then
-                tx = layer:CreateTexture(nil, "ARTWORK")
-                self.petHeatTexPool[petHeatCount] = tx
+            local rx0 = type(ph.x0) == "number" and ph.x0 or 0
+            local rx1 = type(ph.x1) == "number" and ph.x1 or 1
+            local ry0 = type(ph.y0) == "number" and ph.y0 or 0
+            local ry1 = type(ph.y1) == "number" and ph.y1 or 1
+            local minX, maxX = (rx0 <= rx1) and rx0 or rx1, (rx0 <= rx1) and rx1 or rx0
+            local minY, maxY = (ry0 <= ry1) and ry0 or ry1, (ry0 <= ry1) and ry1 or ry0
+            local rLeft = metrics.left + (minX * metrics.width)
+            local rRight = metrics.left + (maxX * metrics.width)
+            local rTop = metrics.bottom + ((1 - minY) * metrics.height)
+            local rBottom = metrics.bottom + ((1 - maxY) * metrics.height)
+            local cl, cb, cw, ch, nu1, nu2, nv1, nv2 = ns.Domain.WorldMapModel.ClipOverlayRect(
+                rLeft, rBottom, rRight, rTop,
+                ph.u1 or 0, ph.u2 or 1, ph.v1 or 0, ph.v2 or 1, metrics.clip
+            )
+            if cl and cw > 1 and ch > 1 then
+                petHeatCount = petHeatCount + 1
+                local tx = self.petHeatTexPool[petHeatCount]
+                if not tx then
+                    tx = layer:CreateTexture(nil, "ARTWORK")
+                    self.petHeatTexPool[petHeatCount] = tx
+                end
+                pcall(tx.SetTexture, tx, ph.file)
+                if type(tx.SetTexCoord) == "function" then
+                    pcall(tx.SetTexCoord, tx, nu1, nu2, nv1, nv2)
+                end
+                tx:SetAlpha(0.60)
+                tx:SetSize(cw, ch)
+                tx:ClearAllPoints()
+                tx:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", cl, cb)
+                tx:Show()
             end
-            local x0 = type(ph.x0) == "number" and ph.x0 or 0
-            local x1 = type(ph.x1) == "number" and ph.x1 or 1
-            local y0 = type(ph.y0) == "number" and ph.y0 or 0
-            local y1 = type(ph.y1) == "number" and ph.y1 or 1
-            local rw = math.max(8, (x1 - x0) * metrics.width)
-            local rh = math.max(8, (y1 - y0) * metrics.height)
-            local sx = metrics.left + (x0 * metrics.width)
-            local sy = metrics.bottom + ((1 - y0) * metrics.height)
-            tx:SetTexture(ph.file)
-            if type(tx.SetTexCoord) == "function" then
-                tx:SetTexCoord(ph.u1 or 0, ph.u2 or 1, ph.v1 or 0, ph.v2 or 1)
-            end
-            tx:SetAlpha(0.60)
-            tx:SetSize(rw, rh)
-            tx:ClearAllPoints()
-            tx:SetPoint("TOPLEFT", _G.UIParent, "BOTTOMLEFT", sx, sy)
-            tx:Show()
         end
     end
     return revCount, heatCount, petHeatCount
@@ -443,7 +492,9 @@ function WorldMapOverlay:BuildPinListForMap(mapID)
             inLogSet = logSet,
             limit = 26,
         })
+        local playerLv = ns.Api.GameAdapters.GetPlayerLevel()
         for _, qp in ipairs(qPins) do
+            local _, diffCol = ns.Domain.QuestTrackerModel.GetClassicDifficulty(qp.level, playerLv)
             combined[#combined + 1] = {
                 mapID = qp.mapID,
                 x = qp.x,
@@ -452,7 +503,7 @@ function WorldMapOverlay:BuildPinListForMap(mapID)
                 kind = "quest",
                 glyph = "!",
                 icon = PIN_ICON_BY_KIND.quest,
-                borderCol = T.BORDER.GOLD,
+                borderCol = diffCol or T.BORDER.GOLD,
                 active = true,
                 label = "퀘스트 #" .. tostring(qp.questID) .. " (" .. tostring(qp.npc or "") .. " · " .. ((type(qp.level) == "number" and qp.level > 0) and ("Lv." .. tostring(qp.level)) or "Lv.—") .. ")",
             }
@@ -535,13 +586,20 @@ function WorldMapOverlay:Tick()
     local pos = ns.Api.GameAdapters.GetPlayerPosition()
     local playerTxt = pos and ns.Domain.WorldMapModel.FormatCoordPair(pos.x, pos.y) or "—"
 
-    local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
     local metrics = ns.Blizzard.WorldMapAdapter:GetCanvasMetrics()
+    self:SyncMapStrata(metrics)
+
     local cursorTxt = "—"
-    if cx and cy and metrics then
-        local nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(
-            cx, cy, metrics.scale, metrics.left, metrics.bottom, metrics.width, metrics.height
-        )
+    local nx, ny = ns.Blizzard.WorldMapAdapter:GetNormalizedCursorPosition()
+    if not (nx and ny) and metrics then
+        local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
+        if cx and cy then
+            nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(
+                cx, cy, metrics.scale, metrics.left, metrics.bottom, metrics.width, metrics.height
+            )
+        end
+    end
+    if nx and ny then
         cursorTxt = ns.Domain.WorldMapModel.FormatCoordPair(nx, ny)
     end
 
@@ -549,7 +607,12 @@ function WorldMapOverlay:Tick()
 
     local mapID = ns.Blizzard.WorldMapAdapter:GetViewingMapID()
     local pinsEnabled = (ns.Api.ProfileStore:Get("ui", "showWorldMapPins") ~= false)
-    local canvasSig = metrics and (tostring(metrics.left) .. ":" .. tostring(metrics.bottom) .. ":" .. tostring(metrics.width) .. ":" .. tostring(metrics.height)) or ""
+    local clipSig = (metrics and metrics.clip)
+        and (tostring(metrics.clip.left) .. ":" .. tostring(metrics.clip.bottom) .. ":" .. tostring(metrics.clip.right) .. ":" .. tostring(metrics.clip.top))
+        or ""
+    local canvasSig = metrics
+        and (tostring(metrics.left) .. ":" .. tostring(metrics.bottom) .. ":" .. tostring(metrics.width) .. ":" .. tostring(metrics.height) .. ":" .. clipSig)
+        or ""
     if mapID ~= self.lastMapID or canvasSig ~= self.lastCanvasSig or pinsEnabled ~= self.lastPinsEnabled then
         local mapChanged = (mapID ~= self.lastMapID)
         self.lastMapID = mapID
@@ -614,5 +677,8 @@ function WorldMapOverlay:Init()
         WorldMapOverlay:PinCurrentCursorLocation(mapID, nx, ny)
     end)
     self.initialized = true
+    if ns.Api.SafeAPI.IsWorldMapShown() then
+        self:OnWorldMapShown()
+    end
     return true
 end

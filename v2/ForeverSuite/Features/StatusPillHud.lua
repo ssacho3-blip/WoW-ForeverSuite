@@ -18,7 +18,8 @@ function StatusPillHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 336, 26, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
+    local card = W.HudFloating(nil, 336, 24, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
+    card:SetRibbon({ 0.038, 0.034, 0.046 }, 0.62, 0, 0)
     card:EnableMouse(true)
     card:SetScript("OnMouseUp", function(_, mouseBtn)
         if ns.UI.HudLayout and ns.UI.HudLayout.unlocked then return end
@@ -28,7 +29,7 @@ function StatusPillHud:Init()
             ns.UI.CommandHub:JumpTo("ledger")
         end
     end)
-    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY)
+    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY, { outline = "OUTLINE" })
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.card = card
     self.label = lbl
@@ -89,10 +90,12 @@ function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper, durPct)
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     self.label:SetText(bagTxt .. " · " .. durTxt .. " · " .. moneyTxt .. " · " .. realm)
     if self.card then
-        if lowDur then
-            W.SetBorderColor(self.card, T.SEMANTIC.DANGER)
-        else
-            W.SetBorderColor(self.card, T.BORDER.HAIRLINE)
+        if type(self.card.SetRibbon) == "function" then
+            if lowDur then
+                self.card:SetRibbon({ 0.34, 0.07, 0.07 }, 0.72, 0, 0)
+            else
+                self.card:SetRibbon({ 0.038, 0.034, 0.046 }, 0.62, 0, 0)
+            end
         end
         self.label:SetTextColor(T.TEXT.PRIMARY[1], T.TEXT.PRIMARY[2], T.TEXT.PRIMARY[3], 1)
     end

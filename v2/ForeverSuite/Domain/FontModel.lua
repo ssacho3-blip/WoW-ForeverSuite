@@ -11,16 +11,19 @@ local math_floor = math.floor
 
 local FontModel = {
     PRESETS = {
-        { id = "default_kr", label = "기본 고딕 (2002)", path = "Fonts\\2002.TTF", monoPath = "Fonts\\2002B.TTF" },
-        { id = "bold_kr", label = "굵은 고딕 (2002B)", path = "Fonts\\2002B.TTF", monoPath = "Fonts\\2002B.TTF" },
-        { id = "pagetext_kr", label = "클래식 명조 (K_Pagetext)", path = "Fonts\\K_Pagetext.TTF", monoPath = "Fonts\\2002B.TTF" },
-        { id = "damage_kr", label = "전투 강조체 (K_Damage)", path = "Fonts\\K_Damage.TTF", monoPath = "Fonts\\2002B.TTF" },
-        { id = "clean_en", label = "클린 숫자 (한글+ARIALN)", path = "Fonts\\2002.TTF", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "default_kr",   label = "기본 고딕 (2002)",       path = "Fonts\\2002.TTF", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "bold_kr",      label = "굵은 고딕 (2002B)",      path = "Fonts\\2002B.TTF", monoPath = "Fonts\\2002B.TTF" },
+        { id = "pagetext_kr",  label = "클래식 명조 (K_Pagetext)", path = "Fonts\\K_Pagetext.TTF", monoPath = "Fonts\\2002B.TTF" },
+        { id = "damage_kr",    label = "전투 강조체 (K_Damage)",   path = "Fonts\\K_Damage.TTF", monoPath = "Fonts\\2002B.TTF" },
+        { id = "clean_en",     label = "클린 숫자 (한글+ARIALN)", path = "Fonts\\2002.TTF", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "gmarket_kr",   label = "지마켓산스 (번들)",       path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GmarketSansTTFBold.ttf", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "gyeonggi_kr",  label = "경기천년제목 (번들)",     path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GyeonggiTitle-Bold.ttf", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "gothic_a1_kr", label = "고딕 A1 블랙 (번들)",    path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GothicA1-Black.ttf", monoPath = "Fonts\\ARIALN.TTF" },
     },
     BASE_SIZES = {
-        title = 16,
-        heading = 14,
-        body = 12,
+        title = 18,
+        heading = 15,
+        body = 13,
         small = 11,
         mono = 12,
     },

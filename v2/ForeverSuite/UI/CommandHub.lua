@@ -40,6 +40,21 @@ local DEFAULT_GROUP_BY_ID = {
     diagnostics = "system",
 }
 
+local PAGE_ICON_BY_ID = {
+    home        = "Interface\\Icons\\INV_Misc_Book_09",
+    partyfinder = "Interface\\Icons\\INV_Misc_GroupLooking",
+    questguide  = "Interface\\Icons\\INV_Misc_Map_01",
+    dungeons    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+    bis         = "Interface\\Icons\\INV_Sword_39",
+    codex       = "Interface\\Icons\\INV_Misc_Book_11",
+    professions = "Interface\\Icons\\Trade_BlackSmithing",
+    utilities   = "Interface\\Icons\\INV_Misc_Bag_10",
+    ledger      = "Interface\\Icons\\INV_Misc_Coin_02",
+    settings    = "Interface\\Icons\\Trade_Engineering",
+    fonts       = "Interface\\Icons\\INV_Scroll_03",
+    diagnostics = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+}
+
 local CommandHub = {
     window = nil,
     rail = nil,
@@ -70,6 +85,9 @@ function CommandHub:BuildGroupedRailSpec()
     for _, def in ipairs(self.pageDefs) do
         local g = def.group or DEFAULT_GROUP_BY_ID[def.id] or "system"
         if not buckets[g] then buckets[g] = {} end
+        if not def.icon and PAGE_ICON_BY_ID[def.id] then
+            def.icon = PAGE_ICON_BY_ID[def.id]
+        end
         table_insert(buckets[g], def)
     end
     local groups = {}
@@ -96,9 +114,8 @@ function CommandHub:EnsureSearchPalette()
         return nil
     end
 
-    local pal = W.Card(_G.UIParent, 410, 340, "ForeverSuiteV3GlobalSearchPalette", T.ELEVATION.L3_OVERLAY)
+    local pal = W.PopupCard(_G.UIParent, 410, 340, "ForeverSuiteV3GlobalSearchPalette", T.ELEVATION.L3_OVERLAY)
     pal:SetPoint("TOPRIGHT", self.searchBox, "BOTTOMRIGHT", 0, -4)
-    W.SetBorderColor(pal, T.BORDER.GOLD)
 
     local hdr = W.Label(pal, "전역 검색 결과 (클릭 즉시 이동 · 설정 바로 토글)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     hdr:SetPoint("TOPLEFT", pal, "TOPLEFT", 10, -8)
@@ -326,7 +343,7 @@ function CommandHub:EnsureWindow()
     end)
     shareBtn:SetPoint("RIGHT", moveBtn, "LEFT", -6, 0)
 
-    local search = W.SearchBox(win._header, 248, "기능 · 설정 · 도감 통합 검색...", function(q)
+    local search = W.SearchBox(win._header, 224, "기능 · 설정 · 도감 통합 검색...", function(q)
         if CommandHub._suppressPalette then
             CommandHub.lastQuery = tostring(q or "")
             return
@@ -360,6 +377,32 @@ function CommandHub:EnsureWindow()
     scaleMinus:SetPoint("RIGHT", scaleValBtn, "LEFT", -2, 0)
     self.scaleValBtn = scaleValBtn
 
+    -- Instant no-reload Classic Gold RPG <-> Clean Dark Minimal theme switcher
+    local curTheme = (T and T.GetTheme and T.GetTheme()) or "gold"
+    local themeBtn = W.MiniButton(win._header, curTheme == "dark" and "다크" or "골드", 48, 22, function(btn)
+        local nowT = (T and T.GetTheme and T.GetTheme()) or "gold"
+        local nextT = (nowT == "dark") and "gold" or "dark"
+        if ns.Api and ns.Api.ProfileStore then
+            ns.Api.ProfileStore:Set("ui", "uiTheme", nextT)
+        elseif T and T.SetTheme then
+            T.SetTheme(nextT)
+        end
+        btn:SetLabel(nextT == "dark" and "다크" or "골드")
+        btn:SetActive(nextT == "gold")
+        ns.Api.SafeAPI.Print(nextT == "dark" and "UI 테마 전환: 클린 다크 미니멀 (재시작 불필요)" or "UI 테마 전환: 클래식 골드 RPG (재시작 불필요)")
+    end, "클릭하여 UI 테마 즉시 전환 (클래식 골드 RPG ↔ 클린 다크 미니멀)")
+    themeBtn:SetPoint("RIGHT", scaleMinus, "LEFT", -8, 0)
+    themeBtn:SetActive(curTheme == "gold")
+    self.themeBtn = themeBtn
+    if T and type(T.RegisterThemeListener) == "function" then
+        T.RegisterThemeListener(function(themeId)
+            if CommandHub.themeBtn then
+                CommandHub.themeBtn:SetLabel(themeId == "dark" and "다크" or "골드")
+                CommandHub.themeBtn:SetActive(themeId == "gold")
+            end
+        end)
+    end
+
     local groups = self:BuildGroupedRailSpec()
     local rail = W.GroupedTabRail(win, RAIL_WIDTH, groups, function(pageId)
         CommandHub:CloseSearchPalette()
@@ -371,17 +414,25 @@ function CommandHub:EnsureWindow()
         end
         CommandHub:SelectPage(pageId)
     end)
-    rail:SetPoint("TOPLEFT", win, "TOPLEFT", 1, -41)
-    rail:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 28)
+    rail:SetPoint("TOPLEFT", win, "TOPLEFT", 3, -43)
+    rail:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 3, 29)
 
     local host = CreateFrame("Frame", nil, win)
     host:SetPoint("TOPLEFT", rail, "TOPRIGHT", T.SPACE.MD, -10)
     host:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -T.SPACE.MD, 32)
 
     local footer = CreateFrame("Frame", nil, win)
-    footer:SetHeight(27)
-    footer:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 1)
-    footer:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, 1)
+    footer:SetHeight(26)
+    footer:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 3, 3)
+    footer:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -3, 3)
+    local footerBg = footer:CreateTexture(nil, "BACKGROUND")
+    footerBg:SetAllPoints(footer)
+    footerBg:SetColorTexture(T.SURFACE.SUNKEN[1], T.SURFACE.SUNKEN[2], T.SURFACE.SUNKEN[3], 0.94)
+    local footerRule = footer:CreateTexture(nil, "ARTWORK")
+    footerRule:SetHeight(T.PixelSize(footer, 1))
+    footerRule:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, 0)
+    footerRule:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, 0)
+    footerRule:SetColorTexture(T.BORDER.SUBTLE[1], T.BORDER.SUBTLE[2], T.BORDER.SUBTLE[3], 0.78)
 
     local status = W.Label(footer, "", "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
     status:SetPoint("LEFT", footer, "LEFT", T.SPACE.MD, 0)

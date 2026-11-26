@@ -371,8 +371,9 @@ function DungeonBrowserPage:RenderRight()
                 if self.mapPageIdx > #pages then self.mapPageIdx = #pages end
                 local pg = pages[self.mapPageIdx]
                 local texPath = ns.Domain.DungeonBrowserModel.ResolveMapTexturePath(pg)
+                local cleanTitle = string.gsub(tostring(pg.title or d.title), "\n", " ")
                 self.mapTitleLbl:SetText(
-                    tostring(pg.title or d.title)
+                    cleanTitle
                     .. ((pg.pageName and pg.pageName ~= "") and (" · " .. pg.pageName) or "")
                     .. " (" .. tostring(self.mapPageIdx) .. "/" .. tostring(#pages) .. ")"
                 )
@@ -395,8 +396,13 @@ function DungeonBrowserPage:RenderRight()
                     local btn = self.mapPinButtons[idx]
                     local bossIdx = tonumber(pin.label)
                     local bossRec = bossIdx and bosses[bossIdx] or nil
-                    btn:SetLabel(pin.label)
-                    btn._tooltipText = bossRec and ("보스 #" .. pin.label .. ": " .. tostring(bossRec.title)) or ("위치 핀 #" .. pin.label)
+                    local lblStr = tostring(pin.label or "")
+                    btn:SetLabel(lblStr)
+                    if type(btn.SetWidth) == "function" then
+                        local pinW = (#lblStr > 3) and math_min(92, math_max(28, math.floor(#lblStr * 4.5 + 10))) or 22
+                        btn:SetWidth(pinW)
+                    end
+                    btn._tooltipText = bossRec and ("보스 #" .. lblStr .. ": " .. tostring(bossRec.title)) or ("위치 핀 #" .. lblStr)
                     btn._bossRec = bossRec
                     btn:ClearAllPoints()
                     btn:SetPoint("CENTER", self.mapTex, "TOPLEFT", pin.nx * mapW, -(pin.ny * mapH))
@@ -607,7 +613,8 @@ function DungeonBrowserPage:RenderRight()
                 subtitle = bossTxt .. (gain > 0 and (" · XP +" .. tostring(gain)) or "") .. (xph and (" (" .. tostring(xph) .. "/h)") or ""),
                 right = el,
                 color = T.TEXT.GOLD,
-                glyph = "⏱",
+                icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+                glyph = "시간",
                 borderCol = T.BORDER.GOLD,
             }
         end

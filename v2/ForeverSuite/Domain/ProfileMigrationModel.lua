@@ -8,7 +8,7 @@ local type = type
 local pairs = pairs
 
 local ProfileMigrationModel = {
-    TARGET_SCHEMA = 4,
+    TARGET_SCHEMA = 5,
 }
 ns.Domain.ProfileMigrationModel = ProfileMigrationModel
 
@@ -104,10 +104,15 @@ function ProfileMigrationModel.Migrate(rawV2DB, defaults, optionalLegacyV1DB)
             db._legacyImported = true
         end
 
-        -- Schema 3 -> 4 (Phase 3 standalone cutover): switch preview-era "coexist" default to "hide"
-        -- so players never see duplicate Blizzard + ForeverSuite quest trackers after v1 removal.
-        if curSchema == 3 and type(db.v2.settings.quest) == "table" and db.v2.settings.quest.defaultTrackerMode == "coexist" then
+        -- Schema < 5: ensure legacy/preview "coexist" defaults upgrade cleanly to "hide"
+        -- so players never see Blizzard's default quest list overlapping ForeverSuite's QuestTracker,
+        -- unless the user explicitly chose a mode in Settings (state.userExplicitTrackerMode == true).
+        local userExplicit = type(db.v2.state) == "table" and db.v2.state.userExplicitTrackerMode == true
+        if curSchema < 5 and (not userExplicit) and type(db.v2.settings.quest) == "table" and db.v2.settings.quest.defaultTrackerMode == "coexist" then
             db.v2.settings.quest.defaultTrackerMode = "hide"
+        end
+        if curSchema < 5 and type(db.v2.settings.ui) == "table" and db.v2.settings.ui.navArrowStyle == "classic" then
+            db.v2.settings.ui.navArrowStyle = "gold_classic"
         end
 
         db.schemaVersion = ProfileMigrationModel.TARGET_SCHEMA

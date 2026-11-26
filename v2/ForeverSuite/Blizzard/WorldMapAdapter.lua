@@ -64,7 +64,9 @@ function WorldMapAdapter:GetViewingMapID()
     return nil
 end
 
--- Returns { left, bottom, width, height, scale } of WorldMapFrame canvas (read-only), or nil.
+-- Returns { left, bottom, width, height, scale, clip, strata, level } in UIParent coordinate space (read-only), or nil.
+-- Correctly converts ScrollContainer.Child coordinates by (canvasEffectiveScale / uiParentEffectiveScale)
+-- and attaches the visible ScrollContainer viewport rectangle (`clip`) so zoomed-in pins & overlays never leak off-map!
 function WorldMapAdapter:GetCanvasMetrics()
     local wmf = _G.WorldMapFrame
     if type(wmf) ~= "table" then
@@ -77,26 +79,107 @@ function WorldMapAdapter:GetCanvasMetrics()
     then
         return nil
     end
-    local left = ns.Api.SafeAPI.SafeRead(canvas.GetLeft, canvas)
-    local bottom = ns.Api.SafeAPI.SafeRead(canvas.GetBottom, canvas)
-    local width = ns.Api.SafeAPI.SafeRead(canvas.GetWidth, canvas)
-    local height = ns.Api.SafeAPI.SafeRead(canvas.GetHeight, canvas)
-    local scale = (type(canvas.GetEffectiveScale) == "function")
-        and ns.Api.SafeAPI.SafeRead(canvas.GetEffectiveScale, canvas) or 1
     local U = ns.Api.SafeAPI.UNAVAILABLE
-    if left == U or bottom == U or width == U or height == U or scale == U then
+    local rawLeft = ns.Api.SafeAPI.SafeRead(canvas.GetLeft, canvas)
+    local rawBottom = ns.Api.SafeAPI.SafeRead(canvas.GetBottom, canvas)
+    local rawWidth = ns.Api.SafeAPI.SafeRead(canvas.GetWidth, canvas)
+    local rawHeight = ns.Api.SafeAPI.SafeRead(canvas.GetHeight, canvas)
+    local canvasScale = (type(canvas.GetEffectiveScale) == "function")
+        and ns.Api.SafeAPI.SafeRead(canvas.GetEffectiveScale, canvas) or 1
+    if rawLeft == U or rawBottom == U or rawWidth == U or rawHeight == U or canvasScale == U then
         return nil
     end
-    if type(left) ~= "number" or type(bottom) ~= "number" or type(width) ~= "number" or type(height) ~= "number" or type(scale) ~= "number" then
+    if type(rawLeft) ~= "number" or type(rawBottom) ~= "number"
+        or type(rawWidth) ~= "number" or rawWidth <= 0
+        or type(rawHeight) ~= "number" or rawHeight <= 0
+        or type(canvasScale) ~= "number" or canvasScale <= 0
+    then
         return nil
     end
+
+    local uiScale = 1
+    if type(_G.UIParent) == "table" and type(_G.UIParent.GetEffectiveScale) == "function" then
+        local s = ns.Api.SafeAPI.SafeRead(_G.UIParent.GetEffectiveScale, _G.UIParent)
+        if s ~= U and type(s) == "number" and s > 0 then
+            uiScale = s
+        end
+    end
+
+    local ratio = canvasScale / uiScale
+    local left = rawLeft * ratio
+    local bottom = rawBottom * ratio
+    local width = rawWidth * ratio
+    local height = rawHeight * ratio
+
+    local clip = nil
+    if type(scroll.GetLeft) == "function" and type(scroll.GetBottom) == "function"
+        and type(scroll.GetWidth) == "function" and type(scroll.GetHeight) == "function"
+    then
+        local sLeft = ns.Api.SafeAPI.SafeRead(scroll.GetLeft, scroll)
+        local sBottom = ns.Api.SafeAPI.SafeRead(scroll.GetBottom, scroll)
+        local sWidth = ns.Api.SafeAPI.SafeRead(scroll.GetWidth, scroll)
+        local sHeight = ns.Api.SafeAPI.SafeRead(scroll.GetHeight, scroll)
+        local sScale = (type(scroll.GetEffectiveScale) == "function")
+            and ns.Api.SafeAPI.SafeRead(scroll.GetEffectiveScale, scroll) or canvasScale
+        if sLeft ~= U and sBottom ~= U and sWidth ~= U and sHeight ~= U and sScale ~= U
+            and type(sLeft) == "number" and type(sBottom) == "number"
+            and type(sWidth) == "number" and sWidth > 0
+            and type(sHeight) == "number" and sHeight > 0
+            and type(sScale) == "number" and sScale > 0
+        then
+            local sRatio = sScale / uiScale
+            clip = {
+                left = sLeft * sRatio,
+                bottom = sBottom * sRatio,
+                right = (sLeft + sWidth) * sRatio,
+                top = (sBottom + sHeight) * sRatio,
+            }
+        end
+    end
+
+    local strata = nil
+    if type(wmf.GetFrameStrata) == "function" then
+        local st = ns.Api.SafeAPI.SafeRead(wmf.GetFrameStrata, wmf)
+        if st ~= U and type(st) == "string" and st ~= "" then
+            strata = st
+        end
+    end
+    local level = nil
+    if type(wmf.GetFrameLevel) == "function" then
+        local lv = ns.Api.SafeAPI.SafeRead(wmf.GetFrameLevel, wmf)
+        if lv ~= U and type(lv) == "number" then
+            level = lv
+        end
+    end
+
     return {
         left = left,
         bottom = bottom,
         width = width,
         height = height,
-        scale = scale,
+        scale = uiScale,
+        canvasScale = canvasScale,
+        clip = clip,
+        strata = strata,
+        level = level,
     }
+end
+
+-- Preferred zoomed/panned cursor reader via WorldMapFrame.ScrollContainer:GetNormalizedCursorPosition()
+function WorldMapAdapter:GetNormalizedCursorPosition()
+    local wmf = _G.WorldMapFrame
+    if type(wmf) == "table" and type(wmf.ScrollContainer) == "table"
+        and type(wmf.ScrollContainer.GetNormalizedCursorPosition) == "function"
+    then
+        local okN, rx, ry = pcall(wmf.ScrollContainer.GetNormalizedCursorPosition, wmf.ScrollContainer)
+        if okN and type(rx) == "number" and type(ry) == "number"
+            and (not ns.Api.SafeAPI.IsSecret(rx)) and (not ns.Api.SafeAPI.IsSecret(ry))
+            and rx == rx and ry == ry and rx >= 0 and rx <= 1 and ry >= 0 and ry <= 1
+        then
+            return rx, ry
+        end
+    end
+    return nil, nil
 end
 
 function WorldMapAdapter:Init()

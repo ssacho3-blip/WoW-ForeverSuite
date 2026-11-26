@@ -74,6 +74,8 @@ function WorldMapModel.FormatCoordPair(x, y)
 end
 
 -- Projects normalized map coordinates (0..1, top-left origin) to UIParent screen coordinates given read-only canvas metrics.
+-- When metrics.clip is provided (ScrollContainer visible viewport), points outside the visible viewport return nil, nil
+-- so zoomed/panned pins NEVER leak outside the WorldMap frame.
 function WorldMapModel.ProjectMapToScreen(nx, ny, metrics)
     if type(nx) ~= "number" or type(ny) ~= "number" or type(metrics) ~= "table" then
         return nil, nil
@@ -90,7 +92,49 @@ function WorldMapModel.ProjectMapToScreen(nx, ny, metrics)
     end
     local sx = metrics.left + (nx * metrics.width)
     local sy = metrics.bottom + ((1 - ny) * metrics.height)
+    local clip = metrics.clip
+    if type(clip) == "table" and type(clip.left) == "number" and type(clip.right) == "number"
+        and type(clip.bottom) == "number" and type(clip.top) == "number"
+    then
+        if sx < clip.left or sx > clip.right or sy < clip.bottom or sy > clip.top then
+            return nil, nil
+        end
+    end
     return sx, sy
+end
+
+-- Clips a UIParent-space rectangle (left, bottom, right, top) and its UV range (u1, u2, v1, v2) against metrics.clip.
+-- Returns nil when completely outside the visible WorldMap viewport.
+function WorldMapModel.ClipOverlayRect(left, bottom, right, top, u1, u2, v1, v2, clip)
+    if type(left) ~= "number" or type(bottom) ~= "number" or type(right) ~= "number" or type(top) ~= "number" then
+        return nil
+    end
+    if right <= left or top <= bottom then
+        return nil
+    end
+    local cu1, cu2, cv1, cv2 = u1 or 0, u2 or 1, v1 or 0, v2 or 1
+    if type(clip) ~= "table" or type(clip.left) ~= "number" or type(clip.right) ~= "number"
+        or type(clip.bottom) ~= "number" or type(clip.top) ~= "number"
+    then
+        return left, bottom, right - left, top - bottom, cu1, cu2, cv1, cv2
+    end
+    local nl = (left > clip.left) and left or clip.left
+    local nr = (right < clip.right) and right or clip.right
+    local nb = (bottom > clip.bottom) and bottom or clip.bottom
+    local nt = (top < clip.top) and top or clip.top
+    if nr <= nl or nt <= nb then
+        return nil
+    end
+    local w = right - left
+    local h = top - bottom
+    local du = cu2 - cu1
+    local dv = cv2 - cv1
+    local nu1 = cu1 + ((nl - left) / w) * du
+    local nu2 = cu1 + ((nr - left) / w) * du
+    -- WoW texture V=0 is TOP, V=1 is BOTTOM
+    local nv1 = cv1 + ((top - nt) / h) * dv
+    local nv2 = cv1 + ((top - nb) / h) * dv
+    return nl, nb, nr - nl, nt - nb, nu1, nu2, nv1, nv2
 end
 
 -- Filters WorldMap `!` quest start pins for a viewed mapID (excludes completed, in-log, wrong-faction, and unmet prereqs).
@@ -190,12 +234,17 @@ function WorldMapModel.ExpandRevealSubTiles(tile, exploredSet)
             local sw = math_min(256, tw - c * 256)
             local sh = math_min(256, th - r * 256)
             if sw > 0 and sh > 0 then
+                local fw, fh = 16, 16
+                while fw < sw do fw = fw * 2 end
+                while fh < sh do fh = fh * 2 end
                 table_insert(out, {
                     fileID = fid,
                     x = sx,
                     y = sy,
                     w = sw,
                     h = sh,
+                    u2 = sw / fw,
+                    v2 = sh / fh,
                 })
             end
         end
@@ -231,8 +280,9 @@ function WorldMapModel.FilterPetHeatmaps(rows, mapID, limit)
     return out
 end
 
--- E3: Selectable Navigation Arrow Styles (ForeverSuite_Media_Assets/Arrows/)
+-- E3: Selectable Navigation Arrow Styles (GodJohnson Gold-Border 3-layer procedural + ForeverSuite_Media_Assets/Arrows/)
 WorldMapModel.ARROW_STYLES = {
+    { id = "gold_classic", label = "갓존스 황금 화살표", texture = nil, procedural = true },
     { id = "minimal", label = "심플 화살표",     texture = nil },
     { id = "classic", label = "클래식 라운드",   texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\Rounded418\\roundedClassic-face.tga" },
     { id = "compass", label = "나침반 링",       texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\CompassRim.tga" },

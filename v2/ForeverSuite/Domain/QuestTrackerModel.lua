@@ -24,6 +24,49 @@ local QuestTrackerModel = {
 }
 ns.Domain.QuestTrackerModel = QuestTrackerModel
 
+-- WoW Classic Original Quest Difficulty Colors (matching Blizzard QuestDifficultyColors)
+QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS = {
+    red    = { 1.00, 0.10, 0.10, 1.00 }, -- 매우 어려움 (delta >= +5)
+    orange = { 1.00, 0.50, 0.25, 1.00 }, -- 어려움 (delta >= +3)
+    yellow = { 1.00, 1.00, 0.00, 1.00 }, -- 적정 — 현 레벨 (delta -2 .. +2)
+    green  = { 0.25, 0.75, 0.25, 1.00 }, -- 쉬움 (delta > -greenRange)
+    gray   = { 0.55, 0.55, 0.55, 1.00 }, -- 회색/낮음 (delta <= -greenRange)
+}
+
+-- Exact WoW Classic GetQuestGreenRange(playerLevel) table
+function QuestTrackerModel.GetQuestGreenRange(playerLevel)
+    local lv = (type(playerLevel) == "number" and playerLevel > 0) and math_floor(playerLevel) or 1
+    if lv <= 5 then return 4 end
+    if lv <= 9 then return 5 end
+    if lv <= 19 then return 6 end
+    if lv <= 29 then return 7 end
+    if lv <= 39 then return 8 end
+    if lv <= 49 then return 9 end
+    if lv <= 54 then return 10 end
+    if lv <= 59 then return 11 end
+    return 12
+end
+
+-- Returns tone ("red"|"orange"|"yellow"|"green"|"gray") and Classic RGBA table {r, g, b, 1}
+function QuestTrackerModel.GetClassicDifficulty(questLevel, playerLevel)
+    local qLv = (type(questLevel) == "number" and questLevel > 0) and math_floor(questLevel) or 0
+    local pLv = (type(playerLevel) == "number" and playerLevel > 0) and math_floor(playerLevel) or 0
+    if qLv <= 0 or pLv <= 0 then
+        return "yellow", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.yellow
+    end
+    local delta = qLv - pLv
+    if delta >= 5 then
+        return "red", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.red
+    elseif delta >= 3 then
+        return "orange", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.orange
+    elseif delta >= -2 then
+        return "yellow", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.yellow
+    elseif delta > -QuestTrackerModel.GetQuestGreenRange(pLv) then
+        return "green", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.green
+    end
+    return "gray", QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS.gray
+end
+
 local function LevelBucket(level)
     local lv = (type(level) == "number" and level > 0) and math_floor(level) or 0
     if lv <= 0 then
@@ -203,6 +246,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
                     local objs = type(q.objectives) == "table" and q.objectives or {}
                     local lvNum = (type(q.level) == "number" and q.level > 0) and math_floor(q.level) or 0
                     local rightTag = isComplete and "완료" or (isFailed and "실패" or (lvNum > 0 and ("Lv." .. tostring(lvNum)) or ""))
+                    local playerLv = tonumber(opts.playerLevel) or 0
+                    local diffTone, diffColor = QuestTrackerModel.GetClassicDifficulty(lvNum, playerLv)
 
                     table_insert(rows, {
                         kind = "quest",
@@ -211,6 +256,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
                         rawTitle = q.title or ("퀘스트 #" .. tostring(q.questID)),
                         zone = item.zone,
                         level = lvNum,
+                        difficultyTone = diffTone,
+                        difficultyColor = diffColor,
                         rightText = rightTag,
                         isComplete = isComplete,
                         isFailed = isFailed,

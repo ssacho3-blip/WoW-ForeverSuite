@@ -33,10 +33,13 @@ function FishingCardHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 268, 86, "ForeverSuiteV2FishingCard", T.ELEVATION.L1_CARD)
-    W.SetBorderColor(card, T.BORDER.GOLD_SOFT)
-    local title = W.Label(card, "낚시 대상어 가이드", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
-    title:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -8)
+    local card = W.HudGlass(nil, 268, 86, "ForeverSuiteV2FishingCard", T.ELEVATION.L1_CARD, {
+        bg = { 0.048, 0.043, 0.052, 0.72 },
+        border = T.BORDER.GOLD_SOFT,
+        accentBar = true,
+    })
+    local title = W.Label(card, "낚시 대상어 가이드", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    title:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -8)
     title:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -8)
 
     local meta = W.Label(card, "", "small", T.SEMANTIC.INFO, { justifyH = "LEFT", wordWrap = false })

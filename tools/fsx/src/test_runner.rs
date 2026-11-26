@@ -784,6 +784,33 @@ C_QuestLog = {
     end,
     GetQuestExpansion = function() return 0 end,
     IsComplete = function(qid) return (_G.__FS_MOCK.questComplete or {})[qid] == true end,
+    ReadyForTurnIn = function(qid) return (_G.__FS_MOCK.questReadyForTurnIn or {})[qid] == true end,
+    GetTitleForQuestID = function(qid)
+        if _G.__FS_MOCK.questTitles and _G.__FS_MOCK.questTitles[qid] then
+            return _G.__FS_MOCK.questTitles[qid]
+        end
+        for _, e in ipairs(_G.__FS_MOCK.questEntries or {}) do
+            if e.questID == qid and e.title then return e.title end
+        end
+        return nil
+    end,
+    GetNextWaypoint = function(qid)
+        local wp = _G.__FS_MOCK.questWaypoints and _G.__FS_MOCK.questWaypoints[qid]
+        if wp then return wp.mapID, wp.x, wp.y end
+        return nil
+    end,
+    GetNextWaypointText = function(qid)
+        local wp = _G.__FS_MOCK.questWaypoints and _G.__FS_MOCK.questWaypoints[qid]
+        return wp and wp.text or ""
+    end,
+    GetNextWaypointForMap = function(qid, mapID)
+        local m = _G.__FS_MOCK.questMapWaypoints and _G.__FS_MOCK.questMapWaypoints[qid]
+        if m and m[mapID] then return m[mapID].x, m[mapID].y end
+        return nil
+    end,
+    GetQuestsOnMap = function(mapID)
+        return (_G.__FS_MOCK.questsOnMap and _G.__FS_MOCK.questsOnMap[mapID]) or {}
+    end,
     IsQuestFlaggedCompleted = function(qid)
         return (_G.__FS_MOCK.questFlaggedCompleted or {})[qid] == true
     end,
@@ -798,6 +825,15 @@ C_QuestLog = {
         if _G.__FS_MOCK.questWatched then _G.__FS_MOCK.questWatched[qid] = nil end
     end,
 }
+
+function GetQuestUiMapID(qid)
+    return _G.__FS_MOCK.questUiMapID and _G.__FS_MOCK.questUiMapID[qid] or nil
+end
+function QuestPOIGetIconInfo(qid)
+    local p = _G.__FS_MOCK.questPoiIcons and _G.__FS_MOCK.questPoiIcons[qid]
+    if p then return p.completed, p.x, p.y end
+    return nil
+end
 
 C_Container = {
     GetContainerNumFreeSlots = function() return _G.__FS_MOCK.bagFreeSlots, 0 end,

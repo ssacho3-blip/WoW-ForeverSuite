@@ -19,8 +19,9 @@ function CombatAssistHud:Init()
     if self.strip then
         return self.strip
     end
-    local card = W.Card(nil, 248, 26, "ForeverSuiteV2CombatAssist", T.ELEVATION.L0_HUD)
-    local lbl = W.Label(card, "", "small", T.SEMANTIC.WARN)
+    local card = W.HudFloating(nil, 248, 26, "ForeverSuiteV2CombatAssist", T.ELEVATION.L0_HUD)
+    card:SetRibbon({ 0.24, 0.16, 0.04 }, 0.68, 0, 0)
+    local lbl = W.Label(card, "", "body", T.SEMANTIC.WARN, { outline = "OUTLINE" })
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.strip = card
     self.label = lbl
@@ -53,7 +54,9 @@ function CombatAssistHud:Refresh(inCombatOverride)
         if self.isLowHealth then
             self.label:SetText("[위험] 생명력 " .. tostring(eval.pct) .. "%")
             self.label:SetTextColor(T.SEMANTIC.DANGER[1], T.SEMANTIC.DANGER[2], T.SEMANTIC.DANGER[3], 1)
-            W.SetBorderColor(self.strip, T.SEMANTIC.DANGER)
+            if type(self.strip.SetRibbon) == "function" then
+                self.strip:SetRibbon({ 0.38, 0.06, 0.06 }, 0.78, 0, 0)
+            end
             self.strip:Show()
             return "LOW_HP"
         end
@@ -75,7 +78,9 @@ function CombatAssistHud:Refresh(inCombatOverride)
         if #missing > 0 then
             self.label:SetText("버프 누락: " .. table.concat(missing, " · "))
             self.label:SetTextColor(T.SEMANTIC.WARN[1], T.SEMANTIC.WARN[2], T.SEMANTIC.WARN[3], 1)
-            W.SetBorderColor(self.strip, T.SEMANTIC.WARN)
+            if type(self.strip.SetRibbon) == "function" then
+                self.strip:SetRibbon({ 0.24, 0.16, 0.04 }, 0.68, 0, 0)
+            end
             self.strip:Show()
             return "MISSING_BUFF"
         end

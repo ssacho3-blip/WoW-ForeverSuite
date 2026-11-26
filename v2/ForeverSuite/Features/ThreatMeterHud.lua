@@ -32,11 +32,29 @@ function ThreatMeterHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(_G.UIParent, METER_WIDTH, 152, "ForeverSuiteThreatMeter", T.ELEVATION.L1_CARD)
-    W.SetBorderColor(card, T.BORDER.HAIRLINE)
-    local hdr = W.Label(card, "✦ 위협 수준 (Threat)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    -- WoW 1.60.1 native damagemeters atlases (feature-detected) with translucent dark glass fallback
+    local card = W.HudGlass(_G.UIParent, METER_WIDTH, 152, "ForeverSuiteThreatMeter", T.ELEVATION.L1_CARD, {
+        bg = { 0.042, 0.038, 0.048, 0.64 },
+        border = T.BORDER.HUD_GLASS,
+    })
+    if T.TrySetAtlas and card._fsBg and T.TrySetAtlas(card._fsBg, "damagemeters-background", false) then
+        card._fsUsesNativeAtlas = true
+    end
+    local hdrBar = card:CreateTexture(nil, "BACKGROUND", nil, 0)
+    hdrBar:SetHeight(22)
+    hdrBar:SetPoint("TOPLEFT", card, "TOPLEFT", 1, -1)
+    hdrBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -1, -1)
+    if not (T.TrySetAtlas and T.TrySetAtlas(hdrBar, "ui-damagemeters-header-bar", false)) then
+        hdrBar:SetColorTexture(0.11, 0.09, 0.07, 0.72)
+    end
+    local hdr = W.Label(card, "✦ 위협 수준 (Threat)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
     hdr:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -6)
     hdr:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -6)
+    local hdrRule = card:CreateTexture(nil, "ARTWORK")
+    hdrRule:SetHeight(T.PixelSize(card, 1))
+    hdrRule:SetPoint("TOPLEFT", card, "TOPLEFT", 6, -21)
+    hdrRule:SetPoint("TOPRIGHT", card, "TOPRIGHT", -6, -21)
+    hdrRule:SetColorTexture(T.BORDER.GOLD_SOFT[1], T.BORDER.GOLD_SOFT[2], T.BORDER.GOLD_SOFT[3], 0.55)
 
     for i = 1, MAX_ROWS do
         local row = W.ListRow(card, 20, nil)
@@ -126,7 +144,7 @@ function ThreatMeterHud:Refresh()
             row:SetRowStyle({ col[1] * 0.12, col[2] * 0.12, col[3] * 0.12, 0.25 }, col, 0, 3, nil, 8)
             if type(row.SetGauge) == "function" then
                 local pct = (type(r.ratio) == "number") and (r.ratio * 100) or 0
-                row:SetGauge(pct, { barCol[1], barCol[2], barCol[3], 0.34 }, METER_WIDTH - 8)
+                row:SetGauge(pct, { barCol[1], barCol[2], barCol[3], 0.62 }, METER_WIDTH - 8)
             end
             row:Show()
         else

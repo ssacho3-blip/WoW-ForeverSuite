@@ -1,0 +1,117 @@
+{
+  "assets": {
+    "FS-Button-Brass.tga": {
+      "bytes": 131116,
+      "height": 128,
+      "md5": "31a1ae82888e541cc3af88d305b88878",
+      "slice": 32,
+      "width": 256
+    },
+    "FS-Button-Crimson.tga": {
+      "bytes": 131116,
+      "height": 128,
+      "md5": "1cf4384a9f62144c30e8a27c5ca7426f",
+      "slice": 32,
+      "width": 256
+    },
+    "FS-Button-Normal.tga": {
+      "bytes": 131116,
+      "height": 128,
+      "md5": "f110f9861708d1cb6654f987fa7ad290",
+      "slice": 32,
+      "width": 256
+    },
+    "FS-Frame-Dark.tga": {
+      "bytes": 1048620,
+      "height": 512,
+      "md5": "4b7fce7f7379af713a3dd15fe0ca8cd4",
+      "shadow": 16,
+      "slice": 160,
+      "width": 512
+    },
+    "FS-Frame-Gold.tga": {
+      "bytes": 1048620,
+      "height": 512,
+      "md5": "1e30e70a9a9a12ee1f8debb3dd9b4cfd",
+      "shadow": 16,
+      "slice": 160,
+      "width": 512
+    },
+    "FS-Frame-Small-Dark.tga": {
+      "bytes": 262188,
+      "height": 256,
+      "md5": "9002765bd0a99737b665d869e8b4c737",
+      "shadow": 8,
+      "slice": 80,
+      "width": 256
+    },
+    "FS-Frame-Small.tga": {
+      "bytes": 262188,
+      "height": 256,
+      "md5": "e42c268454827d1e2c84b80563b1c685",
+      "shadow": 8,
+      "slice": 80,
+      "width": 256
+    },
+    "FS-Gem-Empty.tga": {
+      "bytes": 65580,
+      "height": 128,
+      "md5": "3a7970e26d2636cc9d8670cb1a08d652",
+      "width": 128
+    },
+    "FS-Gem-Glow.tga": {
+      "blend": "ADD",
+      "bytes": 65580,
+      "height": 128,
+      "md5": "89dbe8718aca006e34d30ae329e82ffa",
+      "width": 128
+    },
+    "FS-Gem-Lit.tga": {
+      "bytes": 65580,
+      "height": 128,
+      "md5": "d21437615138dc7c29127349a6033590",
+      "width": 128
+    },
+    "FS-IconRing.tga": {
+      "bytes": 16428,
+      "height": 64,
+      "md5": "32a91c8e3807b3bd71dc885b82ff6199",
+      "width": 64
+    },
+    "FS-Scrim-Radial.tga": {
+      "bytes": 262188,
+      "height": 256,
+      "md5": "8db5427e3ee67a469eff0a53de8ff451",
+      "width": 256
+    },
+    "FS-StatusBar-Border.tga": {
+      "bytes": 65580,
+      "height": 64,
+      "md5": "de7f44bb0f47507f21e3ba03ab5acfc8",
+      "slice": 16,
+      "width": 256
+    },
+    "FS-StatusBar-Fill.tga": {
+      "bytes": 16428,
+      "height": 32,
+      "md5": "ff34fd2a3fa09ba4b38859445692e909",
+      "tile": true,
+      "width": 128
+    },
+    "FS-StatusBar-Groove.tga": {
+      "bytes": 16428,
+      "height": 32,
+      "md5": "20424c5222c03dc0c235e929b70f2175",
+      "tile": true,
+      "width": 128
+    },
+    "FS-ZoneRibbon.tga": {
+      "bytes": 262188,
+      "height": 128,
+      "md5": "5a506fa4d48111d5a217c6d3baa0a6d6",
+      "width": 512
+    }
+  },
+  "count": 16,
+  "version": "5.0.0"
+}

@@ -52,12 +52,13 @@ function EncounterTimerHud:Init()
         return self.card
     end
     self:EnsureState()
-    local card = W.Card(nil, 248, 26, "ForeverSuiteV2EncounterTimer", T.ELEVATION.L0_HUD)
-    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false })
+    local card = W.HudFloating(nil, 248, 26, "ForeverSuiteV2EncounterTimer", T.ELEVATION.L0_HUD)
+    card:SetRibbon({ 0.04, 0.036, 0.048 }, 0.68, 0, 0)
+    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false, outline = "OUTLINE" })
     lbl:SetPoint("TOP", card, "TOP", 0, -5)
-    local dLbl = W.Label(card, "", "small", T.TEXT.SECONDARY, { justifyH = "CENTER", wordWrap = false })
-    dLbl:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 6, 4)
-    dLbl:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -6, 4)
+    local dLbl = W.Label(card, "", "small", T.TEXT.SECONDARY, { justifyH = "CENTER", wordWrap = false, outline = "OUTLINE" })
+    dLbl:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 8, 4)
+    dLbl:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 4)
     dLbl:Hide()
     self.card = card
     self.label = lbl
@@ -114,7 +115,9 @@ function EncounterTimerHud:Refresh()
         local txtCol, borderCol = ToneColor(view.tone)
         self.label:SetText(view.text)
         self.label:SetTextColor(txtCol[1], txtCol[2], txtCol[3], 1)
-        W.SetBorderColor(self.card, borderCol)
+        if type(self.card.SetRibbon) == "function" then
+            self.card:SetRibbon({ borderCol[1] * 0.25, borderCol[2] * 0.25, borderCol[3] * 0.25 }, 0.72, 0, 0)
+        end
         if self.detailLabel and self.activeBossTip and self:IsBossActive() then
             self.detailLabel:SetText(self.activeBossTip)
             self.detailLabel:Show()

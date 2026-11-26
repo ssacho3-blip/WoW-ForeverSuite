@@ -60,22 +60,64 @@ function QuestItemDock:EnsureButtons()
 
         local bg = btn:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints(btn)
-        bg:SetColorTexture(0.055, 0.067, 0.090, 0.94)
+        bg:SetColorTexture(0.068, 0.060, 0.074, 0.94)
         btn._bg = bg
 
-        PaintHairlineBorder(btn, 0.831, 0.686, 0.216, 0.78)
+        PaintHairlineBorder(btn, 0.855, 0.694, 0.255, 0.85)
 
         local icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
         icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+        if type(icon.SetTexCoord) == "function" then
+            pcall(icon.SetTexCoord, icon, 0.08, 0.92, 0.08, 0.92)
+        end
         btn._icon = icon
+
+        -- Native Blizzard quest item frame or custom gold metallic ring overlay
+        local ring = btn:CreateTexture(nil, "OVERLAY")
+        ring:SetAllPoints(btn)
+        local usedAtlas = false
+        if type(ring.SetAtlas) == "function" then
+            local okA = pcall(ring.SetAtlas, ring, "UI-QuestTrackerButton-QuestItem-Frame", false)
+            if okA and type(ring.GetAtlas) == "function" then
+                local okG, cur = pcall(ring.GetAtlas, ring)
+                usedAtlas = okG and cur == "UI-QuestTrackerButton-QuestItem-Frame"
+            elseif okA then
+                usedAtlas = true
+            end
+        end
+        if not usedAtlas and type(ring.SetTexture) == "function" then
+            pcall(ring.SetTexture, ring, "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\FS-IconRing.tga")
+            if type(ring.SetVertexColor) == "function" then
+                pcall(ring.SetVertexColor, ring, 0.855, 0.694, 0.255, 0.92)
+            end
+        end
+        btn._ring = ring
 
         local fontObj = (_G.FS_Font_Small ~= nil) and "FS_Font_Small" or "GameFontNormalSmall"
         local badge = btn:CreateFontString(nil, "OVERLAY", fontObj)
-        badge:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+        badge:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -2)
         badge:SetText(tostring(i))
-        badge:SetTextColor(0.95, 0.85, 0.35, 1)
+        badge:SetTextColor(0.98, 0.91, 0.62, 1)
         btn._badge = badge
+
+        -- Hover item tooltip (read-only GameTooltip, zero taint)
+        btn:SetScript("OnEnter", function(self)
+            if self._itemLink and _G.GameTooltip and type(_G.GameTooltip.SetOwner) == "function" then
+                pcall(function()
+                    _G.GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                    if type(_G.GameTooltip.SetHyperlink) == "function" then
+                        _G.GameTooltip:SetHyperlink(self._itemLink)
+                    end
+                    _G.GameTooltip:Show()
+                end)
+            end
+        end)
+        btn:SetScript("OnLeave", function()
+            if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
+                pcall(_G.GameTooltip.Hide, _G.GameTooltip)
+            end
+        end)
 
         btn:Hide()
         self.buttons[i] = btn
@@ -97,6 +139,7 @@ function QuestItemDock:ApplySlots(dockSlots)
                 btn:SetPoint(a.point, _G.UIParent, a.relPoint, a.x, a.y - ((i - 1) * (SLOT_SIZE + SLOT_GAP)))
                 btn:SetAttribute("type", "item")
                 btn:SetAttribute("item", slotData.itemLink)
+                btn._itemLink = slotData.itemLink
                 if btn._icon then
                     btn._icon:SetTexture(slotData.itemIcon)
                 end
@@ -106,6 +149,7 @@ function QuestItemDock:ApplySlots(dockSlots)
                 end
             else
                 btn:SetAttribute("item", nil)
+                btn._itemLink = nil
                 if btn._icon then
                     btn._icon:SetTexture(nil)
                 end

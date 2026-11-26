@@ -23,16 +23,18 @@ local PADDING_X = 6
 local PADDING_BOTTOM = 6
 local MAX_VISIBLE_ROWS = 18
 
+-- Airy GodJohnson / Kaliel's Tracker aesthetic:
+-- Left-to-right gradient fade-out zone banners + transparent floating quest & objective rows (zero opaque spreadsheet feel!)
 local ROW_THEMES = {
-    group_current  = { bg = { 0.24, 0.19, 0.06, 0.86 }, accent = { 0.95, 0.80, 0.28, 1.00 }, ax = 0, aw = 3, sep = { 0.62, 0.50, 0.18, 0.55 }, pad = 10, tc = T.TEXT.GOLD, rc = T.TEXT.GOLD },
-    group_other    = { bg = { 0.11, 0.14, 0.20, 0.86 }, accent = { 0.48, 0.65, 0.90, 0.90 }, ax = 0, aw = 3, sep = { 0.24, 0.30, 0.40, 0.55 }, pad = 10, tc = T.TEXT.PRIMARY, rc = T.TEXT.SECONDARY },
-    quest_super    = { bg = { 0.26, 0.20, 0.06, 0.62 }, accent = { 0.98, 0.83, 0.28, 1.00 }, ax = 0, aw = 4, sep = { 0.65, 0.52, 0.18, 0.45 }, pad = 10, tc = T.TEXT.GOLD, rc = T.TEXT.GOLD },
-    quest_complete = { bg = { 0.06, 0.20, 0.12, 0.56 }, accent = { 0.29, 0.87, 0.50, 0.98 }, ax = 0, aw = 3, sep = { 0.18, 0.50, 0.30, 0.45 }, pad = 10, tc = T.SEMANTIC.SUCCESS, rc = T.SEMANTIC.SUCCESS },
-    quest_failed   = { bg = { 0.24, 0.08, 0.09, 0.56 }, accent = { 0.97, 0.44, 0.44, 0.96 }, ax = 0, aw = 3, sep = { 0.50, 0.20, 0.22, 0.45 }, pad = 10, tc = T.SEMANTIC.DANGER, rc = T.SEMANTIC.DANGER },
-    quest_active   = { bg = { 0.10, 0.13, 0.18, 0.52 }, accent = { 0.42, 0.62, 0.88, 0.85 }, ax = 0, aw = 3, sep = { 0.20, 0.25, 0.34, 0.42 }, pad = 10, tc = T.TEXT.PRIMARY, rc = T.TEXT.SECONDARY },
-    obj_done       = { bg = { 0.04, 0.08, 0.06, 0.28 }, accent = { 0.22, 0.62, 0.38, 0.65 }, ax = 6, aw = 2, sep = nil, pad = 16, tc = T.SEMANTIC.SUCCESS, rc = T.TEXT.MUTED },
-    obj_progress   = { bg = { 0.11, 0.09, 0.04, 0.32 }, accent = { 0.96, 0.76, 0.24, 0.82 }, ax = 6, aw = 2, sep = nil, pad = 16, tc = T.SEMANTIC.WARN, rc = T.TEXT.MUTED },
-    obj_pending    = { bg = { 0.04, 0.05, 0.08, 0.24 }, accent = { 0.28, 0.34, 0.44, 0.55 }, ax = 6, aw = 2, sep = nil, pad = 16, tc = T.TEXT.SECONDARY, rc = T.TEXT.MUTED },
+    group_current  = { bg = { 1.00, 0.90, 0.62, 0.92 }, accent = { 0.96, 0.80, 0.30, 1.00 }, ax = 0, aw = 3, sep = { 0.72, 0.56, 0.20, 0.42 }, pad = 10, tc = T.TEXT.GOLD, rc = T.TEXT.GOLD, fadeRight = true, useZoneRibbon = true },
+    group_other    = { bg = { 0.78, 0.76, 0.82, 0.74 }, accent = { 0.55, 0.66, 0.84, 0.82 }, ax = 0, aw = 2, sep = { 0.32, 0.28, 0.20, 0.32 }, pad = 10, tc = T.TEXT.PRIMARY, rc = T.TEXT.SECONDARY, fadeRight = true, useZoneRibbon = true },
+    quest_super    = { bg = { 0.28, 0.21, 0.05, 0.42 }, accent = { 0.98, 0.83, 0.28, 1.00 }, ax = 0, aw = 3, sep = nil, pad = 10, tc = T.TEXT.GOLD, rc = T.TEXT.GOLD, fadeRight = true },
+    quest_complete = { bg = { 0.05, 0.20, 0.10, 0.30 }, accent = { 0.29, 0.87, 0.50, 0.92 }, ax = 0, aw = 2, sep = nil, pad = 10, tc = T.SEMANTIC.SUCCESS, rc = T.SEMANTIC.SUCCESS, fadeRight = true },
+    quest_failed   = { bg = { 0.26, 0.06, 0.07, 0.34 }, accent = { 0.97, 0.44, 0.44, 0.95 }, ax = 0, aw = 2, sep = nil, pad = 10, tc = T.SEMANTIC.DANGER, rc = T.SEMANTIC.DANGER, fadeRight = true },
+    quest_active   = { bg = { 0.04, 0.04, 0.05, 0.14 }, accent = { 0.55, 0.66, 0.84, 0.72 }, ax = 0, aw = 2, sep = nil, pad = 10, tc = T.TEXT.PRIMARY, rc = T.TEXT.SECONDARY, fadeRight = true },
+    obj_done       = { bg = { 0.00, 0.00, 0.00, 0.00 }, accent = { 0.24, 0.66, 0.40, 0.55 }, ax = 8, aw = 2, sep = nil, pad = 16, tc = T.SEMANTIC.SUCCESS, rc = T.TEXT.MUTED },
+    obj_progress   = { bg = { 0.00, 0.00, 0.00, 0.00 }, accent = { 0.96, 0.76, 0.24, 0.72 }, ax = 8, aw = 2, sep = nil, pad = 16, tc = T.SEMANTIC.WARN, rc = T.TEXT.MUTED },
+    obj_pending    = { bg = { 0.00, 0.00, 0.00, 0.00 }, accent = { 0.34, 0.32, 0.28, 0.42 }, ax = 8, aw = 2, sep = nil, pad = 16, tc = T.TEXT.PRIMARY, rc = T.TEXT.MUTED },
     empty          = { bg = { 0.00, 0.00, 0.00, 0.00 }, accent = nil, ax = 0, aw = 0, sep = nil, pad = 10, tc = T.TEXT.MUTED, rc = T.TEXT.MUTED },
 }
 
@@ -172,7 +174,7 @@ function QuestTrackerView:ShowDetailCard(item)
         return false
     end
     if not self.detailCard then
-        local card = W.Card(_G.UIParent, 340, 220, "ForeverSuiteQuestDetailCard", T.ELEVATION.L2_HUB)
+        local card = W.PopupCard(_G.UIParent, 340, 220, "ForeverSuiteQuestDetailCard", T.ELEVATION.L2_HUB)
         W.MakeDraggable(card, "questDetailCard", { point = "CENTER", relPoint = "CENTER", x = 0, y = 40 })
         local title = W.Label(card, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
         title:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
@@ -186,11 +188,15 @@ function QuestTrackerView:ShowDetailCard(item)
         if type(body.SetJustifyV) == "function" then body:SetJustifyV("TOP") end
         body:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -54)
         body:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -12, 38)
-        local trackBtn = W.Button(card, "포커스 추적 토글", 132, 24, function()
+        local trackBtn = W.Button(card, "✦ 길안내·포커스", 132, 24, function()
             local qid = card._questID
             if type(qid) == "number" and qid > 0 then
                 local cur = ns.Api.SafeAPI.GetSuperTrackedQuestID()
-                ns.Api.NavPort.RequestSuperTrack((cur == qid) and 0 or qid)
+                local nextQID = (cur == qid) and 0 or qid
+                ns.Api.NavPort.RequestSuperTrack(nextQID)
+                if ns.Features.NavigationHud and type(ns.Features.NavigationHud.TrackQuest) == "function" then
+                    ns.Features.NavigationHud:TrackQuest(nextQID, card._title and card._title:GetText() or nil, { allowLoadPacks = true, explicit = true })
+                end
             end
         end, true)
         trackBtn:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 12, 8)
@@ -221,6 +227,11 @@ function QuestTrackerView:ShowDetailCard(item)
     local card = self.detailCard
     card._questID = item.questID
     card._title:SetText(tostring(item.rawTitle or item.title or ("퀘스트 #" .. tostring(item.questID))))
+    if type(item.difficultyColor) == "table" then
+        card._title:SetTextColor(item.difficultyColor[1], item.difficultyColor[2], item.difficultyColor[3], 1)
+    else
+        card._title:SetTextColor(T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], 1)
+    end
     local statusTxt = item.isComplete and "완료 가능" or (item.isFailed and "실패" or "진행 중")
     card._meta:SetText(
         "ID #" .. tostring(item.questID) .. " · " .. tostring(item.zone or "기타")
@@ -282,6 +293,16 @@ function QuestTrackerView:SyncToolbarLabels()
     end
     self.btnMinimize:SetLabel(mn and "+" or "−")
     self.btnMinimize:SetActive(mn)
+    if self.btnMinimize._atlasTex then
+        local atlas = mn and "ui-questtrackerbutton-expand-all" or "ui-questtrackerbutton-collapse-all"
+        if T.TrySetAtlas and T.TrySetAtlas(self.btnMinimize._atlasTex, atlas, false) then
+            self.btnMinimize._atlasTex:Show()
+            self.btnMinimize._label:Hide()
+        else
+            self.btnMinimize._atlasTex:Hide()
+            self.btnMinimize._label:Show()
+        end
+    end
 end
 
 function QuestTrackerView:ToggleGroupMode()
@@ -339,7 +360,12 @@ function QuestTrackerView:Init()
     if self.container then
         return self.container
     end
-    local box = W.Card(_G.UIParent, TRACKER_WIDTH, HEADER_HEIGHT + 44, "ForeverSuiteV2QuestTracker", T.ELEVATION.L1_CARD)
+    -- v5.0 Airy Borderless Quest Tracker (GodJohnson / Kaliel's aesthetic: zero outer boxy frame!)
+    local box = W.HudFloating(_G.UIParent, TRACKER_WIDTH, HEADER_HEIGHT + 44, "ForeverSuiteV2QuestTracker", T.ELEVATION.L1_CARD)
+    local scrim = box:CreateTexture(nil, "BACKGROUND", nil, -5)
+    scrim:SetAllPoints(box)
+    scrim:SetColorTexture(T.SURFACE.HUD_SCRIM[1], T.SURFACE.HUD_SCRIM[2], T.SURFACE.HUD_SCRIM[3], T.SURFACE.HUD_SCRIM[4])
+    box._fsBg = scrim
     box:SetClampedToScreen(true)
     if type(box.EnableMouseWheel) == "function" then
         box:EnableMouseWheel(true)
@@ -348,11 +374,13 @@ function QuestTrackerView:Init()
         QuestTrackerView:ScrollBy(delta)
     end)
 
-    -- Header bar with Burnished Gold bottom accent rule & direct drag when unlocked
-    local hdr = W.Card(box, TRACKER_WIDTH - 2, HEADER_HEIGHT, nil, nil)
+    -- Sculpted zone-ribbon header bar (direct drag when unlocked)
+    local hdr = W.HudGlass(box, TRACKER_WIDTH - 2, HEADER_HEIGHT, nil, nil, {
+        bg = { 0.085, 0.072, 0.055, 0.78 },
+        border = { 0.65, 0.50, 0.20, 0.45 },
+    })
     hdr:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
     hdr:SetPoint("TOPRIGHT", box, "TOPRIGHT", -1, -1)
-    W.SetBorderColor(hdr, T.BORDER.GOLD_SOFT)
     if type(hdr.EnableMouse) == "function" then hdr:EnableMouse(true) end
     if type(hdr.RegisterForDrag) == "function" then hdr:RegisterForDrag("LeftButton") end
     hdr:SetScript("OnDragStart", function()
@@ -368,27 +396,32 @@ function QuestTrackerView:Init()
         end
     end)
 
-    local title = W.Label(hdr, "✦ 퀘스트 (0)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local title = W.Label(hdr, "✦ 퀘스트 (0)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
     title:SetPoint("LEFT", hdr, "LEFT", 8, 0)
 
     local btnMin = W.MiniButton(hdr, "−", 22, 20, function()
         QuestTrackerView:ToggleMinimized()
-    end, "퀘스트 추적기 접기 / 펼치기")
+    end, "퀘스트 추적기 접기 / 펼치기", { ghost = true })
     btnMin:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
+    local minAtlas = btnMin:CreateTexture(nil, "ARTWORK")
+    minAtlas:SetSize(14, 14)
+    minAtlas:SetPoint("CENTER", btnMin, "CENTER", 0, 0)
+    minAtlas:Hide()
+    btnMin._atlasTex = minAtlas
 
     local btnLock = W.MiniButton(hdr, "이동", 36, 20, function()
         QuestTrackerView:ToggleLocked()
-    end, "추적기 위치 잠금 / 해제")
+    end, "추적기 위치 잠금 / 해제", { ghost = true })
     btnLock:SetPoint("RIGHT", btnMin, "LEFT", -4, 0)
 
     local btnZone = W.MiniButton(hdr, "현지역", 46, 20, function()
         QuestTrackerView:ToggleCurrentZoneFilter()
-    end, "현재 지역 퀘스트만 표시")
+    end, "현재 지역 퀘스트만 표시", { ghost = true })
     btnZone:SetPoint("RIGHT", btnLock, "LEFT", -4, 0)
 
     local btnMode = W.MiniButton(hdr, "지역", 36, 20, function()
         QuestTrackerView:ToggleGroupMode()
-    end, "정렬 기준 전환 (지역별 / 레벨별)")
+    end, "정렬 기준 전환 (지역별 / 레벨별)", { ghost = true })
     btnMode:SetPoint("RIGHT", btnZone, "LEFT", -4, 0)
 
     title:SetPoint("RIGHT", btnMode, "LEFT", -6, 0)
@@ -499,6 +532,12 @@ function QuestTrackerView:OnRowClick(rowBtn, mouseBtn)
     if not ok and status == "DEFERRED" then
         ns.Api.SafeAPI.Print("전투 또는 지도 종료 후 퀘스트 포커스를 전환합니다.")
     end
+    if ns.Features.NavigationHud and type(ns.Features.NavigationHud.TrackQuest) == "function" then
+        local navOk, navStatus = ns.Features.NavigationHud:TrackQuest(nextQID, item.rawTitle or item.title, { allowLoadPacks = true, explicit = true })
+        if nextQID > 0 and (not navOk) and navStatus == "NO_COORDS" then
+            ns.Api.SafeAPI.Print("퀘스트 포커스 설정됨 (좌표 미등록 — 월드맵에서 Alt+좌클릭으로 /way 직접 지정 가능)")
+        end
+    end
 end
 
 local function ShowRowTooltip(rowBtn)
@@ -512,7 +551,8 @@ local function ShowRowTooltip(rowBtn)
     pcall(function()
         _G.GameTooltip:SetOwner(rowBtn, "ANCHOR_LEFT")
         _G.GameTooltip:ClearLines()
-        _G.GameTooltip:AddLine(tostring(item.rawTitle or item.title or "퀘스트"), T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3])
+        local titleCol = (type(item.difficultyColor) == "table") and item.difficultyColor or T.TEXT.GOLD
+        _G.GameTooltip:AddLine(tostring(item.rawTitle or item.title or "퀘스트"), titleCol[1], titleCol[2], titleCol[3])
         local sub = tostring(item.zone or "기타")
         if type(item.level) == "number" and item.level > 0 then
             sub = sub .. " · Lv." .. tostring(item.level)
@@ -532,7 +572,7 @@ local function ShowRowTooltip(rowBtn)
                 _G.GameTooltip:AddLine("보고 루트: " .. routeRec.title, T.SEMANTIC.INFO[1], T.SEMANTIC.INFO[2], T.SEMANTIC.INFO[3], true)
             end
         end
-        _G.GameTooltip:AddLine("좌클릭: 추적 · 우클릭: 접기 · Ctrl: 상세 · Shift: 링크/주시", T.TEXT.MUTED[1], T.TEXT.MUTED[2], T.TEXT.MUTED[3])
+        _G.GameTooltip:AddLine("좌클릭: 포커스+화살표 길안내 · 우클릭: 접기 · Ctrl: 상세 · Shift: 링크/주시", T.TEXT.MUTED[1], T.TEXT.MUTED[2], T.TEXT.MUTED[3])
         _G.GameTooltip:Show()
     end)
 end
@@ -565,6 +605,9 @@ function QuestTrackerView:BuildLiveOpts(extra)
     end
     if opts.currentZone == nil then
         opts.currentZone = ns.Api.GameAdapters.GetPlayerZoneText()
+    end
+    if opts.playerLevel == nil then
+        opts.playerLevel = ns.Api.GameAdapters.GetPlayerLevel()
     end
     if opts.groupMode == nil then
         opts.groupMode = ns.Domain.QuestTrackerModel.NormalizeGroupMode(GetSetting("groupMode", "zone"))
@@ -654,6 +697,10 @@ function QuestTrackerView:Render(quests, opts)
         self.titleLbl:SetText("✦ 퀘스트 (" .. countTxt .. ")")
     end
 
+    -- Fixed B6: Compute scrollbar visibility BEFORE anchoring rows so right inset clears the 10px scrollbar!
+    local showFooter = (not snap.minimized) and (snap.maxScroll > 0)
+    local rowRightInset = showFooter and 16 or PADDING_X
+
     local y = HEADER_HEIGHT + BODY_TOP_PAD
     local shown = 0
     for i, item in ipairs(snap.visibleRows) do
@@ -661,12 +708,13 @@ function QuestTrackerView:Render(quests, opts)
         local row = self:EnsureRow(i)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", self.container, "TOPLEFT", PADDING_X, -y)
-        row:SetPoint("TOPRIGHT", self.container, "TOPRIGHT", -PADDING_X, -y)
+        row:SetPoint("TOPRIGHT", self.container, "TOPRIGHT", -rowRightInset, -y)
         row._questID = item.questID
         row._rowData = item
 
         local theme = ROW_THEMES[item.visualState] or ROW_THEMES.empty
-        row:SetRowStyle(theme.bg, theme.accent, theme.ax, theme.aw, theme.sep, theme.pad)
+        local ribbonTex = (theme.useZoneRibbon and T.UI_ART and T.UI_ART.zoneRibbon) or nil
+        row:SetRowStyle(theme.bg, theme.accent, theme.ax, theme.aw, theme.sep, theme.pad, theme.fadeRight, ribbonTex)
 
         if item.kind == "header" then
             row._left:SetText(item.text)
@@ -680,10 +728,19 @@ function QuestTrackerView:Render(quests, opts)
                 title = (liveSlot and ("[" .. tostring(liveSlot) .. "] ") or "") ..
                     tostring(item.title):gsub("^%[%d+%] ", "")
             end
-            row._left:SetText(title)
-            row._left:SetTextColor(theme.tc[1], theme.tc[2], theme.tc[3], 1)
+            local marker = item.isSuperTracked and "★ " or (item.isComplete and "✓ " or "")
+            local diffCol = (type(item.difficultyColor) == "table") and item.difficultyColor or nil
+            -- Classic Original Quest Difficulty Colors for title & level badge; preserve accent/badge cues for super/complete/failed
+            local titleCol = item.isFailed and T.SEMANTIC.DANGER or (diffCol or theme.tc)
+            local rightCol = item.isComplete and T.SEMANTIC.SUCCESS
+                or (item.isFailed and T.SEMANTIC.DANGER or (diffCol or theme.rc))
+            if item.visualState == "quest_active" and diffCol then
+                row:SetRowStyle(theme.bg, diffCol, theme.ax, theme.aw, theme.sep, theme.pad, theme.fadeRight)
+            end
+            row._left:SetText(marker .. title)
+            row._left:SetTextColor(titleCol[1], titleCol[2], titleCol[3], 1)
             row._right:SetText(item.rightText or "")
-            row._right:SetTextColor(theme.rc[1], theme.rc[2], theme.rc[3], 1)
+            row._right:SetTextColor(rightCol[1], rightCol[2], rightCol[3], 1)
         elseif item.kind == "objective" then
             local prefix = item.finished and "✓ " or "• "
             row._left:SetText(prefix .. item.text)
@@ -702,7 +759,6 @@ function QuestTrackerView:Render(quests, opts)
         self.rowPool[i]:Hide()
     end
 
-    local showFooter = (not snap.minimized) and (snap.maxScroll > 0)
     if self.scrollBar then
         if showFooter then
             self.scrollBar:SetMetrics(snap.scrollOffset, (shown > 0 and shown or 1), snap.totalRows)

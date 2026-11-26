@@ -184,9 +184,9 @@ assert(ns.Api.ProfileStore.db.v2.protectedItems[6948] == true, "P1-5: 보호목�
 
 hub:SelectPage("fonts")
 local fp = ns.Features.FontsPage
-assert(fp.presetBar ~= nil and #fp.presetBar._pills == 5, "P1-8: FontsPage FlowPillGroup must expose all 5 presets")
+assert(fp.presetBar ~= nil and #fp.presetBar._pills == 8, "P1-8: FontsPage FlowPillGroup must expose all 8 presets (5 core + 3 bundled KR)")
 local fontSchema = ns.Api.ProfileStore.schemaByKey["ui.fontPreset"]
-assert(fontSchema ~= nil and #fontSchema.options == 5, "P1-8: ui.fontPreset schema must register all 5 presets")
+assert(fontSchema ~= nil and #fontSchema.options == 8, "P1-8: ui.fontPreset schema must register all 8 presets")
 
 hub:SelectPage("ledger")
 local lp = ns.Features.LedgerPage

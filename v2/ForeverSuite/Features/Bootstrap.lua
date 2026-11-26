@@ -341,11 +341,14 @@ local DEFAULT_SCHEMAS = {
         desc = "ForeverSuite 전용 폰트 객체에만 안전 적용",
         combatSafe = false,
         options = {
-            { value = "default_kr", label = "기본 고딕", width = 80 },
-            { value = "bold_kr", label = "굵은 고딕", width = 80 },
-            { value = "pagetext_kr", label = "명조체", width = 72 },
-            { value = "damage_kr", label = "전투 숫자", width = 80 },
-            { value = "clean_en", label = "영문 고딕", width = 80 },
+            { value = "default_kr",  label = "기본 고딕",   width = 76 },
+            { value = "bold_kr",     label = "굵은 고딕",   width = 76 },
+            { value = "pagetext_kr", label = "명조체",     width = 66 },
+            { value = "damage_kr",   label = "전투 숫자",   width = 76 },
+            { value = "clean_en",    label = "영문 고딕",   width = 76 },
+            { value = "gmarket_kr",  label = "지마켓산스",  width = 82 },
+            { value = "gyeonggi_kr", label = "경기천년",    width = 76 },
+            { value = "gothic_a1_kr", label = "고딕A1",     width = 68 },
         },
     },
     {
@@ -474,17 +477,17 @@ local DEFAULT_SCHEMAS = {
         section = "ui",
         key = "navArrowStyle",
         type = "enum",
-        default = "classic",
-        label = "내비게이션 화살표 스타일 (ForeverSuite_Media_Assets)",
-        desc = "클래식 라운드 / 나침반 / 쐐기 3D / 문장 / 창날 / 심플",
+        default = "roundedClassic",
+        label = "내비게이션 화살표 스타일 (12-레이어 3D 사틴 / 갓존스)",
+        desc = "3D클래식(기본) / 3D쐐기 / 3D나침반 / 갓존스 황금 / 문장 / 심플",
         combatSafe = true,
         options = {
-            { value = "classic", label = "클래식", width = 62 },
-            { value = "compass", label = "나침반", width = 62 },
-            { value = "wedge",   label = "쐐기3D", width = 64 },
-            { value = "crest",   label = "문장",   width = 52 },
-            { value = "spear",   label = "창날",   width = 52 },
-            { value = "minimal", label = "심플",   width = 52 },
+            { value = "roundedClassic", label = "3D클래식", width = 66 },
+            { value = "roundedWedge",   label = "3D쐐기",   width = 58 },
+            { value = "roundedCompass", label = "3D나침반", width = 66 },
+            { value = "gold_classic",   label = "갓존스",   width = 56 },
+            { value = "crest",          label = "문장",     width = 48 },
+            { value = "minimal",        label = "심플",     width = 48 },
         },
     },
     {
@@ -664,6 +667,19 @@ local DEFAULT_SCHEMAS = {
         desc = "진단 페이지에서 최근 30건 오류 리포트 복사 지원",
         combatSafe = true,
     },
+    {
+        section = "ui",
+        key = "uiTheme",
+        type = "enum",
+        default = "gold",
+        label = "ForeverSuite 통합 UI 테마 (즉시 전환 · 리로드 불필요)",
+        desc = "클래식 골드 RPG (갓존스·DialogueUI풍) ↔ 클린 다크 미니멀 (ElvUI·Baganator풍)",
+        combatSafe = true,
+        options = {
+            { value = "gold", label = "클래식 골드 RPG", width = 118 },
+            { value = "dark", label = "클린 다크 미니멀", width = 118 },
+        },
+    },
 }
 
 local Bootstrap = {
@@ -705,6 +721,10 @@ function Bootstrap:Init()
     ns.Api.ProfileStore:RegisterSchema(DEFAULT_SCHEMAS)
     ns.Api.ProfileStore:Init()
 
+    if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetTheme) == "function" then
+        ns.UI.Tokens.SetTheme(ns.Api.ProfileStore:Get("ui", "uiTheme") or "gold")
+    end
+
     -- Register L2 Command Hub workspace pages (v3.0 4-Group Unified Hub; Home is default landing)
     ns.UI.CommandHub:RegisterPage(ns.Features.HomePage)
     ns.UI.CommandHub:RegisterPage(ns.Features.PartyFinderPage)
@@ -736,6 +756,7 @@ function Bootstrap:Init()
 
     ns.Api.EventBus:Subscribe("setting:changed", function(sec, key, val)
         if sec == "quest" and key == "defaultTrackerMode" then
+            ns.Api.ProfileStore:SetState("userExplicitTrackerMode", true)
             ApplyTrackerModeSafely(val)
         elseif sec == "quest" and (key == "groupMode" or key == "currentZoneOnly" or key == "trackerMinimized" or key == "trackerLocked") then
             ns.Features.QuestTrackerView:RefreshLive()
@@ -743,6 +764,10 @@ function Bootstrap:Init()
             ns.Features.QuestTrackerView:UpdateCombatVisuals()
         elseif sec == "quest" and key == "proximityAlerts" then
             ns.Features.QuestExtraModule:SyncProximityTicker()
+        elseif sec == "ui" and key == "uiTheme" then
+            if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetTheme) == "function" then
+                ns.UI.Tokens.SetTheme(val)
+            end
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
         elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins" or key == "worldMapReveal" or key == "worldMapHeatmap" or key == "worldMapPetHeatmap") then
@@ -787,6 +812,7 @@ function Bootstrap:Init()
     ns.Features.WorldMapOverlay:Init()
     ns.Features.StatusPillHud:Init()
     ns.Features.NavigationHud:Init()
+    ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
     ns.Features.CombatAssistHud:Init()
     ns.Features.CombatAssistHud:Refresh()
     ns.Features.ThreatMeterHud:Init()
@@ -818,8 +844,10 @@ function Bootstrap:Init()
     -- Lifecycle & Feature event wiring
     ns.Api.EventBus:OnEvent("v2:addonLoaded", "ADDON_LOADED", function()
         ns.Blizzard.WorldMapAdapter:Init()
+        ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
     end)
     ns.Api.EventBus:OnEvent("v2:enterWorld", "PLAYER_ENTERING_WORLD", function()
+        ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
         ns.Features.DungeonBrowserPage:OnInstanceChanged()
         ns.Features.ThreatMeterHud:Refresh()
@@ -827,6 +855,16 @@ function Bootstrap:Init()
         ns.Features.AutoGreetingModule:SyncInitialRoster()
         ns.Features.CharacterAssistModule:CheckTalents(false)
         ns.Features.UtilitiesPage:RecordCurrentCharacter()
+        ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
+    end)
+    ns.Api.EventBus:OnEvent("v2:questWatchChanged", "QUEST_WATCH_LIST_CHANGED", function()
+        ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
+    end)
+    ns.Api.EventBus:OnEvent("v2:levelUpTracker", "PLAYER_LEVEL_UP", function()
+        ns.Features.QuestTrackerView:RefreshLive()
+        if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
+            ns.Features.WorldMapOverlay:InvalidatePinCache()
+        end
     end)
     ns.Api.EventBus:OnEvent("v2:groupRoster", "GROUP_ROSTER_UPDATE", function()
         ns.Features.AutoGreetingModule:OnGroupRosterUpdate()
@@ -843,9 +881,11 @@ function Bootstrap:Init()
         if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
             ns.Features.WorldMapOverlay:InvalidatePinCache()
         end
+        ns.Features.NavigationHud:OnQuestLogUpdate()
     end)
     ns.Api.EventBus:OnEvent("v2:superTrack", "SUPER_TRACKING_CHANGED", function()
         ns.Features.QuestTrackerView:RefreshLive()
+        ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
     end)
     ns.Api.EventBus:OnEvent("v2:bags", "BAG_UPDATE_DELAYED", function()
         ns.Features.StatusPillHud:RefreshLive()
@@ -1045,6 +1085,7 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
         ns.Secure.CombatQueue:Flush()
         ns.Api.NavPort.FlushIfSafe()
+        ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
         if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
             ns.Features.WorldMapOverlay:InvalidatePinCache()
         end
