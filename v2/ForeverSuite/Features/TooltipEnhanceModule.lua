@@ -12,6 +12,7 @@ local tostring = tostring
 
 local TooltipEnhanceModule = {
     initialized = false,
+    triedPacksLoad = false,
     sourceIndex = nil,
     bisIndex = nil,
     profMatIndex = nil,
@@ -37,6 +38,21 @@ local PROF_KIND_LABELS = {
 }
 
 function TooltipEnhanceModule:EnsureIndexes()
+    -- A1: Lazily load LoD tooltip source/translation packs once OOC so tooltips work from first login!
+    if (not self.triedPacksLoad) and not ns.Api.SafeAPI.InCombat() then
+        self.triedPacksLoad = true
+        local wantSources = ns.Api.ProfileStore:Get("ui", "tooltipItemSources") ~= false
+        local wantTrans = ns.Api.ProfileStore:Get("ui", "tooltipTranslation") ~= false
+        if wantSources then
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_Dungeon")
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_BiS")
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_Profession")
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_QuestExtra")
+        end
+        if wantTrans then
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_Items")
+        end
+    end
     local packs = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
     if type(packs) ~= "table" then return end
 
@@ -94,6 +110,8 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
     local bisNote = wantSources and self.bisIndex and self.bisIndex[itemID] or nil
     local profMatTag = wantSources and self.profMatIndex and self.profMatIndex[itemID] or nil
     local koTrans = wantTrans and self.itemTransMap and self.itemTransMap[itemID] or nil
+    local starterRec = (wantSources and ns.Features.QuestExtraModule) and ns.Features.QuestExtraModule:GetStarterHintForItem(itemID) or nil
+    local starterHint = starterRec and ("퀘스트 #" .. tostring(starterRec.questsCsv or "") .. ((type(starterRec.minLevel) == "number" and starterRec.minLevel > 0) and (" · Lv." .. tostring(starterRec.minLevel) .. "+") or "")) or nil
 
     local lines = ns.Domain.TooltipModel.BuildItemLines(itemID, sellPrice, 1, protected, {
         showItemID = true,
@@ -104,12 +122,18 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
         bisNote = bisNote,
         profMaterialTag = profMatTag,
         koTranslation = koTrans,
+        questStarterHint = starterHint,
     })
     local added = 0
     for _, ln in ipairs(lines) do
         if ns.Blizzard.TooltipAdapter.AddLine(tooltip, ln.left, ln.right, ToneColor(ln.tone)) then
             added = added + 1
         end
+    end
+    if wantTrans and self.clauseTransMap then
+        added = added + ns.Blizzard.TooltipAdapter.TranslateVisibleLines(tooltip, function(rawLine)
+            return TooltipEnhanceModule:TranslateClause(rawLine)
+        end)
     end
     return added
 end

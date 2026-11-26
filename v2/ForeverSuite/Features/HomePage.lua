@@ -58,7 +58,7 @@ function HomePage:Build(parent)
     heroIcon:SetPoint("LEFT", hero, "LEFT", 14, 0)
     self.heroIcon = heroIcon
 
-    local heroTitle = W.Label(hero, "✦ ForeverSuite v3.0.1", "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local heroTitle = W.Label(hero, "✦ ForeverSuite " .. tostring(ns.Api.SafeAPI.GetAddonVersion() or "4.0.0"), "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     heroTitle:SetPoint("TOPLEFT", hero, "TOPLEFT", 14 + T.ICON.LG + 12, -11)
     heroTitle:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -148, -11)
     self.heroTitle = heroTitle
@@ -191,7 +191,7 @@ function HomePage:Build(parent)
     end)
     shareBtn:SetPoint("LEFT", gdkpBtn, "RIGHT", 8, 0)
 
-    local diagBtn = W.Button(strip, "진단 · 8대 LoD", 112, 24, function()
+    local diagBtn = W.Button(strip, "진단 · 12 LoD", 112, 24, function()
         ns.UI.CommandHub:SelectPage("diagnostics")
     end)
     diagBtn:SetPoint("LEFT", shareBtn, "RIGHT", 8, 0)

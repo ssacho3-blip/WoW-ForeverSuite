@@ -410,11 +410,17 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             let mut src = Vec::new();
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonData.lua", true, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonAlliance.lua", false, &mut src)?;
+            lua.load("GJCompanion.QuestFinishLocations = GJCompanion.QuestFinishLocations or {}")
+                .set_mode(ChunkMode::Text)
+                .exec()
+                .map_err(|e| anyhow::anyhow!("QuestFinishLocations init failed: {e}"))?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonExtra.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonGuideData.lua", true, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBlueleaf.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonGnomeregan.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonWetlands.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaran468.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonGuideData.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonEntranceData4110.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/Dungeon196Data.lua", false, &mut src)?;
             lua.load("for _, d in ipairs(GJCompanion.Dungeons or {}) do if d.instance == nil then d.instance = d.key or d.name end end")
@@ -1825,17 +1831,69 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua", false, &mut src)?;
+            let (gp_in, gp_skip, gp_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local blocked = {
+                    accessibilityScreenNarrationEnabled = true,
+                    accessibilityScreenNarrationSpeechRate = true,
+                    accessibilityScreenNarrationVoice = true,
+                    Sound_EnableAllSound = true,
+                    Sound_MasterVolume = true,
+                    Sound_MusicVolume = true,
+                    Sound_SFXVolume = true,
+                    Sound_AmbienceVolume = true,
+                    Sound_DialogVolume = true,
+                    gxMonitor = true,
+                    gxWindow = true,
+                    gxMaximize = true,
+                }
+                local pd = C.GameSettingsPresetData5139
+                if type(pd) == "table" and type(pd.cvars) == "table" then
+                    for _, cv in ipairs(pd.cvars) do
+                        inp = inp + 1
+                        if type(cv) == "table" and type(cv.name) == "string" and cv.name ~= "" and type(cv.value) == "string" and not blocked[cv.name] then
+                            local nm = cv.name
+                            local cat = "general"
+                            if string.find(nm, "camera", 1, true) or string.find(nm, "Camera", 1, true) then cat = "camera"
+                            elseif string.find(nm, "chat", 1, true) or string.find(nm, "Chat", 1, true) then cat = "chat"
+                            elseif string.find(nm, "combat", 1, true) or string.find(nm, "Combat", 1, true) or string.find(nm, "floatingCombat", 1, true) then cat = "combat"
+                            elseif string.find(nm, "nameplate", 1, true) or string.find(nm, "Nameplate", 1, true) then cat = "nameplate"
+                            end
+                            -- Exclude enemy nameplate CVars to respect Platynator isolation
+                            if cat ~= "nameplate" then
+                                rows[#rows+1] = { name = nm, value = cv.value, category = cat }
+                            else
+                                skip = skip + 1
+                            end
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut atlas_packs = vec![
+                ("atlas_npcs".into(), "서비스 NPC · 직업 상급자 · 교통편 전체".into(), "atlas".into(), src.clone(), n_in, n_skip, n_rows),
+                ("class_quests".into(), "직업 퀘스트 및 단계별 공략서 전체".into(), "quest".into(), src.clone(), q_in, q_skip, q_rows),
+                ("special_guides".into(), "특수 퀘스트 · 포에버 도서관 책 전체".into(), "quest".into(), src.clone(), b_in, b_skip, b_rows),
+                ("training_spells".into(), "직업별 스킬 습득 테이블".into(), "character".into(), src.clone(), s_in, s_skip, s_rows),
+            ];
+            if !gp_rows.is_empty() {
+                atlas_packs.push(("game_presets".into(), "갓존슨 권장 게임 CVar 프리셋 전체".into(), "preset".into(), src, gp_in, gp_skip, gp_rows));
+            }
+
             let (st, prov) = stage_lod_addon(
                 v2_root,
                 "ForeverSuite_Data_Atlas",
                 "Atlas, Quests & Training DB",
-                "ForeverSuite LoadOnDemand 서비스 NPC·교통편·직업 퀘스트·특수 퀘스트·도서관 책·스킬 DB",
-                vec![
-                    ("atlas_npcs".into(), "서비스 NPC · 직업 상급자 · 교통편 전체".into(), "atlas".into(), src.clone(), n_in, n_skip, n_rows),
-                    ("class_quests".into(), "직업 퀘스트 및 단계별 공략서 전체".into(), "quest".into(), src.clone(), q_in, q_skip, q_rows),
-                    ("special_guides".into(), "특수 퀘스트 · 포에버 도서관 책 전체".into(), "quest".into(), src.clone(), b_in, b_skip, b_rows),
-                    ("training_spells".into(), "직업별 스킬 습득 테이블".into(), "character".into(), src, s_in, s_skip, s_rows),
-                ],
+                "ForeverSuite LoadOnDemand 서비스 NPC·교통편·직업 퀘스트·특수 퀘스트·도서관 책·스킬·게임 프리셋 DB",
+                atlas_packs,
             )?;
             staged_addons.push(st);
             all_prov.extend(prov);
@@ -2187,22 +2245,65 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            // Extract real inline escort names/notes from EscortQuests249.lua comments so ZERO synthetic placeholder copy is generated
+            {
+                let mut escort_comment_lua = String::from("GJCompanion.EscortComments = {\n");
+                if let Ok(mut f) = archive.by_name("GodJohnsonGoldBorder/EscortQuests249.lua") {
+                    let mut raw = String::new();
+                    let _ = f.read_to_string(&mut raw);
+                    for line in raw.lines() {
+                        let trimmed = line.trim();
+                        if let Some(rest) = trimmed.strip_prefix('[') {
+                            if let Some((id_str, after_id)) = rest.split_once(']') {
+                                if let Ok(qid) = id_str.trim().parse::<u32>() {
+                                    if let Some((_, comment)) = after_id.split_once("--") {
+                                        let clean = comment.trim().replace('\\', "\\\\").replace('"', "\\\"");
+                                        if !clean.is_empty() {
+                                            escort_comment_lua.push_str(&format!("  [{qid}] = \"{clean}\",\n"));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                escort_comment_lua.push_str("}\n");
+                lua.load(&escort_comment_lua).set_mode(ChunkMode::Text).exec().ok();
+            }
+
             let (qt_in, qt_skip, qt_rows) = collect_entries_from_lua(
                 &lua,
                 r#"
                 local C = GJCompanion
                 local rows, inp, skip = {}, 0, 0
+                local comments = C.EscortComments or {}
                 local eIds = {}
                 for qid in pairs(C.EscortQuestsMap or {}) do if type(qid) == "number" then eIds[#eIds+1] = qid end end
                 table.sort(eIds)
                 for _, qid in ipairs(eIds) do
                     inp = inp + 1
-                    rows[#rows+1] = { kind = "escort", questID = qid, title = "호위 퀘스트 #" .. tostring(qid), category = "escort", note = "파티원과 함께 호위 시작 권장 · 선행 몹 정리 후 수락하세요." }
+                    local desc = comments[qid]
+                    if type(desc) == "string" and desc ~= "" then
+                        rows[#rows+1] = {
+                            kind = "escort",
+                            questID = qid,
+                            title = "[호위] " .. desc,
+                            category = "escort",
+                            summary = "호위 대상: " .. desc .. " (퀘스트 #" .. tostring(qid) .. ")",
+                            note = "호위 대상: " .. desc .. " · 퀘스트 #" .. tostring(qid) .. " (Forever 1.60.1 검증 호위 단계). 선행 몹 정리 및 파티 동행을 권장합니다.",
+                        }
+                    else
+                        skip = skip + 1
+                    end
                 end
                 for _, qt in ipairs(C.QuickTipsData428 or {}) do
                     inp = inp + 1
                     if type(qt) == "table" and type(qt.title) == "string" then
-                        rows[#rows+1] = {
+                        local loc = (type(qt.locations) == "table" and type(qt.locations[1]) == "table") and qt.locations[1] or nil
+                        local mapID = (loc and type(loc.mapID) == "number") and loc.mapID or nil
+                        local lx = (loc and type(loc.x) == "number") and (loc.x > 1 and (loc.x / 100.0) or loc.x) or nil
+                        local ly = (loc and type(loc.y) == "number") and (loc.y > 1 and (loc.y / 100.0) or loc.y) or nil
+                        local row = {
                             kind = "quicktip",
                             key = tostring(qt.key or ""),
                             category = tostring(qt.category or "general"),
@@ -2211,6 +2312,12 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                             meta = tostring(qt.meta or ""),
                             note = tostring(qt.body or ""),
                         }
+                        if mapID and lx and ly then
+                            row.mapID = mapID
+                            row.x = lx
+                            row.y = ly
+                        end
+                        rows[#rows+1] = row
                     end
                 end
                 local gKeys = {}
@@ -2348,19 +2455,30 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 end
                 local ph = C.PetHeatmapData4115 or {}
                 local sprites = ph.sprites or {}
-                local byNpc = ph.beasts or ph.byNpc or ph.maps or {}
-                if #sprites > 0 then
-                    for idx, sp in ipairs(sprites) do
+                local petsMap = ph.pets or {}
+                local npcIds = {}
+                for nid in pairs(petsMap) do if type(nid) == "number" then npcIds[#npcIds+1] = nid end end
+                table.sort(npcIds)
+                for _, nid in ipairs(npcIds) do
+                    for _, rec in ipairs(petsMap[nid] or {}) do
                         inp = inp + 1
-                        if type(sp) == "table" and type(sp.file) == "string" then
+                        local sp = (type(rec) == "table" and type(rec.sprite) == "number") and sprites[rec.sprite] or nil
+                        if sp and type(sp.file) == "string" and type(rec.mapID) == "number" and type(rec.rect) == "table" then
                             local uv = sp.uv or {0,1,0,1}
+                            local rc = rec.rect
                             rows[#rows+1] = {
-                                spriteIndex = idx,
+                                npcID = nid,
+                                mapID = rec.mapID,
+                                points = type(rec.points) == "number" and rec.points or 0,
                                 file = rewriteMedia(sp.file),
                                 u1 = type(uv[1]) == "number" and uv[1] or 0,
                                 u2 = type(uv[2]) == "number" and uv[2] or 1,
                                 v1 = type(uv[3]) == "number" and uv[3] or 0,
                                 v2 = type(uv[4]) == "number" and uv[4] or 1,
+                                x0 = type(rc[1]) == "number" and rc[1] or 0,
+                                x1 = type(rc[2]) == "number" and rc[2] or 1,
+                                y0 = type(rc[3]) == "number" and rc[3] or 0,
+                                y1 = type(rc[4]) == "number" and rc[4] or 1,
                             }
                         else
                             skip = skip + 1

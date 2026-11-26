@@ -10,10 +10,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -29,11 +32,11 @@
         "GodJohnsonGoldBorder/DungeonOtherSteps259.lua",
         "GodJohnsonGoldBorder/DungeonPortrait221.lua"
       ],
-      "input_count": 45,
-      "output_count": 25,
+      "input_count": 55,
+      "output_count": 35,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "4cf5da4ab4e48ca00922353224eb932457a676475deb9e61e4ac44c61be4160c"
+      "output_sha256": "f0c99f20e7a55816f6fa33769c0f67b5932ae3c036385591e86f275d5aca30d4"
     },
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -42,10 +45,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -74,10 +80,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -93,11 +102,11 @@
         "GodJohnsonGoldBorder/DungeonOtherSteps259.lua",
         "GodJohnsonGoldBorder/DungeonPortrait221.lua"
       ],
-      "input_count": 432,
-      "output_count": 432,
+      "input_count": 525,
+      "output_count": 525,
       "skipped_count": 0,
-      "shards": 1,
-      "output_sha256": "bfb192df742197460320c2fb05d89338ad8f447bc3f19c62eb608581de43567e"
+      "shards": 2,
+      "output_sha256": "f2b45a089a77d96632d5eee62cc942ccf0fd0fe1e299c79d3e8e08b2e0832bae"
     },
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -106,10 +115,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -125,11 +137,11 @@
         "GodJohnsonGoldBorder/DungeonOtherSteps259.lua",
         "GodJohnsonGoldBorder/DungeonPortrait221.lua"
       ],
-      "input_count": 5050,
-      "output_count": 5050,
+      "input_count": 5084,
+      "output_count": 5084,
       "skipped_count": 0,
       "shards": 12,
-      "output_sha256": "9e01487c67fbe01f0c13bfc9733be31c16bc400b66db5ec27d911c684adb68df"
+      "output_sha256": "0155a693271c9e309969a421505f286398831b115ce79e986af68a6c3cb62f0f"
     },
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -138,10 +150,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -170,10 +185,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -202,10 +220,13 @@
       "source_files": [
         "GodJohnsonGoldBorder/DungeonData.lua",
         "GodJohnsonGoldBorder/DungeonAlliance.lua",
+        "GodJohnsonGoldBorder/DungeonExtra.lua",
+        "GodJohnsonGoldBorder/DungeonGuideData.lua",
         "GodJohnsonGoldBorder/DungeonBlueleaf.lua",
         "GodJohnsonGoldBorder/DungeonGnomeregan.lua",
         "GodJohnsonGoldBorder/DungeonWetlands.lua",
         "GodJohnsonGoldBorder/DungeonDalaran468.lua",
+        "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua",
         "GodJohnsonGoldBorder/DungeonEntranceData4110.lua",
         "GodJohnsonGoldBorder/Dungeon196Data.lua",
         "GodJohnsonGoldBorder/DungeonPublicReference.lua",
@@ -415,7 +436,8 @@
         "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
         "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
         "GodJohnsonGoldBorder/QuestChainData270.lua",
-        "GodJohnsonGoldBorder/TrainingData.lua"
+        "GodJohnsonGoldBorder/TrainingData.lua",
+        "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua"
       ],
       "input_count": 642,
       "output_count": 599,
@@ -439,7 +461,8 @@
         "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
         "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
         "GodJohnsonGoldBorder/QuestChainData270.lua",
-        "GodJohnsonGoldBorder/TrainingData.lua"
+        "GodJohnsonGoldBorder/TrainingData.lua",
+        "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua"
       ],
       "input_count": 638,
       "output_count": 638,
@@ -463,7 +486,8 @@
         "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
         "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
         "GodJohnsonGoldBorder/QuestChainData270.lua",
-        "GodJohnsonGoldBorder/TrainingData.lua"
+        "GodJohnsonGoldBorder/TrainingData.lua",
+        "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua"
       ],
       "input_count": 44,
       "output_count": 44,
@@ -487,13 +511,39 @@
         "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
         "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
         "GodJohnsonGoldBorder/QuestChainData270.lua",
-        "GodJohnsonGoldBorder/TrainingData.lua"
+        "GodJohnsonGoldBorder/TrainingData.lua",
+        "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua"
       ],
       "input_count": 1443,
       "output_count": 1443,
       "skipped_count": 0,
       "shards": 4,
       "output_sha256": "7dc522842d7d0b244fd4f8c57958d120b974bce5be08c0bdfbd614e86e1bb0d3"
+    },
+    {
+      "addon_name": "ForeverSuite_Data_Atlas",
+      "pack_id": "game_presets",
+      "title": "갓존슨 권장 게임 CVar 프리셋 전체",
+      "source_files": [
+        "GodJohnsonGoldBorder/MapServiceNPCData.lua",
+        "GodJohnsonGoldBorder/ClassTrainerLocations.lua",
+        "GodJohnsonGoldBorder/MapTransportData.lua",
+        "GodJohnsonGoldBorder/LibraryBooksData450.lua",
+        "GodJohnsonGoldBorder/ClassQuestData.lua",
+        "GodJohnsonGoldBorder/ClassQuestRewardData433.lua",
+        "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua",
+        "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua",
+        "GodJohnsonGoldBorder/ClassQuestDruidGuide434.lua",
+        "GodJohnsonGoldBorder/QuestChainData270.lua",
+        "GodJohnsonGoldBorder/TrainingData.lua",
+        "GodJohnsonGoldBorder/GameSettingsPresetData5139.lua"
+      ],
+      "input_count": 238,
+      "output_count": 189,
+      "skipped_count": 49,
+      "shards": 1,
+      "output_sha256": "db751eb405cd904f422e72d36fdd9075a4e57e1486fad30524973de020cd9575"
     },
     {
       "addon_name": "ForeverSuite_Data_MapPins",
@@ -604,7 +654,7 @@
       "output_count": 89,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "b56e446a8bf0c5b441b73ae45d7ec6b7e454cd2b36cde2eda2872c8efab560a7"
+      "output_sha256": "1ab0125d99e7d973d8a8cddb25c31a7d161d38c8a639c7e890e49c184b0d4910"
     },
     {
       "addon_name": "ForeverSuite_Data_MapExtra",
@@ -649,7 +699,7 @@
       "output_count": 559,
       "skipped_count": 0,
       "shards": 2,
-      "output_sha256": "603213883156a4659bea5edbf2c74537f525d554423b0664daeb9a02489f5bd0"
+      "output_sha256": "7ddb73d91ea7b3754c39cb8f5082eac8a7b27604e48d673a73001d2d5b9384f0"
     },
     {
       "addon_name": "ForeverSuite_Media_Assets",

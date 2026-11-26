@@ -339,6 +339,27 @@ function CommandHub:EnsureWindow()
         CommandHub:CloseSearchPalette()
     end)
 
+    -- Window scale & center reset stepper (- / 100% / +) right beside search box
+    local scalePlus = W.MiniButton(win._header, "+", 20, 22, function()
+        CommandHub:AdjustUserScale(0.05)
+    end, "창 크기 +5% 확대")
+    scalePlus:SetPoint("RIGHT", search, "LEFT", -8, 0)
+
+    local scaleValBtn = W.MiniButton(win._header, "100%", 42, 22, function(_, mouseBtn)
+        if mouseBtn == "RightButton" then
+            CommandHub:ResetWindowTransform()
+        else
+            CommandHub:SetUserScale(1.0)
+        end
+    end, "좌클릭: 크기 100% 초기화 · 우클릭: 창 위치·크기 중앙 복원")
+    scaleValBtn:SetPoint("RIGHT", scalePlus, "LEFT", -2, 0)
+
+    local scaleMinus = W.MiniButton(win._header, "−", 20, 22, function()
+        CommandHub:AdjustUserScale(-0.05)
+    end, "창 크기 -5% 축소")
+    scaleMinus:SetPoint("RIGHT", scaleValBtn, "LEFT", -2, 0)
+    self.scaleValBtn = scaleValBtn
+
     local groups = self:BuildGroupedRailSpec()
     local rail = W.GroupedTabRail(win, RAIL_WIDTH, groups, function(pageId)
         CommandHub:CloseSearchPalette()
@@ -444,8 +465,88 @@ function CommandHub:SelectPage(pageId, skipSearchSync)
     return true
 end
 
+function CommandHub:GetUserScale()
+    local saved = ns.Api and ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("hubScale")
+    local n = tonumber(saved) or 1.0
+    if n < 0.75 then n = 0.75 end
+    if n > 1.25 then n = 1.25 end
+    return math.floor(n * 100 + 0.5) / 100
+end
+
+function CommandHub:SetUserScale(scale)
+    local n = tonumber(scale) or 1.0
+    if n < 0.75 then n = 0.75 end
+    if n > 1.25 then n = 1.25 end
+    n = math.floor(n * 100 + 0.5) / 100
+    if ns.Api and ns.Api.ProfileStore then
+        ns.Api.ProfileStore:SetState("hubScale", n)
+    end
+    return self:FitScaleToViewport(self.window)
+end
+
+function CommandHub:AdjustUserScale(delta)
+    local d = tonumber(delta) or 0
+    local base = self:GetUserScale()
+    if d < 0 and self.window and type(self.window._fsAppliedScale) == "number" and self.window._fsAppliedScale < base then
+        base = self.window._fsAppliedScale
+    end
+    return self:SetUserScale(base + d)
+end
+
+function CommandHub:ResetWindowTransform()
+    if ns.Api and ns.Api.ProfileStore then
+        ns.Api.ProfileStore:SetState("hubScale", 1.0)
+        ns.Api.ProfileStore:SetLayout("commandHub", { point = "CENTER", relPoint = "CENTER", x = 0, y = 12 })
+    end
+    if self.window then
+        self.window:ClearAllPoints()
+        self.window:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 12)
+        self:FitScaleToViewport(self.window)
+    end
+    ns.Api.SafeAPI.Print("CommandHub 창 위치와 크기를 기본값(중앙 · 100%)으로 복원했습니다.")
+    return true
+end
+
+function CommandHub:FitScaleToViewport(win)
+    win = win or self.window
+    if not (win and _G.UIParent) then
+        return 1.0
+    end
+    if ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then
+        return win._fsAppliedScale or 1.0
+    end
+    local pw = (type(_G.UIParent.GetWidth) == "function") and _G.UIParent:GetWidth() or nil
+    local ph = (type(_G.UIParent.GetHeight) == "function") and _G.UIParent:GetHeight() or nil
+    if type(pw) ~= "number" or type(ph) ~= "number" or pw <= 0 or ph <= 0 then
+        return 1.0
+    end
+    local desired = self:GetUserScale()
+    local maxFitX = (pw * 0.90) / HUB_WIDTH
+    local maxFitY = (ph * 0.88) / HUB_HEIGHT
+    local maxFit = (maxFitX < maxFitY) and maxFitX or maxFitY
+    local scale = (desired < maxFit) and desired or maxFit
+    if scale < 0.70 then scale = 0.70 end
+    if scale > 1.25 then scale = 1.25 end
+    scale = math.floor(scale * 100 + 0.5) / 100
+    local prevScale = win._fsAppliedScale or 1.0
+    if type(win.SetScale) == "function" then
+        pcall(win.SetScale, win, scale)
+    end
+    -- Re-center if viewport shrank below desired scale so a previously dragged offset never clips offscreen
+    if scale < desired and math.abs(scale - prevScale) > 0.001 then
+        win:ClearAllPoints()
+        win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 0)
+    end
+    win._fsAppliedScale = scale
+    if self.scaleValBtn and type(self.scaleValBtn.SetLabel) == "function" then
+        self.scaleValBtn:SetLabel(tostring(math.floor(scale * 100 + 0.5)) .. "%")
+    end
+    return scale
+end
+
 function CommandHub:JumpTo(pageId, opts)
     local win = self:EnsureWindow()
+    self:FitScaleToViewport(win)
     win:Show()
     local targetQ = (type(opts) == "table" and type(opts.searchQuery) == "string") and opts.searchQuery or ""
     if self.searchBox then
@@ -530,6 +631,7 @@ function CommandHub:Toggle()
     if win:IsShown() then
         win:Hide()
     else
+        self:FitScaleToViewport(win)
         win:Show()
         local active = self.activePageId and self.pages[self.activePageId] or nil
         if active and type(active.OnShow) == "function" then

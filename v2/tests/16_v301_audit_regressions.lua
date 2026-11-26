@@ -49,7 +49,7 @@ for _, d in ipairs(dEntries) do
     if d.id == "brs" then brsSize = d.partySize end
 end
 assert(dupes == 0, "P0-5: ZERO duplicate dungeon titles allowed (found " .. tostring(dupes) .. ")")
-assert(#dEntries == 25, "P0-5: Expected exact 25 deduplicated dungeons (got " .. tostring(#dEntries) .. ")")
+assert(#dEntries == 35, "P0-5: Expected exact 35 deduplicated dungeons including classic & Forever dungeons (got " .. tostring(#dEntries) .. ")")
 assert(aq20Size == 20 and zgSize == 20, "P0-5: AQ20 and ZG must have partySize == 20")
 assert(brsSize == 10, "P0-5: BRS must have partySize == 10")
 

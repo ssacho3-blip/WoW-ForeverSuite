@@ -39,6 +39,18 @@ function ProfileStore:Init()
     self.db = migrated
     self.charDB = _G.ForeverSuiteV2CharDB
     self.readOnly = ro and true or false
+    -- A7: If this character has synced shared settings saved via PresetManager and account DB is fresh, hydrate cleanly
+    if (not self.readOnly) and type(self.charDB.syncedSharedSettings) == "table" and self.charDB.applySyncedOnNextLogin == true then
+        self.charDB.applySyncedOnNextLogin = false
+        for sec, tbl in pairs(self.charDB.syncedSharedSettings) do
+            if type(tbl) == "table" then
+                self.db.v2.settings[sec] = self.db.v2.settings[sec] or {}
+                for k, v in pairs(tbl) do
+                    self.db.v2.settings[sec][k] = v
+                end
+            end
+        end
+    end
     return self.db
 end
 

@@ -30,11 +30,11 @@ for _, id in ipairs({ "comboHud", "rangeHud", "shortBuffHud", "clockHud" }) do
     assert(rec.frame._strata ~= nil, id .. " frame must have valid strata")
 end
 assert(reg.comboHud.defaultAnchor.y == -116 and reg.rangeHud.defaultAnchor.y == -148, "Combo and Range HUDs must not stack at (0,0)")
-assert(reg.clockHud.defaultAnchor.point == "TOPRIGHT" and reg.clockHud.defaultAnchor.y == -148, "Clock HUD must anchor cleanly above StatusPill")
+assert(reg.clockHud.defaultAnchor.point == "TOPRIGHT" and reg.clockHud.defaultAnchor.y == -208, "Clock HUD must anchor cleanly below Blizzard Minimap and above StatusPill")
 
--- 4. Fix #3: ThreatMeterHud vs FishingCardHud must NOT overlap at BOTTOMRIGHT (-24, 180)
-assert(reg.threatMeter.defaultAnchor.y == 180, "ThreatMeter default y=180")
-assert(reg.fishingCard.defaultAnchor.y == 344, "FishingCard must move to y=344 to avoid colliding with ThreatMeter")
+-- 4. Fix #3: ThreatMeterHud vs FishingCardHud must NOT overlap (and must clear BagBar & QuestTracker)
+assert(reg.threatMeter.defaultAnchor.y == 80, "ThreatMeter default y=80 (above BagBar)")
+assert(reg.fishingCard.defaultAnchor.point == "BOTTOMLEFT" and reg.fishingCard.defaultAnchor.y == 356, "FishingCard must anchor cleanly at BOTTOMLEFT y=356 above SkillCooldown/Chat")
 
 -- 5. Floating HUD Edit Control Bar & Preview-Show of hidden HUDs during unlock
 local ch = ns.Features.CombatHudPack

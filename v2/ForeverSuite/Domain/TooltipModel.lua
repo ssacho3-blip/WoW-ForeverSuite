@@ -94,6 +94,13 @@ function TooltipModel.BuildItemLines(itemID, sellPrice, stackCount, protectedSet
                 tone = "MUTED",
             }
         end
+        if type(opts.questStarterHint) == "string" and opts.questStarterHint ~= "" then
+            lines[#lines + 1] = {
+                left = "! 퀘스트 시작 아이템",
+                right = opts.questStarterHint,
+                tone = "GOLD",
+            }
+        end
     end
 
     return lines

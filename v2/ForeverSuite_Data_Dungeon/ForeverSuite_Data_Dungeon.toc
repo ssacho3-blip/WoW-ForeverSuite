@@ -9,6 +9,7 @@
 Pack_dungeons_01.lua
 Pack_dungeon_bosses_01.lua
 Pack_dungeon_quests_01.lua
+Pack_dungeon_quests_02.lua
 Pack_dungeon_loot_01.lua
 Pack_dungeon_loot_02.lua
 Pack_dungeon_loot_03.lua

@@ -53,10 +53,10 @@ function FishingCardHud:Init()
     self.bodyLbl = body
 
     ns.UI.HudLayout:Register("fishingCard", card, {
-        point = "BOTTOMRIGHT",
-        relPoint = "BOTTOMRIGHT",
-        x = -24,
-        y = 344,
+        point = "BOTTOMLEFT",
+        relPoint = "BOTTOMLEFT",
+        x = 24,
+        y = 356,
     }, "낚시 대상어 카드")
 
     card:Hide()

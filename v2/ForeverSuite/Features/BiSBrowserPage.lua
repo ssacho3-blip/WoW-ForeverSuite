@@ -372,12 +372,13 @@ function BiSBrowserPage:Build(parent)
         BiSBrowserPage.scrollOffset = 0
         BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
     end)
-    specBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -56)
+    local specY = 28 + (slotGroup._totalHeight or 50) + 6
+    specBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -specY)
     specBar:SetWidth(300)
     self.specPillBar = specBar
 
-    local listTopY = 88
-    local leftPane = W.Card(parent, 424, 434)
+    local listTopY = specY + 30
+    local leftPane = W.Card(parent, 424, 419)
     leftPane:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -listTopY)
     leftPane:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 24)
     if type(leftPane.EnableMouseWheel) == "function" then
@@ -390,7 +391,7 @@ function BiSBrowserPage:Build(parent)
     end
 
     for i = 1, VISIBLE_ROWS do
-        local row = W.IconRow(leftPane, 34, function(btn)
+        local row = W.IconRow(leftPane, 32, function(btn)
             local rec = btn._rec
             if not (rec and rec.item) then return end
             if ns.Api.GameAdapters.IsShiftDown() and type(rec.item.itemID) == "number" then
@@ -401,12 +402,12 @@ function BiSBrowserPage:Build(parent)
             BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
         end)
         row:SetTooltipHandler(ShowBiSTooltip, HideBiSTooltip)
-        row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 4, -(6 + (i - 1) * 35))
-        row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -14, -(6 + (i - 1) * 35))
+        row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 4, -(6 + (i - 1) * 34))
+        row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -14, -(6 + (i - 1) * 34))
         self.rows[i] = row
     end
 
-    local sb = W.ScrollBar(leftPane, 418, function(newOff)
+    local sb = W.ScrollBar(leftPane, 404, function(newOff)
         BiSBrowserPage.scrollOffset = newOff
         BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
     end)
@@ -418,7 +419,7 @@ function BiSBrowserPage:Build(parent)
     empty:SetAllPoints(leftPane)
     self.emptyState = empty
 
-    -- Right Pane: Top Equipped Comparison Banner (56px) + DetailPanel below
+    -- Right Pane: Top Equipped Comparison Banner (54px) + DetailPanel below
     local eqCard = W.Card(parent, 334, 54)
     eqCard:SetPoint("TOPLEFT", leftPane, "TOPRIGHT", 10, 0)
     eqCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -listTopY)
@@ -436,7 +437,7 @@ function BiSBrowserPage:Build(parent)
     self.equippedNameLbl = eqName
     self.equippedSubLbl = eqSub
 
-    local detail = W.DetailPanel(parent, 334, 372, { hasFooter = true })
+    local detail = W.DetailPanel(parent, 334, 357, { hasFooter = true })
     detail:SetPoint("TOPLEFT", eqCard, "BOTTOMLEFT", 0, -8)
     detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 24)
     self.detailPanel = detail

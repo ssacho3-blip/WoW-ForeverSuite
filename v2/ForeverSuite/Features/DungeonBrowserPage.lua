@@ -102,12 +102,13 @@ function DungeonBrowserPage:EnsureQuickLootHud()
     ns.UI.HudLayout:Register("dungeonQuickLoot", btn, {
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
-        x = -24,
-        y = -184,
+        x = -206,
+        y = -208,
     }, "던전 빠른 드랍 버튼")
 
     local pop = W.Card(_G.UIParent, 340, 316, "ForeverSuiteQuickLootPopup", T.ELEVATION.L3_OVERLAY)
     pop:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -4)
+    W.MakeDraggable(pop, "quickLootPopup", nil)
     W.SetBorderColor(pop, T.BORDER.GOLD)
     local pHdr = W.Label(pop, "던전 빠른 드랍 미리보기", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     pHdr:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, -8)
@@ -420,12 +421,14 @@ function DungeonBrowserPage:RenderRight()
         for _, b in ipairs(bosses) do
             local isSel = (self.selectedBoss and self.selectedBoss.title == b.title)
             local port = (self.portraitsByNpc and type(b.npcID) == "number" and b.npcID > 0) and self.portraitsByNpc[b.npcID] or nil
-            local portTag = port and (" · 모델 #" .. tostring(port.displayID)) or ""
+            local portIcon = (port and type(port.fileDataID) == "number" and port.fileDataID > 0) and port.fileDataID or nil
             rowsToShow[#rowsToShow + 1] = {
                 title = (isSel and "▾ " or "▸ ") .. tostring(b.title),
-                subtitle = (b.tip and b.tip ~= "") and b.tip or (portTag ~= "" and ("초상화" .. portTag) or nil),
-                right = ((type(b.itemCount) == "number") and (tostring(b.itemCount) .. "종 드랍") or "드랍 정보") .. portTag,
+                subtitle = (b.tip and b.tip ~= "") and b.tip or nil,
+                right = (type(b.itemCount) == "number") and (tostring(b.itemCount) .. "종 드랍") or "드랍 정보",
                 color = isSel and T.TEXT.GOLD or T.TEXT.PRIMARY,
+                icon = portIcon,
+                portraitDisplayID = (not portIcon and port and type(port.displayID) == "number" and port.displayID > 0) and port.displayID or nil,
                 glyph = "☠",
                 borderCol = isSel and T.BORDER.GOLD or T.BORDER.SUBTLE,
                 selected = isSel,
@@ -650,6 +653,13 @@ function DungeonBrowserPage:RenderRight()
                 selected = data.selected,
                 sepCol = T.BORDER.SUBTLE,
             })
+            if data.portraitDisplayID and row._icon and row._icon._tex
+                and type(_G.SetPortraitTextureFromCreatureDisplayID) == "function"
+            then
+                pcall(_G.SetPortraitTextureFromCreatureDisplayID, row._icon._tex, data.portraitDisplayID)
+                row._icon._tex:Show()
+                if row._icon._glyph then row._icon._glyph:Hide() end
+            end
             row._item = data.item
             row._onActivate = data.onClick
             row:Show()

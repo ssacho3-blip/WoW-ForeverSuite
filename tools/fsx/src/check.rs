@@ -521,6 +521,7 @@ pub fn run_check(addon_dir: &Path) -> Result<CheckReport> {
     }
 
     let mut files_checked = 0usize;
+    let mut prod_sources = String::new();
     for rel in &toc.files {
         if rel.extension().and_then(|s| s.to_str()) != Some("lua") {
             continue;
@@ -532,7 +533,25 @@ pub fn run_check(addon_dir: &Path) -> Result<CheckReport> {
         let src = fs::read_to_string(&full)
             .with_context(|| format!("Failed to read {}", full.display()))?;
         files_checked += 1;
+        prod_sources.push_str(&src);
+        prod_sources.push('\n');
         violations.extend(check_lua_source(rel, &src));
+    }
+
+    // A0 Anti-Fake Static Wiring Gate: verify zero dead packs, zero unwired feature methods, and zero synthetic placeholder data
+    if toc.addon_name == "ForeverSuite" {
+        if let Some(v2_root) = addon_dir.parent() {
+            let global_fonts = v2_root.join("ForeverSuite_Fonts_Global/GlobalFonts.lua");
+            if let Ok(gf_src) = fs::read_to_string(&global_fonts) {
+                prod_sources.push_str(&gf_src);
+                prod_sources.push('\n');
+            }
+            violations.extend(check_unwired_feature_methods(addon_dir, &prod_sources));
+            if v2_root.join("ForeverSuite_Data/gj_lod_manifest.json").is_file() {
+                violations.extend(check_dead_packs(v2_root, &prod_sources));
+                violations.extend(check_fabricated_pack_data(v2_root));
+            }
+        }
     }
 
     if !violations.is_empty() {
@@ -552,6 +571,207 @@ pub fn run_check(addon_dir: &Path) -> Result<CheckReport> {
     }
 
     Ok(CheckReport { files_checked })
+}
+
+fn is_ident_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+fn count_member_refs(haystack: &str, method: &str) -> usize {
+    let bytes = haystack.as_bytes();
+    let mbytes = method.as_bytes();
+    if mbytes.is_empty() || bytes.len() <= mbytes.len() {
+        return 0;
+    }
+    let mut count = 0usize;
+    let mut i = 1usize;
+    while i + mbytes.len() <= bytes.len() {
+        if (bytes[i - 1] == b':' || bytes[i - 1] == b'.')
+            && &bytes[i..i + mbytes.len()] == mbytes
+        {
+            let after_ok = i + mbytes.len() == bytes.len()
+                || !is_ident_char(bytes[i + mbytes.len()]);
+            if after_ok {
+                count += 1;
+                i += mbytes.len();
+                continue;
+            }
+        }
+        i += 1;
+    }
+    count
+}
+
+fn contains_whole_ident(haystack: &str, ident: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let ibytes = ident.as_bytes();
+    if ibytes.is_empty() || bytes.len() < ibytes.len() {
+        return false;
+    }
+    for i in 0..=bytes.len() - ibytes.len() {
+        if &bytes[i..i + ibytes.len()] == ibytes {
+            let before_ok = i == 0 || !is_ident_char(bytes[i - 1]);
+            let after_ok =
+                i + ibytes.len() == bytes.len() || !is_ident_char(bytes[i + ibytes.len()]);
+            if before_ok && after_ok {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn check_unwired_feature_methods(addon_dir: &Path, prod_sources: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    let features_dir = addon_dir.join("Features");
+    if !features_dir.is_dir() {
+        return violations;
+    }
+    let Ok(entries) = fs::read_dir(&features_dir) else {
+        return violations;
+    };
+    let lifecycle_allow: HashSet<&str> = HashSet::from([
+        "Init", "Build", "OnShow", "OnSearch", "Refresh", "Show", "Hide", "Toggle", "Render",
+    ]);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("lua") {
+            continue;
+        }
+        let Ok(src) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let fname = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Features.lua");
+        for line in src.lines() {
+            let trimmed = line.trim_start();
+            let Some(rest) = trimmed.strip_prefix("function ") else {
+                continue;
+            };
+            let Some((sig, _)) = rest.split_once('(') else {
+                continue;
+            };
+            let sig = sig.trim();
+            let method = sig
+                .rsplit_once(':')
+                .or_else(|| sig.rsplit_once('.'))
+                .map(|(_, m)| m.trim());
+            let Some(m) = method else {
+                continue;
+            };
+            if m.is_empty()
+                || lifecycle_allow.contains(m)
+                || m.starts_with("Ensure")
+                || !m.bytes().all(is_ident_char)
+            {
+                continue;
+            }
+            if count_member_refs(prod_sources, m) <= 1 {
+                violations.push(format!(
+                    "[A0-WIRING] Features/{fname}: method '{sig}' has 0 production callers (dead/test-only method)"
+                ));
+            }
+        }
+    }
+    violations
+}
+
+pub fn check_dead_packs(v2_root: &Path, prod_sources: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    let manifest_path = v2_root.join("ForeverSuite_Data/gj_lod_manifest.json");
+    let Ok(raw) = fs::read_to_string(&manifest_path) else {
+        return violations;
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        violations.push("[A0-PACK] Failed to parse ForeverSuite_Data/gj_lod_manifest.json".into());
+        return violations;
+    };
+    let Some(packs) = val.get("packs").and_then(|p| p.as_array()) else {
+        return violations;
+    };
+    for p in packs {
+        let pack_id = p.get("pack_id").and_then(|v| v.as_str()).unwrap_or("");
+        let addon_name = p.get("addon_name").and_then(|v| v.as_str()).unwrap_or("");
+        if pack_id.is_empty() {
+            continue;
+        }
+        if addon_name == "ForeverSuite_Media_Assets" {
+            if !contains_whole_ident(prod_sources, "ForeverSuiteMediaAssets") {
+                violations.push(
+                    "[A0-PACK] ForeverSuite_Media_Assets manifest global 'ForeverSuiteMediaAssets' has 0 production references"
+                        .into(),
+                );
+            }
+        } else if !contains_whole_ident(prod_sources, pack_id) {
+            violations.push(format!(
+                "[A0-PACK] Compiled LoD pack '{pack_id}' ({addon_name}) has 0 production Lua references"
+            ));
+        }
+    }
+    violations
+}
+
+pub fn check_fabricated_pack_data(v2_root: &Path) -> Vec<String> {
+    let mut violations = Vec::new();
+    let Ok(dirs) = fs::read_dir(v2_root) else {
+        return violations;
+    };
+    for dir_entry in dirs.flatten() {
+        let dpath = dir_entry.path();
+        let dname = dpath.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if !dpath.is_dir() || !dname.starts_with("ForeverSuite_Data_") {
+            continue;
+        }
+        let Ok(files) = fs::read_dir(&dpath) else {
+            continue;
+        };
+        for fentry in files.flatten() {
+            let fpath = fentry.path();
+            let fname = fpath.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if !fname.starts_with("Pack_") || !fname.ends_with(".lua") {
+                continue;
+            }
+            let Ok(src) = fs::read_to_string(&fpath) else {
+                continue;
+            };
+            if src.contains("title=\"호위 퀘스트 #") {
+                violations.push(format!(
+                    "[A0-DATA] {dname}/{fname}: synthetic placeholder title '호위 퀘스트 #...' detected"
+                ));
+            }
+            if fname.starts_with("Pack_quest_tips_") {
+                let mut note_counts: HashMap<String, usize> = HashMap::new();
+                let mut total_notes = 0usize;
+                for line in src.lines() {
+                    if let Some(pos) = line.find("note=\"") {
+                        let rest = &line[pos + 6..];
+                        if let Some(end) = rest.find('"') {
+                            let note = &rest[..end];
+                            if !note.is_empty() {
+                                total_notes += 1;
+                                *note_counts.entry(note.to_string()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+                if total_notes >= 10 {
+                    if let Some((top_note, max_cnt)) =
+                        note_counts.iter().max_by_key(|(_, c)| **c)
+                    {
+                        if max_cnt * 2 > total_notes {
+                            violations.push(format!(
+                                "[A0-DATA] {dname}/{fname}: mass-duplicated generic note ({max_cnt}/{total_notes} identical): '{}'",
+                                top_note.chars().take(40).collect::<String>()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    violations
 }
 
 #[cfg(test)]
@@ -629,5 +849,49 @@ f['myFlag'] = true\n",
             "local tpl = 'SecureActionButtonTemplate'\nlocal b = CreateFrame('Button', 'B1', myPanel, tpl)\n",
         );
         assert!(bad.iter().any(|e| e.contains("UIParent")));
+    }
+
+    #[test]
+    fn a0_gate_catches_unwired_methods_dead_packs_and_placeholder_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let v2 = dir.path();
+        let addon = v2.join("ForeverSuite");
+        fs::create_dir_all(addon.join("Features")).unwrap();
+        fs::create_dir_all(v2.join("ForeverSuite_Data")).unwrap();
+        fs::create_dir_all(v2.join("ForeverSuite_Data_QuestExtra")).unwrap();
+
+        let feat_src = "function Mod:WiredFn() return 1 end\nfunction Mod:DeadFn() return 2 end\nfunction Mod:Init() self:WiredFn() end\n";
+        fs::write(addon.join("Features/Mod.lua"), feat_src).unwrap();
+        let unwired = check_unwired_feature_methods(&addon, feat_src);
+        assert!(unwired.iter().any(|e| e.contains("DeadFn")), "missed DeadFn: {unwired:?}");
+        assert!(!unwired.iter().any(|e| e.contains("WiredFn")), "false positive WiredFn: {unwired:?}");
+
+        fs::write(
+            v2.join("ForeverSuite_Data/gj_lod_manifest.json"),
+            r#"{"packs":[{"addon_name":"ForeverSuite_Data_QuestExtra","pack_id":"quest_collection"}]}"#,
+        )
+        .unwrap();
+        let dead = check_dead_packs(v2, "local x = 1");
+        assert!(dead.iter().any(|e| e.contains("quest_collection")), "missed dead pack: {dead:?}");
+
+        fs::write(
+            v2.join("ForeverSuite_Data_QuestExtra/Pack_quest_tips_01.lua"),
+            "{title=\"호위 퀘스트 #155\",note=\"same\"}\n",
+        )
+        .unwrap();
+        let fake = check_fabricated_pack_data(v2);
+        assert!(fake.iter().any(|e| e.contains("placeholder")), "missed placeholder: {fake:?}");
+
+        // DDT boundary: exactly 50% (5/10) identical passes, 60% (6/10) fails, 9 entries below threshold passes
+        let mut exact_half = String::new();
+        for i in 0..5 { exact_half.push_str(&format!("{{title=\"T{i}\",note=\"dup\"}}\n")); }
+        for i in 5..10 { exact_half.push_str(&format!("{{title=\"T{i}\",note=\"uniq{i}\"}}\n")); }
+        fs::write(v2.join("ForeverSuite_Data_QuestExtra/Pack_quest_tips_01.lua"), &exact_half).unwrap();
+        assert!(check_fabricated_pack_data(v2).is_empty(), "50% boundary should pass");
+
+        exact_half.push_str("{title=\"T10\",note=\"dup\"}\n");
+        fs::write(v2.join("ForeverSuite_Data_QuestExtra/Pack_quest_tips_01.lua"), &exact_half).unwrap();
+        let over_half = check_fabricated_pack_data(v2);
+        assert!(over_half.iter().any(|e| e.contains("mass-duplicated")), "54.5% (6/11) must fail: {over_half:?}");
     }
 }

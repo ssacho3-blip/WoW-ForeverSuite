@@ -29,7 +29,7 @@ function CombatAssistHud:Init()
         point = "CENTER",
         relPoint = "CENTER",
         x = 0,
-        y = -156,
+        y = 156,
     }, "전투·버프 보조 바")
 
     card:Hide()

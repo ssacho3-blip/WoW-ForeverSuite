@@ -196,12 +196,12 @@ function FontsPage:Build(parent)
     pBody:SetPoint("BOTTOMRIGHT", previewCard, "BOTTOMRIGHT", -12, 8)
     self.previewLbl = pBody
 
-    -- K2: Opt-in Global World / Combat Damage / Chat Font Override Switcher (ForeverSuite_Fonts_Global)
-    local gCard = W.Card(parent, 580, 148, nil, nil)
-    gCard:SetPoint("TOPLEFT", previewCard, "BOTTOMLEFT", 0, -10)
-    gCard:SetPoint("TOPRIGHT", previewCard, "BOTTOMRIGHT", 0, -10)
+    -- K2: Opt-in Global World / Combat Damage / Chat Font Override Switcher (ForeverSuite_Fonts_Global — all 18 fonts, independent World vs Damage selectors)
+    local gCard = W.Card(parent, 580, 212, nil, nil)
+    gCard:SetPoint("TOPLEFT", previewCard, "BOTTOMLEFT", 0, -8)
+    gCard:SetPoint("TOPRIGHT", previewCard, "BOTTOMRIGHT", 0, -8)
     W.SetBorderColor(gCard, T.BORDER.GOLD)
-    local gHdr = W.Label(gCard, "✦ 게임 전역 · 전투 데미지 · 채팅 한글 폰트 (ForeverSuite_Fonts_Global 선택 모듈)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local gHdr = W.Label(gCard, "✦ 게임 전역 · 전투 데미지 · 채팅 한글 폰트 (18종 · 월드/데미지 독립 선택)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     gHdr:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -8)
 
     local gApi = _G.ForeverSuiteGlobalFonts
@@ -215,28 +215,57 @@ function FontsPage:Build(parent)
         ns.Api.SafeAPI.Print("ForeverSuite_Fonts_Global 애드온이 활성화되어 있지 않습니다.")
         return false
     end)
-    gToggle:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -26)
+    gToggle:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -24)
     gToggle:SetWidth(460)
 
-    local gFontOpts = {
-        { value = "default_blizz", label = "기본(2002)", width = 76 },
-        { value = "gmarket",       label = "지마켓산스", width = 78 },
-        { value = "gyeonggi",      label = "경기천년",  width = 68 },
-        { value = "gothic_a1",     label = "고딕A1",    width = 62 },
-        { value = "dnf_blade",     label = "던파블레이드", width = 88 },
-        { value = "galmuri11",     label = "갈무리11",  width = 68 },
-        { value = "kcc_ganpan",    label = "KCC간판",   width = 68 },
-        { value = "levelup",       label = "레벨업",    width = 58 },
-    }
-    local gBar = W.FlowPillGroup(gCard, gFontOpts, gCfg.worldFont or "default_blizz", 720, function(v)
+    local gFontOpts = {}
+    if type(gApi) == "table" and type(gApi.FONT_LABELS) == "table" and #gApi.FONT_LABELS > 0 then
+        for _, fl in ipairs(gApi.FONT_LABELS) do
+            gFontOpts[#gFontOpts + 1] = { value = fl.id, label = fl.label, width = 108 }
+        end
+    else
+        gFontOpts = {
+            { value = "default_blizz", label = "기본(2002)", width = 76 },
+            { value = "gmarket",       label = "지마켓산스", width = 78 },
+            { value = "gyeonggi",      label = "경기천년",  width = 68 },
+            { value = "gothic_a1",     label = "고딕A1",    width = 62 },
+            { value = "dnf_blade",     label = "던파블레이드", width = 88 },
+            { value = "dnf_bitbit",    label = "던파비트비트", width = 88 },
+            { value = "galmuri11",     label = "갈무리11",  width = 68 },
+            { value = "kcc_ganpan",    label = "KCC간판",   width = 68 },
+            { value = "levelup",       label = "레벨업",    width = 58 },
+        }
+    end
+    local gMode = "world"
+    local gModeBar = W.PillBar(gCard, {
+        { value = "world",  label = "월드·UI 폰트", width = 106 },
+        { value = "damage", label = "전투 데미지 폰트", width = 122 },
+    }, "world", function(v)
+        gMode = v
+        local cfgNow = (type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.GetConfig) == "function")
+            and _G.ForeverSuiteGlobalFonts.GetConfig() or gCfg
+        if FontsPage.globalFontBar and type(FontsPage.globalFontBar.SetValue) == "function" then
+            FontsPage.globalFontBar:SetValue((gMode == "damage") and cfgNow.damageFont or cfgNow.worldFont, true)
+        end
+    end)
+    gModeBar:SetPoint("TOPRIGHT", gCard, "TOPRIGHT", -12, -24)
+    gModeBar:SetWidth(236)
+
+    local gBar = W.FlowPillGroup(gCard, gFontOpts, gCfg.worldFont or "default_blizz", 732, function(v)
         if type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.Configure) == "function" then
-            _G.ForeverSuiteGlobalFonts.Configure({ worldFont = v, damageFont = v })
-            ns.Api.SafeAPI.Print("전역·전투 데미지 폰트 선택: " .. tostring(v) .. " (/reload 시 전체 적용)")
+            if gMode == "damage" then
+                _G.ForeverSuiteGlobalFonts.Configure({ damageFont = v })
+                ns.Api.SafeAPI.Print("전투 데미지 폰트 선택: " .. tostring(v) .. " (/reload 시 전체 적용)")
+            else
+                _G.ForeverSuiteGlobalFonts.Configure({ worldFont = v })
+                ns.Api.SafeAPI.Print("월드·UI 전역 폰트 선택: " .. tostring(v) .. " (/reload 시 전체 적용)")
+            end
             return true
         end
         return false
     end)
-    gBar:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -52)
+    gBar:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -50)
+    self.globalFontBar = gBar
 
     local chatSlider = W.Slider(gCard, "채팅창 글자 크기 (10 ~ 22 pt)", 10, 22, 1, (gCfg.chatFontSize and gCfg.chatFontSize >= 10) and gCfg.chatFontSize or 14, function(v)
         ns.Api.ProfileStore:SetState("chatFontSize", v)

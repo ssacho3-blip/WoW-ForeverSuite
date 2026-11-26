@@ -94,8 +94,8 @@ function ProcCooldownHud:Init()
     ns.UI.HudLayout:Register("skillCooldownHud", cc, {
         point = "CENTER",
         relPoint = "CENTER",
-        x = -212,
-        y = -60,
+        x = -184,
+        y = -84,
     }, "주요 쿨다운 추적 HUD")
 
     return true
@@ -145,6 +145,29 @@ function ProcCooldownHud:StopCdTicker()
     end
 end
 
+function ProcCooldownHud:AddCustomCooldown(spellID)
+    local id = tonumber(spellID)
+    if not (id and id > 0) then return false end
+    local custom = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("customCooldownSpells")
+    if type(custom) ~= "table" then custom = {} end
+    local name = ns.Api.GameAdapters.GetSpellName(id) or ("주문 #" .. tostring(id))
+    for _, c in ipairs(custom) do
+        if c.id == id then return true end
+    end
+    custom[#custom + 1] = { id = id, name = name }
+    if ns.Api.ProfileStore then ns.Api.ProfileStore:SetState("customCooldownSpells", custom) end
+    ns.Api.SafeAPI.Print("사용자 지정 쿨다운 추적 추가: " .. name .. " (#" .. tostring(id) .. ")")
+    self:RefreshCooldowns()
+    return true
+end
+
+function ProcCooldownHud:ClearCustomCooldowns()
+    if ns.Api.ProfileStore then ns.Api.ProfileStore:SetState("customCooldownSpells", {}) end
+    ns.Api.SafeAPI.Print("사용자 지정 쿨다운 추적 목록을 초기화했습니다.")
+    self:RefreshCooldowns()
+    return true
+end
+
 function ProcCooldownHud:RefreshCooldowns()
     if not self.cdCard then return 0 end
     if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then return 0 end
@@ -154,7 +177,22 @@ function ProcCooldownHud:RefreshCooldowns()
         return 0
     end
     local cls = ns.Api.GameAdapters.GetPlayerClass()
-    local list = (cls and CLASS_COOLDOWNS[cls]) or {}
+    local baseList = (cls and CLASS_COOLDOWNS[cls]) or {}
+    local list = {}
+    local seen = {}
+    for _, sp in ipairs(baseList) do
+        list[#list + 1] = sp
+        seen[sp.id] = true
+    end
+    local custom = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("customCooldownSpells")
+    if type(custom) == "table" then
+        for _, sp in ipairs(custom) do
+            if type(sp) == "table" and type(sp.id) == "number" and not seen[sp.id] then
+                list[#list + 1] = { id = sp.id, name = tostring(sp.name or ("#" .. tostring(sp.id))) }
+                seen[sp.id] = true
+            end
+        end
+    end
     local now = ns.Api.GameAdapters.GetMonotonicTime()
     if type(now) ~= "number" then
         self:StopCdTicker()

@@ -25,14 +25,26 @@ ns.Features.PresetManagerModule = PresetManagerModule
 
 function PresetManagerModule:ApplyRecommendedGameCVars()
     if ns.Api.SafeAPI.InCombat() then return false, "IN_COMBAT" end
-    local applied = 0
-    for _, cv in ipairs(RECOMMENDED_GAME_CVARS) do
-        if ns.Api.GameAdapters.SetCVarSafe(cv.name, cv.value) then
-            applied = applied + 1
+    -- A7: Load real compiled GodJohnson GameSettingsPresetData5139 (189 safe CVars, excluding enemy nameplates & audio/hw)
+    ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_Atlas")
+    local pack = _G.ForeverSuiteData and _G.ForeverSuiteData.packs and _G.ForeverSuiteData.packs.game_presets
+    local list = (type(pack) == "table" and type(pack.entries) == "table" and #pack.entries > 0)
+        and pack.entries or RECOMMENDED_GAME_CVARS
+    local applied, skipped = 0, 0
+    for _, cv in ipairs(list) do
+        if type(cv) == "table" and type(cv.name) == "string" and type(cv.value) == "string" then
+            -- Verify CVar exists on this client build when GetCVar is available; report honest applied/skipped counts
+            local existing, gStatus = ns.Api.GameAdapters.GetCVarSafe(cv.name)
+            local canApply = (existing ~= nil) or (gStatus == "UNSUPPORTED")
+            if canApply and ns.Api.GameAdapters.SetCVarSafe(cv.name, cv.value) then
+                applied = applied + 1
+            else
+                skipped = skipped + 1
+            end
         end
     end
-    ns.Api.SafeAPI.Print("권장 게임 CVar 프리셋 적용 완료 (" .. tostring(applied) .. "/" .. tostring(#RECOMMENDED_GAME_CVARS) .. "개)")
-    return true, applied
+    ns.Api.SafeAPI.Print("권장 게임 CVar 프리셋: 적용 " .. tostring(applied) .. "개 · 미지원/건너뜀 " .. tostring(skipped) .. "개 (총 " .. tostring(#list) .. "개)")
+    return applied > 0, applied, skipped
 end
 
 function PresetManagerModule:SaveActionBarLoadout(slotName)
@@ -106,4 +118,24 @@ function PresetManagerModule:SyncSharedSettingsToChar()
     ns.Api.ProfileStore.charDB.syncedSharedSettings = copy
     ns.Api.ProfileStore.charDB.syncedAt = ns.Api.GameAdapters.GetEpochTimestamp()
     return true, "SYNCED"
+end
+
+function PresetManagerModule:RestoreSharedSettingsFromChar()
+    if not (ns.Api.ProfileStore and ns.Api.ProfileStore:CanWrite() and ns.Api.ProfileStore.charDB) then
+        return false, "UNAVAILABLE"
+    end
+    local saved = ns.Api.ProfileStore.charDB.syncedSharedSettings
+    if type(saved) ~= "table" then return false, "NOT_FOUND" end
+    local applied = 0
+    for sec, tbl in pairs(saved) do
+        if type(tbl) == "table" then
+            for k, v in pairs(tbl) do
+                if ns.Api.ProfileStore:Set(sec, k, v) then
+                    applied = applied + 1
+                end
+            end
+        end
+    end
+    ns.Api.SafeAPI.Print("캐릭터 동기화 설정 복원 완료 (" .. tostring(applied) .. "개)")
+    return true, applied
 end

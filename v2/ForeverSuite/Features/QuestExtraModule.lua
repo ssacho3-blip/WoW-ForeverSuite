@@ -28,8 +28,10 @@ local QuestExtraModule = {
     initialized = false,
     prefixRegistered = false,
     notifiedCollections = {},
+    notifiedCollectionItems = {},
     notifiedProximity = {},
     partyProgress = {}, -- [sender] = { [questID] = progressStr }
+    proximityTicker = nil,
     lastSyncSentAt = 0,
     lastGrowthLevel = nil,
 }
@@ -43,7 +45,7 @@ function QuestExtraModule:EnsureExtraData()
     return type(packs) == "table" and packs or {}
 end
 
--- D6: Quest collection completion banner when active quest collection items reach completion
+-- D6: Quest collection completion banner when active quest OR quest_collection bag drop items reach completion
 function QuestExtraModule:CheckCollectionAlerts()
     if ns.Api.ProfileStore:Get("quest", "collectionAlerts") == false then return 0 end
     local quests = ns.Api.SafeAPI.CollectQuestLog()
@@ -56,6 +58,25 @@ function QuestExtraModule:CheckCollectionAlerts()
             local snd = ns.Api.ProfileStore:Get("ui", "alertSoundKey") or "quest_complete"
             if snd ~= "none" then
                 ns.Api.GameAdapters.PlayNotificationSound(snd, 75, "SFX")
+            end
+        end
+    end
+    -- Also inspect ForeverSuite_Data_QuestExtra quest_collection items (63 curated dungeon/world collection drops)
+    local packs = self:EnsureExtraData()
+    local colRows = packs.quest_collection and packs.quest_collection.entries
+    if type(colRows) == "table" and #colRows > 0 then
+        local bagCounts = ns.Api.GameAdapters.ScanBagsAndBankCounts(false)
+        for _, item in ipairs(colRows) do
+            if type(item.itemID) == "number" and (bagCounts[item.itemID] or 0) > 0 then
+                local prev = self.notifiedCollectionItems[item.itemID] or 0
+                local cur = bagCounts[item.itemID]
+                if cur > prev then
+                    self.notifiedCollectionItems[item.itemID] = cur
+                    if prev > 0 or #quests > 0 then
+                        triggered = triggered + 1
+                        W.Toast("퀘스트 수집품 획득", tostring(item.title) .. " (보유 " .. tostring(cur) .. "개)", "INFO", 3.5)
+                    end
+                end
             end
         end
     end
@@ -159,6 +180,7 @@ end
 -- D7: Proximity alert for nearby quest routes / unaccepted starters (distance <= 0.035 map units)
 function QuestExtraModule:CheckProximityAlerts()
     if ns.Api.ProfileStore:Get("quest", "proximityAlerts") == false then return 0 end
+    if ns.Api.SafeAPI.InCombat() then return 0 end
     local pos = ns.Api.GameAdapters.GetPlayerPosition()
     if not pos then return 0 end
     local packs = self:EnsureExtraData()
@@ -180,6 +202,21 @@ function QuestExtraModule:CheckProximityAlerts()
         end
     end
     return alerted
+end
+
+function QuestExtraModule:SyncProximityTicker(forceStop)
+    local enabled = (not forceStop) and (not ns.Api.SafeAPI.InCombat()) and (ns.Api.ProfileStore:Get("quest", "proximityAlerts") ~= false)
+    local quests = enabled and ns.Api.SafeAPI.CollectQuestLog() or {}
+    if enabled and #quests > 0 then
+        if not self.proximityTicker then
+            self.proximityTicker = ns.Api.GameAdapters.StartTicker(2.0, function()
+                QuestExtraModule:CheckProximityAlerts()
+            end)
+        end
+    elseif self.proximityTicker then
+        ns.Api.GameAdapters.CancelTicker(self.proximityTicker)
+        self.proximityTicker = nil
+    end
 end
 
 -- J6: Growth Milestone Alert on level-up
@@ -204,5 +241,6 @@ function QuestExtraModule:Init()
     ns.Api.EventBus:OnEvent("v4:addonMsg", "CHAT_MSG_ADDON", function(_, prefix, msg, dist, sender)
         QuestExtraModule:OnAddonMessage(prefix, msg, dist, sender)
     end)
+    self:SyncProximityTicker()
     return true
 end

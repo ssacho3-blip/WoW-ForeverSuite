@@ -454,6 +454,23 @@ function GameAdapters.GetCVarBool(name)
     return nil
 end
 
+function GameAdapters.GetCVarSafe(name)
+    if type(name) ~= "string" or name == "" then
+        return nil, "INVALID"
+    end
+    if C_CVar and type(C_CVar.GetCVar) == "function" then
+        local v = SafeAPI.SafeRead(C_CVar.GetCVar, name)
+        if v == UNAVAILABLE then return nil, "UNAVAILABLE" end
+        return v, (v ~= nil) and "OK" or "NOT_FOUND"
+    end
+    if type(_G.GetCVar) == "function" then
+        local v = SafeAPI.SafeRead(_G.GetCVar, name)
+        if v == UNAVAILABLE then return nil, "UNAVAILABLE" end
+        return v, (v ~= nil) and "OK" or "NOT_FOUND"
+    end
+    return nil, "UNSUPPORTED"
+end
+
 function GameAdapters.SetCVarSafe(name, value)
     if SafeAPI.InCombat() then
         return false, "IN_COMBAT"
@@ -1735,10 +1752,18 @@ function GameAdapters.RestoreActionBarSafe(snap)
     for slot, rec in pairs(snap) do
         if type(slot) == "number" and slot >= 1 and slot <= 120 and type(rec) == "table" then
             local picked = false
-            if rec.kind == "spell" and type(_G.PickupSpell) == "function" then
-                picked = pcall(_G.PickupSpell, rec.id)
-            elseif rec.kind == "item" and type(_G.PickupItem) == "function" then
-                picked = pcall(_G.PickupItem, rec.id)
+            if rec.kind == "spell" then
+                if C_Spell and type(C_Spell.PickupSpell) == "function" then
+                    picked = pcall(C_Spell.PickupSpell, rec.id)
+                elseif type(_G.PickupSpell) == "function" then
+                    picked = pcall(_G.PickupSpell, rec.id)
+                end
+            elseif rec.kind == "item" then
+                if C_Item and type(C_Item.PickupItem) == "function" then
+                    picked = pcall(C_Item.PickupItem, rec.id)
+                elseif type(_G.PickupItem) == "function" then
+                    picked = pcall(_G.PickupItem, rec.id)
+                end
             elseif rec.kind == "macro" and type(_G.PickupMacro) == "function" then
                 picked = pcall(_G.PickupMacro, rec.id)
             end
@@ -1783,12 +1808,26 @@ function GameAdapters.ImportEditModeStringSafe(layoutStr, layoutName)
     local layouts = SafeAPI.SafeRead(C_EditMode.GetLayouts)
     if layouts == UNAVAILABLE or type(layouts) ~= "table" then return false, "NO_LAYOUTS" end
     layouts.layouts = layouts.layouts or {}
+    if #layouts.layouts >= 5 then
+        return false, "LAYOUT_LIMIT"
+    end
     layouts.layouts[#layouts.layouts + 1] = info
     local ok = pcall(C_EditMode.SaveLayouts, layouts)
     return ok and true or false, ok and "IMPORTED" or "SAVE_FAILED"
 end
 
--- G4/G5: Safe channel join & chat font size
+-- G4/G5: Safe channel join, dynamic channel index lookup, & chat font size
+function GameAdapters.GetChannelIndexByNameSafe(channelName)
+    if type(channelName) ~= "string" or channelName == "" then return nil end
+    if type(_G.GetChannelName) == "function" then
+        local ok, idx = pcall(_G.GetChannelName, channelName)
+        if ok and (not SafeAPI.IsSecret(idx)) and type(idx) == "number" and idx > 0 then
+            return idx
+        end
+    end
+    return nil
+end
+
 function GameAdapters.JoinChannelSafe(channelName)
     if SafeAPI.InCombat() or type(channelName) ~= "string" or channelName == "" then return false end
     if type(_G.JoinPermanentChannel) == "function" then

@@ -11,8 +11,10 @@ local table_insert = table.insert
 
 local WorldMapAdapter = {
     hooked = false,
+    canvasClickHooked = false,
     onShowCallbacks = {},
     onHideCallbacks = {},
+    onCanvasClickCallbacks = {},
 }
 ns.Blizzard.WorldMapAdapter = WorldMapAdapter
 
@@ -23,6 +25,32 @@ function WorldMapAdapter:RegisterCallbacks(onShow, onHide)
     if type(onHide) == "function" then
         table_insert(self.onHideCallbacks, onHide)
     end
+end
+
+-- E6: Zero-Taint read-only WorldMap canvas modifier-click callback (Alt+RightClick or Ctrl+LeftClick -> /way)
+function WorldMapAdapter:RegisterCanvasClickCallback(fn)
+    if type(fn) == "function" then
+        table_insert(self.onCanvasClickCallbacks, fn)
+    end
+end
+
+-- E6: Read already-explored FileDataIDs for mapID so Fog-of-War overlay only reveals unexplored areas
+function WorldMapAdapter.GetExploredFileSet(mapID)
+    local explored = {}
+    if type(mapID) ~= "number" or mapID <= 0 then return explored end
+    if C_MapExplorationInfo and type(C_MapExplorationInfo.GetExploredMapTextures) == "function" then
+        local list = ns.Api.SafeAPI.SafeRead(C_MapExplorationInfo.GetExploredMapTextures, mapID)
+        if list ~= ns.Api.SafeAPI.UNAVAILABLE and type(list) == "table" then
+            for _, info in ipairs(list) do
+                if type(info) == "table" and type(info.fileDataIDs) == "table" then
+                    for _, fid in ipairs(info.fileDataIDs) do
+                        if type(fid) == "number" then explored[fid] = true end
+                    end
+                end
+            end
+        end
+    end
+    return explored
 end
 
 function WorldMapAdapter:GetViewingMapID()
@@ -90,6 +118,39 @@ function WorldMapAdapter:Init()
                 pcall(fn)
             end
         end)
+        if not self.canvasClickHooked then
+            local targetFrame = (type(wmf.ScrollContainer) == "table" and type(wmf.ScrollContainer.HookScript) == "function")
+                and wmf.ScrollContainer or wmf
+            if type(targetFrame.HookScript) == "function" then
+                -- E6: Use Alt+LeftClick exclusively (avoids RightClick zoom-out AND Blizzard's native Ctrl+LeftClick waypoint double-pin)
+                local okClick = pcall(targetFrame.HookScript, targetFrame, "OnMouseUp", function(_, mouseBtn)
+                    local isAltLeft = (mouseBtn == "LeftButton") and ns.Api.GameAdapters.IsAltDown() and (not ns.Api.GameAdapters.IsControlDown())
+                    if not isAltLeft then return end
+                    local mapID = WorldMapAdapter:GetViewingMapID()
+                    if not mapID then return end
+                    local nx, ny = nil, nil
+                    if type(wmf.ScrollContainer) == "table" and type(wmf.ScrollContainer.GetNormalizedCursorPosition) == "function" then
+                        local okN, rx, ry = pcall(wmf.ScrollContainer.GetNormalizedCursorPosition, wmf.ScrollContainer)
+                        if okN and type(rx) == "number" and type(ry) == "number" and rx >= 0 and rx <= 1 and ry >= 0 and ry <= 1 then
+                            nx, ny = rx, ry
+                        end
+                    end
+                    if not (nx and ny) then
+                        local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
+                        local metrics = WorldMapAdapter:GetCanvasMetrics()
+                        if cx and cy and metrics then
+                            nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(cx, cy, metrics.scale, metrics.left, metrics.bottom, metrics.width, metrics.height)
+                        end
+                    end
+                    if nx and ny then
+                        for _, cb in ipairs(WorldMapAdapter.onCanvasClickCallbacks) do
+                            pcall(cb, mapID, nx, ny)
+                        end
+                    end
+                end)
+                self.canvasClickHooked = okClick and true or false
+            end
+        end
         if okHide then
             self.hooked = true
             return true

@@ -643,3 +643,49 @@ function Widgets.MinimapButton(name, initialAngle, onClick, onTooltip, onAngleCh
     btn:SetAngle(btn._angle)
     return btn
 end
+
+-- 14. MakeDraggable (Zero-Taint screen-clamped drag + 4px-snapped ProfileStore layout persistence)
+function Widgets.MakeDraggable(frame, layoutKey, defaultAnchor)
+    if not frame then return frame end
+    if type(frame.SetClampedToScreen) == "function" then frame:SetClampedToScreen(true) end
+    if type(frame.SetMovable) == "function" then frame:SetMovable(true) end
+    if type(frame.EnableMouse) == "function" then frame:EnableMouse(true) end
+    if type(frame.RegisterForDrag) == "function" then frame:RegisterForDrag("LeftButton") end
+
+    if layoutKey and ns.Api and ns.Api.ProfileStore then
+        local saved = ns.Api.ProfileStore:GetLayout(layoutKey)
+        local a = (type(saved) == "table" and type(saved.point) == "string") and saved or defaultAnchor
+        if type(a) == "table" and type(a.point) == "string" then
+            frame:ClearAllPoints()
+            frame:SetPoint(a.point, _G.UIParent, a.relPoint or a.point, a.x or 0, a.y or 0)
+        end
+    end
+
+    frame:SetScript("OnDragStart", function(self)
+        if type(self.StartMoving) == "function" then
+            self:StartMoving()
+        end
+    end)
+    frame:SetScript("OnDragStop", function(self)
+        if type(self.StopMovingOrSizing) == "function" then
+            self:StopMovingOrSizing()
+        end
+        if layoutKey and ns.Api and ns.Api.ProfileStore and type(self.GetPoint) == "function" then
+            local p, _, rp, x, y = self:GetPoint(1)
+            if p then
+                local sx = math.floor(((x or 0) / 4) + 0.5) * 4
+                local sy = math.floor(((y or 0) / 4) + 0.5) * 4
+                self:ClearAllPoints()
+                self:SetPoint(p, _G.UIParent, rp or p, sx, sy)
+                ns.Api.ProfileStore:SetLayout(layoutKey, {
+                    point = p,
+                    relPoint = rp or p,
+                    x = sx,
+                    y = sy,
+                })
+            end
+        end
+    end)
+    frame._fsDraggableKey = layoutKey
+    return frame
+end

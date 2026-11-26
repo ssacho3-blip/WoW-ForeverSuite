@@ -88,8 +88,8 @@ function CombatHudPack:Init()
     ns.UI.HudLayout:Register("shortBuffHud", bf, {
         point = "CENTER",
         relPoint = "CENTER",
-        x = 212,
-        y = -60,
+        x = 180,
+        y = -84,
     }, "단기 버프 만료 HUD")
 
     -- 4. On-Screen Compact Clock
@@ -104,7 +104,7 @@ function CombatHudPack:Init()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -24,
-        y = -148,
+        y = -208,
     }, "온스크린 시계")
 
     self:RefreshAll()

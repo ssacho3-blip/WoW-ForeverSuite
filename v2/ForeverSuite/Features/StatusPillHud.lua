@@ -37,7 +37,7 @@ function StatusPillHud:Init()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -24,
-        y = -180,
+        y = -240,
     }, "상태 필 바")
 
     self:ApplyVisibility()

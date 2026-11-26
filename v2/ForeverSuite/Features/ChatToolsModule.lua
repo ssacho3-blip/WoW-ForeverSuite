@@ -48,11 +48,16 @@ function ChatToolsModule:EnsureChannelBar()
     for _, spec in ipairs(QUICK_CHANNELS) do
         local captured = spec
         local b = W.MiniButton(bar, spec.label, 42, 18, function()
+            local prefix = captured.prefix
             if captured.join then
                 ns.Api.GameAdapters.JoinChannelSafe(captured.join)
+                local dynIdx = ns.Api.GameAdapters.GetChannelIndexByNameSafe(captured.join)
+                if dynIdx then
+                    prefix = "/" .. tostring(dynIdx) .. " "
+                end
             end
             if type(_G.ChatFrame_OpenChat) == "function" then
-                pcall(_G.ChatFrame_OpenChat, captured.prefix)
+                pcall(_G.ChatFrame_OpenChat, prefix)
             end
         end, captured.label .. " 채널 바로 열기 (" .. captured.prefix .. ")")
         b:SetPoint("LEFT", bar, "LEFT", x, 0)
@@ -62,7 +67,7 @@ function ChatToolsModule:EnsureChannelBar()
         point = "BOTTOMLEFT",
         relPoint = "BOTTOMLEFT",
         x = 24,
-        y = 196,
+        y = 224,
     }, "채팅 빠른 채널 바")
     bar:Hide()
     self.channelBar = bar
@@ -121,6 +126,20 @@ function ChatToolsModule:GetPartyClassColoredNames()
         end
     end
     return out
+end
+
+function ChatToolsModule:PrintPartyClassRoster()
+    local list = self:GetPartyClassColoredNames()
+    if #list == 0 then
+        ns.Api.SafeAPI.Print("현재 파티/공격대 구성원이 없습니다.")
+        return false
+    end
+    local names = {}
+    for _, m in ipairs(list) do
+        names[#names + 1] = m.colored
+    end
+    ns.Api.SafeAPI.Print("파티원 직업 현황 (" .. tostring(#names) .. "명): " .. table.concat(names, ", "))
+    return true
 end
 
 function ChatToolsModule:OnChatEvent(eventName, msg, sender, ...)

@@ -53,10 +53,13 @@ function CursorTrailHud:Init()
     if self.ring then
         return self.ring
     end
-    local ring = W.Card(_G.UIParent, 28, 28, "ForeverSuiteCursorRing", T.ELEVATION.L2_HUB)
+    local ring = W.HudContainer("ForeverSuiteCursorRing", 32, 32)
+    ring:SetFrameStrata(T.ELEVATION.L2_HUB)
     ring:EnableMouse(false)
-    ring._fsBg:SetColorTexture(T.SURFACE.GOLD_TINT[1], T.SURFACE.GOLD_TINT[2], T.SURFACE.GOLD_TINT[3], 0.14)
-    W.SetBorderColor(ring, T.BORDER.GOLD)
+    local ringTex = ring:CreateTexture(nil, "ARTWORK")
+    ringTex:SetAllPoints(ring)
+    ringTex:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    ringTex:SetTexCoord(0.05, 0.60, 0.05, 0.60)
     local dot = W.Label(ring, "◦", "small", T.TEXT.GOLD, { justifyH = "CENTER", wordWrap = false })
     dot:SetPoint("CENTER", ring, "CENTER", 0, 0)
     ring:Hide()
@@ -64,15 +67,20 @@ function CursorTrailHud:Init()
     for i = 1, TRAIL_COUNT do
         local sz = 14 - (i * 2)
         if sz < 6 then sz = 6 end
-        local node = W.Card(_G.UIParent, sz, sz, nil, T.ELEVATION.L2_HUB)
+        local node = W.HudContainer(nil, sz, sz)
+        node:SetFrameStrata(T.ELEVATION.L2_HUB)
         node:EnableMouse(false)
-        node._fsBg:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 0.45 - (i * 0.06))
-        W.SetBorderColor(node, T.BORDER.GOLD_SOFT)
+        local nt = node:CreateTexture(nil, "ARTWORK")
+        nt:SetAllPoints(node)
+        nt:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+        nt:SetVertexColor(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 0.45 - (i * 0.06))
+        node._fsTex = nt
         node:Hide()
         self.trails[i] = node
     end
 
     self.ring = ring
+    self.ringTex = ringTex
     self.dot = dot
     self:ApplyVisibility()
     return ring
@@ -85,6 +93,9 @@ local CURSOR_COLORS = {
     crimson = { 0.94, 0.30, 0.30, 1 },
 }
 
+local CURSOR_SIZE_MAP = { small = 24, medium = 34, large = 46 }
+local CURSOR_ALPHA_MAP = { ["50"] = 0.50, ["75"] = 0.75, ["100"] = 1.00 }
+
 function CursorTrailHud:ApplyVisibility(inCombatOverride)
     if not self.ring then
         return
@@ -94,9 +105,11 @@ function CursorTrailHud:ApplyVisibility(inCombatOverride)
     local style = ns.Api.ProfileStore:Get("ui", "cursorStyle") or "ring"
     local colorKey = ns.Api.ProfileStore:Get("ui", "cursorColor") or "gold"
     local col = CURSOR_COLORS[colorKey] or T.BORDER.GOLD
-    local sizePref = tonumber(ns.Api.ProfileStore:GetState("cursorSize")) or 28
-    if sizePref < 18 then sizePref = 18 elseif sizePref > 52 then sizePref = 52 end
-    local alphaPref = tonumber(ns.Api.ProfileStore:GetState("cursorAlpha")) or 0.9
+    local sizeKey = ns.Api.ProfileStore:Get("ui", "cursorSize")
+    local sizePref = (sizeKey and CURSOR_SIZE_MAP[sizeKey]) or tonumber(ns.Api.ProfileStore:GetState("cursorSize")) or 34
+    if sizePref < 18 then sizePref = 18 elseif sizePref > 56 then sizePref = 56 end
+    local alphaKey = ns.Api.ProfileStore:Get("ui", "cursorAlpha")
+    local alphaPref = (alphaKey and CURSOR_ALPHA_MAP[alphaKey]) or tonumber(ns.Api.ProfileStore:GetState("cursorAlpha")) or 0.9
     if alphaPref < 0.25 then alphaPref = 0.25 elseif alphaPref > 1.0 then alphaPref = 1.0 end
     local inCombat
     if inCombatOverride ~= nil then
@@ -108,21 +121,28 @@ function CursorTrailHud:ApplyVisibility(inCombatOverride)
 
     self.active = shouldShow
     self.ring._fxStyle = style
-    W.SetBorderColor(self.ring, col)
+    if self.ringTex and type(self.ringTex.SetVertexColor) == "function" then
+        self.ringTex:SetVertexColor(col[1], col[2], col[3], alphaPref)
+    end
     self.ring:SetAlpha(alphaPref)
     self.dot:SetTextColor(col[1], col[2], col[3], 1)
     for i = 1, #self.trails do
-        self.trails[i]._fsBg:SetColorTexture(col[1], col[2], col[3], math.max(0.12, (0.48 - i * 0.06) * alphaPref))
-        W.SetBorderColor(self.trails[i], col)
+        local nt = self.trails[i]._fsTex
+        if nt and type(nt.SetVertexColor) == "function" then
+            nt:SetVertexColor(col[1], col[2], col[3], math.max(0.14, (0.50 - i * 0.07) * alphaPref))
+        end
     end
     if style == "crosshair" then
         self.ring:SetSize(sizePref + 6, sizePref + 6)
+        if self.ringTex then self.ringTex:Hide() end
         self.dot:SetText("┼")
     elseif style == "trail" then
-        self.ring:SetSize(math.max(18, sizePref - 6), math.max(18, sizePref - 6))
+        self.ring:SetSize(math.max(20, sizePref - 4), math.max(20, sizePref - 4))
+        if self.ringTex then self.ringTex:Show() end
         self.dot:SetText("✦")
     else
         self.ring:SetSize(sizePref, sizePref)
+        if self.ringTex then self.ringTex:Show() end
         self.dot:SetText("◦")
     end
 

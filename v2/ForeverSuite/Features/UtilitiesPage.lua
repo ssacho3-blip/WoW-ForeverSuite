@@ -506,6 +506,14 @@ function UtilitiesPage:HandleGdkpCommand(raw)
         end
         ns.Api.SafeAPI.Print("진행 몫은 0~50% 정수여야 합니다.")
         return false
+    elseif sub == "archive" then
+        local ok = self:ArchiveCurrentGdkpRun(rest)
+        if not ok then
+            ns.Api.SafeAPI.Print("보관할 골팟 판매 내역이 없습니다.")
+        else
+            self:Render(self.lastQuery)
+        end
+        return ok
     elseif sub == "reset" then
         if not self:SaveGdkp({}, self.gdkpMembers, self.gdkpCutPct) then
             ns.Api.SafeAPI.Print("골팟 장부 초기화 실패: 프로필이 읽기 전용입니다.")
@@ -586,6 +594,8 @@ function UtilitiesPage:SyncSubPanels()
         else
             self.gdkpMeta.banner:Hide()
         end
+    elseif self.gdkpMeta and self.gdkpMeta.banner then
+        self.gdkpMeta.banner:Hide()
     end
 end
 
@@ -1016,11 +1026,16 @@ function UtilitiesPage:Build(parent)
     end, "골드팟 장부 초기화 (2회 클릭 확인)")
     resetBtn:SetPoint("TOPRIGHT", gdkpPanel, "TOPRIGHT", -8, -8)
 
-    local annBtn = W.Button(gdkpPanel, "정산 공지", 78, 22, function()
+    local annBtn = W.Button(gdkpPanel, "정산 공지", 74, 22, function()
         UtilitiesPage:HandleGdkpCommand("announce")
     end, true)
     annBtn:SetPoint("RIGHT", resetBtn, "LEFT", -6, 0)
-    potLbl:SetPoint("RIGHT", annBtn, "LEFT", -8, 0)
+
+    local archBtn = W.MiniButton(gdkpPanel, "장부보관", 62, 22, function()
+        UtilitiesPage:HandleGdkpCommand("archive")
+    end, "현재 골드팟 정산 내역을 영구 아카이브에 보관")
+    archBtn:SetPoint("RIGHT", annBtn, "LEFT", -6, 0)
+    potLbl:SetPoint("RIGHT", archBtn, "LEFT", -8, 0)
 
     local aucBar = W.ActionInputBar(gdkpPanel, {
         { key = "item",  width = 230, placeholder = "아이템명 입력" },
@@ -1043,8 +1058,8 @@ function UtilitiesPage:Build(parent)
     aucBar:SetPoint("TOPRIGHT", gdkpPanel, "TOPRIGHT", -8, -42)
     self.gdkpInputBar = aucBar
 
-    -- Active Auction Banner (shown below gdkpPanel when auction is OPEN)
-    local banner = W.Card(gdkpPanel, 760, 30)
+    -- Active Auction Banner (sibling of gdkpPanel inside parent so it never overflows gdkpPanel bounds)
+    local banner = W.Card(parent, 760, 30)
     banner:SetPoint("TOPLEFT", gdkpPanel, "BOTTOMLEFT", 0, -4)
     banner:SetPoint("TOPRIGHT", gdkpPanel, "BOTTOMRIGHT", 0, -4)
     W.SetBorderColor(banner, T.SEMANTIC.WARN)

@@ -147,6 +147,11 @@ function WorldMapModel.FilterPOIs(pois, mapID, category, query, limit)
     return out
 end
 
+local tonumber = tonumber
+local math_ceil = math.ceil
+local math_min = math.min
+local string_gmatch = string.gmatch
+
 -- E6: Filter WorldMap Fog-of-War reveal tiles for a mapID
 function WorldMapModel.FilterRevealTiles(revealRows, mapID)
     local out = {}
@@ -159,11 +164,64 @@ function WorldMapModel.FilterRevealTiles(revealRows, mapID)
     return out
 end
 
+-- E6: Decompose multi-file WorldMapOverlay tile (e.g. 512x256 -> 2 x 256x256 sub-tiles) accurately
+function WorldMapModel.ExpandRevealSubTiles(tile, exploredSet)
+    local out = {}
+    if type(tile) ~= "table" or type(tile.filesCsv) ~= "string" then return out end
+    local ids = {}
+    for tok in string_gmatch(tile.filesCsv, "%d+") do
+        local fid = tonumber(tok)
+        if fid and fid > 0 then ids[#ids + 1] = fid end
+    end
+    if #ids == 0 then return out end
+    local exp = type(exploredSet) == "table" and exploredSet or {}
+    local tw = (type(tile.w) == "number" and tile.w > 0) and tile.w or 256
+    local th = (type(tile.h) == "number" and tile.h > 0) and tile.h or 256
+    local ox = (type(tile.x) == "number") and tile.x or 0
+    local oy = (type(tile.y) == "number") and tile.y or 0
+    local cols = math_ceil(tw / 256)
+    if cols < 1 then cols = 1 end
+    for idx, fid in ipairs(ids) do
+        if not exp[fid] then
+            local c = (idx - 1) % cols
+            local r = (idx - 1 - c) / cols
+            local sx = ox + c * 256
+            local sy = oy + r * 256
+            local sw = math_min(256, tw - c * 256)
+            local sh = math_min(256, th - r * 256)
+            if sw > 0 and sh > 0 then
+                table_insert(out, {
+                    fileID = fid,
+                    x = sx,
+                    y = sy,
+                    w = sw,
+                    h = sh,
+                })
+            end
+        end
+    end
+    return out
+end
+
 -- E7: Filter Gather Heatmap sprites for a mapID
 function WorldMapModel.FilterGatherHeatmaps(rows, mapID, limit)
     local out = {}
     if type(mapID) ~= "number" or mapID <= 0 or type(rows) ~= "table" then return out end
     local cap = (type(limit) == "number" and limit > 0) and limit or 6
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.mapID == mapID and type(r.file) == "string" and r.file ~= "" then
+            table_insert(out, r)
+            if #out >= cap then break end
+        end
+    end
+    return out
+end
+
+-- E7: Filter Hunter Pet Density Heatmap sprites for a mapID (with exact source rect x0,x1,y0,y1)
+function WorldMapModel.FilterPetHeatmaps(rows, mapID, limit)
+    local out = {}
+    if type(mapID) ~= "number" or mapID <= 0 or type(rows) ~= "table" then return out end
+    local cap = (type(limit) == "number" and limit > 0) and limit or 12
     for _, r in ipairs(rows) do
         if type(r) == "table" and r.mapID == mapID and type(r.file) == "string" and r.file ~= "" then
             table_insert(out, r)

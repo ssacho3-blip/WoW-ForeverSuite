@@ -129,17 +129,39 @@ function QuestTrackerView:SyncDockAnchor(anchor)
     self._pendingDockAnchor = nil
     local screenW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
     local screenH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+    local scaleRatio = 1.0
+    if self.container then
+        local uiScale = (_G.UIParent and type(_G.UIParent.GetEffectiveScale) == "function") and _G.UIParent:GetEffectiveScale() or 1.0
+        local cScale = (type(self.container.GetEffectiveScale) == "function") and self.container:GetEffectiveScale() or 1.0
+        if type(uiScale) == "number" and uiScale > 0 and type(cScale) == "number" and cScale > 0 then
+            scaleRatio = cScale / uiScale
+        end
+        if scaleRatio == 1.0 and type(self.container._fsHudScale) == "number" and self.container._fsHudScale > 0 then
+            scaleRatio = self.container._fsHudScale
+        end
+    end
     local left, right, top
     if self.container and type(self.container.GetLeft) == "function" then
         local l = self.container:GetLeft()
         local r = self.container:GetRight()
         local t = self.container:GetTop()
         if type(l) == "number" and type(r) == "number" and type(t) == "number" then
-            left, right, top = l, r, t
+            left, right, top = l * scaleRatio, r * scaleRatio, t * scaleRatio
         end
     end
     if not left then
-        left, right, top = ComputeRectFromAnchor(type(anchor) == "table" and anchor or nil, screenW, screenH, self.currentHeight)
+        local a = type(anchor) == "table" and anchor or nil
+        local s = (a and tonumber(a.scale)) or scaleRatio or 1.0
+        local scaledAnchor = a and { point = a.point, relPoint = a.relPoint, x = (a.x or 0) * s, y = (a.y or 0) * s } or nil
+        left, right, top = ComputeRectFromAnchor(scaledAnchor, screenW, screenH, (self.currentHeight or 100) * s)
+        if s ~= 1.0 then
+            local wScaled = TRACKER_WIDTH * s
+            if a and (a.point == "TOPRIGHT" or a.point == "RIGHT" or a.point == "BOTTOMRIGHT") then
+                left = right - wScaled
+            else
+                right = left + wScaled
+            end
+        end
     end
     ns.Secure.QuestItemDock:SetAnchorFromRect(left, right, top, screenW, screenH)
 end
@@ -151,8 +173,7 @@ function QuestTrackerView:ShowDetailCard(item)
     end
     if not self.detailCard then
         local card = W.Card(_G.UIParent, 340, 220, "ForeverSuiteQuestDetailCard", T.ELEVATION.L2_HUB)
-        card:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
-        card:EnableMouse(true)
+        W.MakeDraggable(card, "questDetailCard", { point = "CENTER", relPoint = "CENTER", x = 0, y = 40 })
         local title = W.Label(card, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
         title:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
         title:SetPoint("TOPRIGHT", card, "TOPRIGHT", -36, -10)
@@ -213,6 +234,16 @@ function QuestTrackerView:ShowDetailCard(item)
     end
     if #lines == 0 then
         lines[1] = "세부 목표가 없거나 NPC에게 바로 보고할 수 있습니다."
+    end
+    if ns.Features.QuestExtraModule then
+        local partyTxt = ns.Features.QuestExtraModule:GetPartySummaryForQuest(item.questID)
+        if type(partyTxt) == "string" and partyTxt ~= "" then
+            lines[#lines + 1] = "\n[파티원 진행] " .. partyTxt
+        end
+        local routeRec = ns.Features.QuestExtraModule:GetDialogueRouteForQuest(item.questID)
+        if type(routeRec) == "table" and type(routeRec.title) == "string" and routeRec.title ~= "" then
+            lines[#lines + 1] = "[보고/대화 루트] " .. routeRec.title
+        end
     end
     card._body:SetText(table.concat(lines, "\n"))
     card:Show()
@@ -392,7 +423,7 @@ function QuestTrackerView:Init()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -24,
-        y = -216,
+        y = -272,
     }, "퀘스트 추적기", function(anchor)
         QuestTrackerView:SyncDockAnchor(anchor)
     end)
@@ -491,6 +522,16 @@ local function ShowRowTooltip(rowBtn)
             local c = obj.finished and T.SEMANTIC.SUCCESS or T.TEXT.PRIMARY
             _G.GameTooltip:AddLine((obj.finished and "✓ " or "• ") .. tostring(obj.text or ""), c[1], c[2], c[3])
         end
+        if ns.Features.QuestExtraModule and type(item.questID) == "number" then
+            local partyTxt = ns.Features.QuestExtraModule:GetPartySummaryForQuest(item.questID)
+            if type(partyTxt) == "string" and partyTxt ~= "" then
+                _G.GameTooltip:AddLine("파티 동기화: " .. partyTxt, T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], true)
+            end
+            local routeRec = ns.Features.QuestExtraModule:GetDialogueRouteForQuest(item.questID)
+            if type(routeRec) == "table" and type(routeRec.title) == "string" and routeRec.title ~= "" then
+                _G.GameTooltip:AddLine("보고 루트: " .. routeRec.title, T.SEMANTIC.INFO[1], T.SEMANTIC.INFO[2], T.SEMANTIC.INFO[3], true)
+            end
+        end
         _G.GameTooltip:AddLine("좌클릭: 추적 · 우클릭: 접기 · Ctrl: 상세 · Shift: 링크/주시", T.TEXT.MUTED[1], T.TEXT.MUTED[2], T.TEXT.MUTED[3])
         _G.GameTooltip:Show()
     end)
@@ -544,7 +585,17 @@ function QuestTrackerView:BuildLiveOpts(extra)
         opts.scrollOffset = self.scrollOffset
     end
     if opts.maxVisibleRows == nil then
-        opts.maxVisibleRows = MAX_VISIBLE_ROWS
+        local uiH = (_G.UIParent and type(_G.UIParent.GetHeight) == "function") and _G.UIParent:GetHeight() or 1080
+        if type(uiH) == "number" and uiH > 0 then
+            -- Continuous viewport budget: tracker top (uiH - 270) down to ThreatMeter top (232) + 12px gap
+            local chrome = HEADER_HEIGHT + BODY_TOP_PAD + FOOTER_HEIGHT + PADDING_BOTTOM
+            local fitRows = math.floor((uiH - 514 - chrome) / ROW_HEIGHT)
+            if fitRows < 5 then fitRows = 5 end
+            if fitRows > MAX_VISIBLE_ROWS then fitRows = MAX_VISIBLE_ROWS end
+            opts.maxVisibleRows = fitRows
+        else
+            opts.maxVisibleRows = MAX_VISIBLE_ROWS
+        end
     end
     return opts
 end

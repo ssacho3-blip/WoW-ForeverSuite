@@ -20,6 +20,7 @@ local WorldMapOverlay = {
     pinPool = {},
     revealTexPool = {},
     heatTexPool = {},
+    petHeatTexPool = {},
     coordLabel = nil,
     zoneLabel = nil,
     poiRows = {},
@@ -28,6 +29,7 @@ local WorldMapOverlay = {
     showQuestPins = true,
     showFogReveal = false,
     showGatherHeatmap = false,
+    showPetHeatmap = false,
     collapsed = false,
     filterBar = nil,
     extraBar = nil,
@@ -70,10 +72,10 @@ function WorldMapOverlay:EnsureCard()
         return self.card
     end
     local card = W.Card(_G.UIParent, OVERLAY_WIDTH, 240, "ForeverSuiteWorldMapOverlay", T.ELEVATION.L2_HUB)
-    card:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 24, 24)
+    W.MakeDraggable(card, "worldMapOverlay", { point = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 24, y = 24 })
     W.SetBorderColor(card, T.BORDER.GOLD_SOFT)
 
-    local hdr = W.Label(card, "✦ 월드맵 좌표 · 안개 · 히트맵 · 위치", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local hdr = W.Label(card, "✦ 월드맵 좌표 · 안개 · 히트맵 (Alt+좌클릭 /way)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     hdr:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -8)
     hdr:SetPoint("TOPRIGHT", card, "TOPRIGHT", -34, -8)
 
@@ -90,7 +92,7 @@ function WorldMapOverlay:EnsureCard()
     zone:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -46)
     zone:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -46)
 
-    -- E6 & E7: Fog-of-War Reveal, Gather/Pet Heatmap, and Quick Cursor /way Gesture buttons
+    -- E6 & E7: Fog-of-War Reveal, Gather Heatmap, and Hunter Pet Heatmap toggles (cursor /way uses real canvas Alt+RightClick / Ctrl+LeftClick)
     local revealBtn = W.MiniButton(card, "안개밝힘", 66, 18, function(btn)
         WorldMapOverlay.showFogReveal = not WorldMapOverlay.showFogReveal
         btn:SetActive(WorldMapOverlay.showFogReveal)
@@ -107,10 +109,13 @@ function WorldMapOverlay:EnsureCard()
     end, "현재 지역 약초·광맥 채집 밀도 히트맵 토글")
     heatBtn:SetPoint("LEFT", revealBtn, "RIGHT", 6, 0)
 
-    local wayBtn = W.MiniButton(card, "커서 /way", 66, 18, function()
-        WorldMapOverlay:PinCurrentCursorLocation()
-    end, "현재 지도 커서 위치로 즉시 /way 화살표 설정")
-    wayBtn:SetPoint("LEFT", heatBtn, "RIGHT", 6, 0)
+    local petHeatBtn = W.MiniButton(card, "펫히트맵", 66, 18, function(btn)
+        WorldMapOverlay.showPetHeatmap = not WorldMapOverlay.showPetHeatmap
+        btn:SetActive(WorldMapOverlay.showPetHeatmap)
+        WorldMapOverlay.lastCanvasSig = nil
+        WorldMapOverlay:Tick()
+    end, "현재 지역 사냥꾼 야수 출현 밀도 히트맵 토글 (ForeverSuite_Data_MapExtra)")
+    petHeatBtn:SetPoint("LEFT", heatBtn, "RIGHT", 6, 0)
 
     local filterBar = W.PillBar(card, {
         { value = "all", label = "전체", width = 44 },
@@ -165,7 +170,7 @@ function WorldMapOverlay:EnsureCard()
     self.filterBar = filterBar
     self.revealBtn = revealBtn
     self.heatBtn = heatBtn
-    self.wayBtn = wayBtn
+    self.petHeatBtn = petHeatBtn
     self.collapseBtn = collapseBtn
     return card
 end
@@ -180,13 +185,19 @@ function WorldMapOverlay:SetCollapsed(flag)
     if self.collapsed then
         self.card:SetHeight(50)
         if self.zoneLabel then self.zoneLabel:Hide() end
+        if self.revealBtn then self.revealBtn:Hide() end
+        if self.heatBtn then self.heatBtn:Hide() end
+        if self.petHeatBtn then self.petHeatBtn:Hide() end
         if self.filterBar then self.filterBar:Hide() end
         for i = 1, MAX_POI_ROWS do
             if self.poiRows[i] then self.poiRows[i]:Hide() end
         end
     else
-        self.card:SetHeight(214)
+        self.card:SetHeight(240)
         if self.zoneLabel then self.zoneLabel:Show() end
+        if self.revealBtn then self.revealBtn:Show() end
+        if self.heatBtn then self.heatBtn:Show() end
+        if self.petHeatBtn then self.petHeatBtn:Show() end
         if self.filterBar then self.filterBar:Show() end
         self:RefreshPOIs(self.lastMapID)
     end
@@ -258,19 +269,25 @@ function WorldMapOverlay:HideCanvasPins()
     for i = 1, #self.heatTexPool do
         self.heatTexPool[i]:Hide()
     end
+    for i = 1, #self.petHeatTexPool do
+        self.petHeatTexPool[i]:Hide()
+    end
     if self.pinLayer then
         self.pinLayer:Hide()
     end
 end
 
--- E6: Quick map gesture — set /way to current WorldMap cursor position
-function WorldMapOverlay:PinCurrentCursorLocation()
-    local mapID = ns.Blizzard.WorldMapAdapter:GetViewingMapID()
-    local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
-    local metrics = ns.Blizzard.WorldMapAdapter:GetCanvasMetrics()
-    if not (mapID and cx and cy and metrics) then return false end
-    local nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(cx, cy, metrics.scale, metrics.left, metrics.bottom, metrics.width, metrics.height)
-    if not (nx and ny) then return false end
+-- E6: Quick map gesture (Alt+RightClick / Ctrl+LeftClick on WorldMap canvas) — set /way to clicked map coords
+function WorldMapOverlay:PinCurrentCursorLocation(explicitMapID, explicitNx, explicitNy)
+    local mapID = explicitMapID or ns.Blizzard.WorldMapAdapter:GetViewingMapID()
+    local nx, ny = explicitNx, explicitNy
+    if not (type(nx) == "number" and type(ny) == "number") then
+        local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
+        local metrics = ns.Blizzard.WorldMapAdapter:GetCanvasMetrics()
+        if not (mapID and cx and cy and metrics) then return false end
+        nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(cx, cy, metrics.scale, metrics.left, metrics.bottom, metrics.width, metrics.height)
+    end
+    if not (mapID and nx and ny) then return false end
     local mName = ns.Api.GameAdapters.GetMapName(mapID) or ("Map #" .. tostring(mapID))
     local label = mName .. " " .. ns.Domain.WorldMapModel.FormatCoordPair(nx, ny)
     if ns.Features.NavigationHud then
@@ -280,40 +297,45 @@ function WorldMapOverlay:PinCurrentCursorLocation()
     return true
 end
 
--- E6 & E7: Render Zero-Taint Fog-of-War Reveal tiles + Gather Heatmap overlays inside UIParent pinLayer
+-- E6 & E7: Render Zero-Taint Fog-of-War Reveal (full 256x256 multi-tile grid + explored filter),
+--          Gather Heatmap, and Hunter Pet Heatmap overlays inside UIParent pinLayer
 function WorldMapOverlay:RenderMapExtras(mapID, metrics)
     for i = 1, #self.revealTexPool do self.revealTexPool[i]:Hide() end
     for i = 1, #self.heatTexPool do self.heatTexPool[i]:Hide() end
-    if not (mapID and metrics) then return 0, 0 end
+    for i = 1, #self.petHeatTexPool do self.petHeatTexPool[i]:Hide() end
+    if not (mapID and metrics) then return 0, 0, 0 end
     local wantReveal = self.showFogReveal or (ns.Api.ProfileStore:Get("ui", "worldMapReveal") == true)
     local wantHeat = self.showGatherHeatmap or (ns.Api.ProfileStore:Get("ui", "worldMapHeatmap") == true)
-    if not (wantReveal or wantHeat) then return 0, 0 end
+    local wantPetHeat = self.showPetHeatmap or (ns.Api.ProfileStore:Get("ui", "worldMapPetHeatmap") == true)
+    if not (wantReveal or wantHeat or wantPetHeat) then return 0, 0, 0 end
 
     if not ns.Api.SafeAPI.InCombat() then
         ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_MapExtra")
-        if wantHeat then ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Media_Assets") end
+        if wantHeat or wantPetHeat then ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Media_Assets") end
     end
     local layer = self:EnsurePinLayer()
     layer:Show()
     local packs = (_G.ForeverSuiteData and _G.ForeverSuiteData.packs) or {}
-    local revCount, heatCount = 0, 0
+    local revCount, heatCount, petHeatCount = 0, 0, 0
 
     if wantReveal and packs.map_reveal and type(packs.map_reveal.entries) == "table" then
+        local exploredSet = ns.Blizzard.WorldMapAdapter.GetExploredFileSet(mapID)
         local tiles = ns.Domain.WorldMapModel.FilterRevealTiles(packs.map_reveal.entries, mapID)
         for _, tile in ipairs(tiles) do
-            local firstId = tonumber(string.match(tile.filesCsv, "(%d+)"))
-            if firstId and revCount < 24 then
+            local subTiles = ns.Domain.WorldMapModel.ExpandRevealSubTiles(tile, exploredSet)
+            for _, sub in ipairs(subTiles) do
+                if revCount >= 64 then break end
                 revCount = revCount + 1
                 local tx = self.revealTexPool[revCount]
                 if not tx then
                     tx = layer:CreateTexture(nil, "BACKGROUND")
                     self.revealTexPool[revCount] = tx
                 end
-                local sx = metrics.left + ((tile.x / 1002.0) * metrics.width)
-                local sy = metrics.bottom + ((1 - (tile.y / 668.0)) * metrics.height)
-                tx:SetTexture(firstId)
+                local sx = metrics.left + ((sub.x / 1002.0) * metrics.width)
+                local sy = metrics.bottom + ((1 - (sub.y / 668.0)) * metrics.height)
+                tx:SetTexture(sub.fileID)
                 tx:SetAlpha(0.55)
-                tx:SetSize((tile.w / 1002.0) * metrics.width, (tile.h / 668.0) * metrics.height)
+                tx:SetSize((sub.w / 1002.0) * metrics.width, (sub.h / 668.0) * metrics.height)
                 tx:ClearAllPoints()
                 tx:SetPoint("TOPLEFT", _G.UIParent, "BOTTOMLEFT", sx, sy)
                 tx:Show()
@@ -341,7 +363,36 @@ function WorldMapOverlay:RenderMapExtras(mapID, metrics)
             tx:Show()
         end
     end
-    return revCount, heatCount
+
+    if wantPetHeat and packs.pet_heatmap and type(packs.pet_heatmap.entries) == "table" then
+        local pHeats = ns.Domain.WorldMapModel.FilterPetHeatmaps(packs.pet_heatmap.entries, mapID, 12)
+        for _, ph in ipairs(pHeats) do
+            petHeatCount = petHeatCount + 1
+            local tx = self.petHeatTexPool[petHeatCount]
+            if not tx then
+                tx = layer:CreateTexture(nil, "ARTWORK")
+                self.petHeatTexPool[petHeatCount] = tx
+            end
+            local x0 = type(ph.x0) == "number" and ph.x0 or 0
+            local x1 = type(ph.x1) == "number" and ph.x1 or 1
+            local y0 = type(ph.y0) == "number" and ph.y0 or 0
+            local y1 = type(ph.y1) == "number" and ph.y1 or 1
+            local rw = math.max(8, (x1 - x0) * metrics.width)
+            local rh = math.max(8, (y1 - y0) * metrics.height)
+            local sx = metrics.left + (x0 * metrics.width)
+            local sy = metrics.bottom + ((1 - y0) * metrics.height)
+            tx:SetTexture(ph.file)
+            if type(tx.SetTexCoord) == "function" then
+                tx:SetTexCoord(ph.u1 or 0, ph.u2 or 1, ph.v1 or 0, ph.v2 or 1)
+            end
+            tx:SetAlpha(0.60)
+            tx:SetSize(rw, rh)
+            tx:ClearAllPoints()
+            tx:SetPoint("TOPLEFT", _G.UIParent, "BOTTOMLEFT", sx, sy)
+            tx:Show()
+        end
+    end
+    return revCount, heatCount, petHeatCount
 end
 
 local PIN_ICON_BY_KIND = {
@@ -559,6 +610,9 @@ function WorldMapOverlay:Init()
         function() WorldMapOverlay:OnWorldMapShown() end,
         function() WorldMapOverlay:StopAndHide() end
     )
+    ns.Blizzard.WorldMapAdapter:RegisterCanvasClickCallback(function(mapID, nx, ny)
+        WorldMapOverlay:PinCurrentCursorLocation(mapID, nx, ny)
+    end)
     self.initialized = true
     return true
 end

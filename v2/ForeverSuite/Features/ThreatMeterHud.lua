@@ -9,7 +9,7 @@ local T = ns.UI.Tokens
 local ipairs = ipairs
 
 local MAX_ROWS = 6
-local METER_WIDTH = 248
+local METER_WIDTH = 216
 
 local ThreatMeterHud = {
     card = nil,
@@ -53,8 +53,8 @@ function ThreatMeterHud:Init()
     ns.UI.HudLayout:Register("threatMeter", card, {
         point = "BOTTOMRIGHT",
         relPoint = "BOTTOMRIGHT",
-        x = -24,
-        y = 180,
+        x = -12,
+        y = 80,
     }, "위협 수준 미터")
     return card
 end

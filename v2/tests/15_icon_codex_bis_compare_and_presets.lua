@@ -108,7 +108,7 @@ wmo:EnsureCard()
 wmo:SetCollapsed(true)
 assert(wmo.card:GetHeight() == 50, "WorldMapOverlay collapse must shrink to 1-line 50px coord strip")
 wmo:SetCollapsed(false)
-assert(wmo.card:GetHeight() == 214, "WorldMapOverlay expand must restore 214px full panel")
+assert(wmo.card:GetHeight() == 240, "WorldMapOverlay expand must restore 240px full panel")
 
 -- ThreatMeter gauge bar test
 _G.__FS_MOCK.inCombat = true

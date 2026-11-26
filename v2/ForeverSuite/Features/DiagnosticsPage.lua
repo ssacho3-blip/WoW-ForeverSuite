@@ -166,7 +166,7 @@ function DiagnosticsPage:Build(parent)
     end)
     barLoadBtn:SetPoint("LEFT", barSaveBtn, "RIGHT", 6, 0)
 
-    local editExportBtn = W.Button(card, "편집모드 백업", 104, 24, function()
+    local editExportBtn = W.Button(card, "편집모드 백업", 96, 24, function()
         if ns.Features.PresetManagerModule then
             local str, st = ns.Features.PresetManagerModule:ExportEditModeLayout()
             if str then
@@ -178,13 +178,23 @@ function DiagnosticsPage:Build(parent)
     end)
     editExportBtn:SetPoint("LEFT", barLoadBtn, "RIGHT", 6, 0)
 
-    local syncBtn = W.Button(card, "계정설정 동기화", 112, 24, function()
+    local editImportBtn = W.Button(card, "편집모드 복원", 96, 24, function()
+        W.CopyPasteModal():OpenImport("편집 모드 레이아웃 가져오기", "EditMode 문자열을 붙여넣어 비전투 시 가져옵니다.", function(str)
+            if ns.Features.PresetManagerModule then
+                return ns.Features.PresetManagerModule:ImportEditModeLayout(str, "ForeverSuite")
+            end
+            return false
+        end)
+    end)
+    editImportBtn:SetPoint("LEFT", editExportBtn, "RIGHT", 6, 0)
+
+    local syncBtn = W.Button(card, "설정 동기화", 86, 24, function()
         if ns.Features.PresetManagerModule then
             local ok = ns.Features.PresetManagerModule:SyncSharedSettingsToChar()
             ns.Api.SafeAPI.Print(ok and "계정 공통 설정을 현재 캐릭터에 동기화했습니다." or "동기화 실패")
         end
     end)
-    syncBtn:SetPoint("LEFT", editExportBtn, "RIGHT", 6, 0)
+    syncBtn:SetPoint("LEFT", editImportBtn, "RIGHT", 6, 0)
 
     local modHdr = W.SectionHeader(parent, "핵심 모듈 상태")
     modHdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -190)
@@ -234,9 +244,12 @@ function DiagnosticsPage:OnShow()
             end
         end
     end
+    local mediaInfo = type(_G.ForeverSuiteMediaAssets) == "table" and _G.ForeverSuiteMediaAssets.counts or nil
+    local mediaTxt = (type(mediaInfo) == "table" and type(mediaInfo.total) == "number")
+        and (" · 미디어 " .. tostring(mediaInfo.total) .. "종") or ""
     local dataText = (packCount > 0)
-        and (tostring(packCount) .. "팩 / " .. tostring(entryCount) .. "항목 로드됨")
-        or "미로드 (로그인 RAM 0MB)"
+        and (tostring(packCount) .. "팩 / " .. tostring(entryCount) .. "항목 로드됨" .. mediaTxt)
+        or ("미로드 (로그인 RAM 0MB)" .. mediaTxt)
     self.readinessLabel:SetText("독립 실행: Zero-Taint 6-Layer  |  도감·미디어 LoD: " .. dataText)
 
     for _, item in ipairs(self.moduleRows) do

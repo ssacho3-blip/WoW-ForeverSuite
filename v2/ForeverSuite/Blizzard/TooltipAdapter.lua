@@ -18,6 +18,19 @@ local TooltipAdapter = {
 }
 ns.Blizzard.TooltipAdapter = TooltipAdapter
 
+local function IsTooltipForbidden(tt)
+    if type(tt) ~= "table" then
+        return true
+    end
+    if type(tt.IsForbidden) == "function" then
+        local ok, forb = pcall(tt.IsForbidden, tt)
+        if (not ok) or (ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.IsSecret(forb)) or forb == true then
+            return true
+        end
+    end
+    return false
+end
+
 function TooltipAdapter:InitCursorAnchor(predicateFn)
     self.cursorAnchorPredicate = predicateFn
     if self.cursorHooked then
@@ -39,17 +52,41 @@ function TooltipAdapter:InitCursorAnchor(predicateFn)
     return false
 end
 
-local function IsTooltipForbidden(tt)
-    if type(tt) ~= "table" then
-        return true
+-- Zero-Taint read-only clause translation pass over visible GameTooltip lines (never mutates Blizzard frames directly).
+function TooltipAdapter.TranslateVisibleLines(tt, translateFn)
+    if IsTooltipForbidden(tt) or type(translateFn) ~= "function" then
+        return 0
     end
-    if type(tt.IsForbidden) == "function" then
-        local ok, forb = pcall(tt.IsForbidden, tt)
-        if (not ok) or (ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.IsSecret(forb)) or forb == true then
-            return true
+    local numLines = 0
+    if type(tt.NumLines) == "function" then
+        local okN, n = pcall(tt.NumLines, tt)
+        if okN and type(n) == "number" and n > 0 then
+            numLines = (n > 16) and 16 or n
         end
     end
-    return false
+    if numLines == 0 then return 0 end
+    local ttName = (type(tt.GetName) == "function") and select(2, pcall(tt.GetName, tt)) or nil
+    if type(ttName) ~= "string" or ttName == "" then return 0 end
+    local translated = {}
+    local seen = {}
+    for i = 2, numLines do
+        local fs = _G[ttName .. "TextLeft" .. tostring(i)]
+        if type(fs) == "table" and type(fs.GetText) == "function" then
+            local okT, raw = pcall(fs.GetText, fs)
+            if okT and type(raw) == "string" and raw ~= "" and not (ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.IsSecret(raw)) then
+                local ko = translateFn(raw)
+                if type(ko) == "string" and ko ~= "" and ko ~= raw and not seen[ko] then
+                    seen[ko] = true
+                    translated[#translated + 1] = ko
+                    if #translated >= 4 then break end
+                end
+            end
+        end
+    end
+    for i = 1, #translated do
+        TooltipAdapter.AddLine(tt, "한글 설명", translated[i], { 0.72, 0.88, 1.0 })
+    end
+    return #translated
 end
 
 function TooltipAdapter.AddLine(tt, leftText, rightText, color)

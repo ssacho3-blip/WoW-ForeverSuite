@@ -306,7 +306,8 @@ function CodexPage:RenderPack(query)
     local startIdx = (self.pageIndex - 1) * PAGE_SIZE + 1
     local endIdx = math_min(self.totalMatches, startIdx + PAGE_SIZE - 1)
     local hasSubBar = (self.activePack == "rewards" or self.activePack == "hunter_pets")
-    local y = hasSubBar and 92 or 66
+    local baseTopY = (self.listBaseY or 66)
+    local y = hasSubBar and (baseTopY + 28) or baseTopY
     local rightMargin = (self.totalMatches > PAGE_SIZE) and -14 or 0
     local shown = 0
     local fallbackIcon = (tab and tab.icon) or T.ICON.FALLBACK
@@ -357,7 +358,8 @@ function CodexPage:RenderPack(query)
 
     if self.scrollBar then
         self.scrollBar:ClearAllPoints()
-        self.scrollBar:SetPoint("TOPRIGHT", self.host, "TOPRIGHT", -2, -(hasSubBar and 92 or 66))
+        local sbTopY = hasSubBar and (baseTopY + 28) or baseTopY
+        self.scrollBar:SetPoint("TOPRIGHT", self.host, "TOPRIGHT", -2, -sbTopY)
         self.scrollBar:SetPoint("BOTTOMRIGHT", self.host, "BOTTOMRIGHT", -2, 30)
         self.scrollBar:SetMetrics(self.pageIndex - 1, 1, maxPage)
     end
@@ -387,7 +389,7 @@ function CodexPage:Build(parent)
         end)
     end
 
-    local hdr = W.SectionHeader(parent, "ForeverSuite 통합 도감 (8대 LoadOnDemand 풀 DB · 내장 아이콘)")
+    local hdr = W.SectionHeader(parent, "ForeverSuite 통합 도감 (11개 도감 탭 · LoadOnDemand 풀 DB · 내장 아이콘)")
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     hdr:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
 
@@ -401,6 +403,9 @@ function CodexPage:Build(parent)
     end)
     bar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -30)
     self.packBar = bar
+
+    local subBarY = 30 + (bar._totalHeight or 22) + 8
+    self.listBaseY = subBarY + 6
 
     -- Pre-allocate all PAGE_SIZE rows up front so OnSearch creates ZERO new frames!
     for i = 1, PAGE_SIZE do
@@ -417,7 +422,7 @@ function CodexPage:Build(parent)
         CodexPage.pageIndex = 1
         CodexPage:RenderPack(CodexPage.lastQuery)
     end)
-    rewBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -60)
+    rewBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -subBarY)
     rewBar:SetWidth(330)
     rewBar:Hide()
 
@@ -427,7 +432,7 @@ function CodexPage:Build(parent)
         CodexPage:RenderPack(CodexPage.lastQuery)
         return true
     end)
-    petRareTgl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -60)
+    petRareTgl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -subBarY)
     petRareTgl:SetWidth(96)
     petRareTgl:Hide()
 
@@ -444,7 +449,7 @@ function CodexPage:Build(parent)
         CodexPage.pageIndex = 1
         CodexPage:RenderPack(CodexPage.lastQuery)
     end)
-    petAbBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 104, -60)
+    petAbBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 104, -subBarY)
     petAbBar:SetWidth(420)
     petAbBar:Hide()
 
@@ -453,7 +458,7 @@ function CodexPage:Build(parent)
     self.petAbBar = petAbBar
 
     local empty = W.EmptyState(parent, { title = "도감 항목 없음", desc = "" })
-    empty:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -92)
+    empty:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(self.listBaseY + 28))
     empty:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 30)
     self.emptyState = empty
 

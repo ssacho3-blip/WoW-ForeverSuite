@@ -506,6 +506,15 @@ local DEFAULT_SCHEMAS = {
         combatSafe = true,
     },
     {
+        section = "ui",
+        key = "worldMapPetHeatmap",
+        type = "boolean",
+        default = false,
+        label = "월드맵 사냥꾼 야수 출현 밀도 히트맵 표시",
+        desc = "ForeverSuite_Data_MapExtra 야수 출현 밀도 오버레이",
+        combatSafe = true,
+    },
+    {
         section = "profession",
         key = "fishingDoubleClick",
         type = "boolean",
@@ -599,6 +608,34 @@ local DEFAULT_SCHEMAS = {
             { value = "cyan",    label = "시안",    width = 62 },
             { value = "emerald", label = "에메랄드", width = 76 },
             { value = "crimson", label = "크림슨",  width = 68 },
+        },
+    },
+    {
+        section = "ui",
+        key = "cursorSize",
+        type = "enum",
+        default = "medium",
+        label = "마우스 커서 FX 크기",
+        desc = "소(24px) / 중(34px) / 대(46px)",
+        combatSafe = true,
+        options = {
+            { value = "small",  label = "소형", width = 58 },
+            { value = "medium", label = "중형", width = 58 },
+            { value = "large",  label = "대형", width = 58 },
+        },
+    },
+    {
+        section = "ui",
+        key = "cursorAlpha",
+        type = "enum",
+        default = "100",
+        label = "마우스 커서 FX 투명도",
+        desc = "50% / 75% / 100%",
+        combatSafe = true,
+        options = {
+            { value = "50",  label = "50%",  width = 56 },
+            { value = "75",  label = "75%",  width = 56 },
+            { value = "100", label = "100%", width = 56 },
         },
     },
     {
@@ -704,13 +741,15 @@ function Bootstrap:Init()
             ns.Features.QuestTrackerView:RefreshLive()
         elseif sec == "quest" and key == "combatFade" then
             ns.Features.QuestTrackerView:UpdateCombatVisuals()
+        elseif sec == "quest" and key == "proximityAlerts" then
+            ns.Features.QuestExtraModule:SyncProximityTicker()
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
-        elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins" or key == "worldMapReveal" or key == "worldMapHeatmap") then
+        elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins" or key == "worldMapReveal" or key == "worldMapHeatmap" or key == "worldMapPetHeatmap") then
             ns.Features.WorldMapOverlay:ApplyVisibility()
         elseif sec == "ui" and key == "showMinimapButton" then
             ns.Features.MinimapButton:ApplyVisibility()
-        elseif sec == "ui" and (key == "showCursorRing" or key == "cursorStyle" or key == "cursorCombatOnly" or key == "cursorColor") then
+        elseif sec == "ui" and (key == "showCursorRing" or key == "cursorStyle" or key == "cursorCombatOnly" or key == "cursorColor" or key == "cursorSize" or key == "cursorAlpha") then
             ns.Features.CursorTrailHud:ApplyVisibility()
         elseif sec == "ui" and key == "navArrowStyle" then
             ns.Features.NavigationHud:Refresh()
@@ -800,6 +839,7 @@ function Bootstrap:Init()
         ns.Features.QuestAnnounceModule:OnQuestLogUpdate()
         ns.Features.QuestExtraModule:CheckCollectionAlerts()
         ns.Features.QuestExtraModule:BroadcastPartyQuestSync(false)
+        ns.Features.QuestExtraModule:SyncProximityTicker()
         if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
             ns.Features.WorldMapOverlay:InvalidatePinCache()
         end
@@ -810,6 +850,7 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:bags", "BAG_UPDATE_DELAYED", function()
         ns.Features.StatusPillHud:RefreshLive()
         ns.Features.ProfessionPage:RecordBagBankMaterials(false)
+        ns.Features.QuestExtraModule:CheckCollectionAlerts()
     end)
     ns.Api.EventBus:OnEvent("v4:bankOpen", "BANKFRAME_OPENED", function()
         ns.Features.ProfessionPage:RecordBagBankMaterials(true)
@@ -983,6 +1024,8 @@ function Bootstrap:Init()
         ns.Features.FishingCardHud:Refresh()
         ns.Features.NavigationHud:Refresh()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
+        ns.Features.QuestExtraModule:CheckProximityAlerts()
+        ns.Features.QuestExtraModule:SyncProximityTicker()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
         if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then
@@ -997,6 +1040,7 @@ function Bootstrap:Init()
         ns.Features.ThreatMeterHud:OnCombatStart()
         ns.Features.CursorTrailHud:ApplyVisibility(true)
         ns.Features.EncounterTimerHud:OnCombatStart()
+        ns.Features.QuestExtraModule:SyncProximityTicker(true)
     end)
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
         ns.Secure.CombatQueue:Flush()
@@ -1015,6 +1059,7 @@ function Bootstrap:Init()
         ns.Features.CursorTrailHud:ApplyVisibility(false)
         ns.Features.EncounterTimerHud:OnCombatEnd()
         ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
+        ns.Features.QuestExtraModule:SyncProximityTicker(false)
     end)
 
     ns.Api.EventBus:OnEvent("v2:taintBlocked", "ADDON_ACTION_BLOCKED", function(_, addonName, funcName)
@@ -1081,12 +1126,28 @@ function Bootstrap:Init()
                     ns.Features.PresetManagerModule:SaveActionBarLoadout(pArg)
                 elseif pSub == "barload" then
                     ns.Features.PresetManagerModule:RestoreActionBarLoadout(pArg)
+                elseif pSub == "import" then
+                    ns.Features.PresetManagerModule:ImportEditModeLayout(pArg, "ForeverSuite")
                 elseif pSub == "sync" then
                     ns.Features.PresetManagerModule:SyncSharedSettingsToChar()
                     ns.Api.SafeAPI.Print("계정 설정을 캐릭터에 동기화했습니다.")
+                elseif pSub == "load" then
+                    ns.Features.PresetManagerModule:RestoreSharedSettingsFromChar()
                 else
-                    ns.Api.SafeAPI.Print("사용법: /fs preset <cvar|barsave|barload|sync>")
+                    ns.Api.SafeAPI.Print("사용법: /fs preset <cvar|barsave|barload|import|sync|load>")
                 end
+            elseif cmd == "cd" then
+                local cSub, cArg = string_match(rest or "", "^(%S+)%s*(.*)$")
+                cSub = cSub and string_lower(cSub) or ""
+                if cSub == "add" then
+                    ns.Features.ProcCooldownHud:AddCustomCooldown(cArg)
+                elseif cSub == "clear" then
+                    ns.Features.ProcCooldownHud:ClearCustomCooldowns()
+                else
+                    ns.Api.SafeAPI.Print("사용법: /fs cd <add <spellID>|clear>")
+                end
+            elseif cmd == "party" then
+                ns.Features.ChatToolsModule:PrintPartyClassRoster()
             elseif cmd == "protect" then
                 ns.Features.MerchantModule:ToggleProtectItem(rest)
             elseif cmd == "cheap" then
