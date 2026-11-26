@@ -258,3 +258,38 @@ local badOk, badErr = util:HandleProfileCommand("import BAD_HEADER")
 assert(badOk == false and badErr == "INVALID_HEADER", "Malformed profile string must fail-closed")
 local impOk, impCnt = util:HandleProfileCommand("import " .. exported)
 assert(impOk == true and impCnt >= 10, "Valid exported profile string must import cleanly")
+
+-- ============================================================================
+-- v2.3.1 UI Polish Regression Guards (Settings scroll, Ledger scroll, Dynamic Version)
+-- ============================================================================
+local hub = ns.UI.CommandHub
+hub:EnsureWindow()
+hub:SelectPage("settings")
+local sp = ns.Features.SettingsPage
+sp.activeSection = "all"
+sp.scrollOffset = 0
+sp:RenderList("")
+local topCount = sp.visibleCount
+assert(topCount >= 10 and #sp.builtItems >= 40, "SettingsPage must build all 43 schema controls")
+-- Scroll down to bottom settings (must reach last setting without clipping!)
+sp.scrollOffset = #sp.builtItems - 1
+sp:RenderList("")
+assert(sp.visibleCount >= 1 and sp.builtItems[#sp.builtItems].main:IsShown() == true, "SettingsPage scroll must expose bottom settings")
+
+-- LedgerPage mouse-wheel scroll across >12 entries
+hub:SelectPage("ledger")
+local lp = ns.Features.LedgerPage
+for i = 1, 18 do
+    lp:RecordEntry("other", i * 100, "거래 #" .. tostring(i))
+end
+lp.scrollOffset = 0
+lp:RefreshView()
+assert(lp.visibleRows == 12, "LedgerPage must show 12 rows")
+local firstRowText = lp.rowPool[1]._left._text
+lp.scrollOffset = 4
+lp:RefreshView()
+assert(lp.rowPool[1]._left._text ~= firstRowText, "LedgerPage scrollOffset must shift visible ledger rows")
+
+-- DiagnosticsPage dynamic version (no hardcoded 2.0.0)
+hub:SelectPage("diagnostics")
+assert(string.find(ns.Features.DiagnosticsPage.summaryLabel:GetText(), "3.0.1", 1, true) ~= nil, "DiagnosticsPage must report live 3.0.1 version")

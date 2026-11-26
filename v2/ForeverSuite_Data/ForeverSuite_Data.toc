@@ -2,7 +2,7 @@
 ## Title: |cffd4af37Forever|rSuite · Data (LoD)
 ## Notes: ForeverSuite v2 LoadOnDemand 도감 데이터팩 (도감 열람 시에만 RAM 적재)
 ## Author: Youngseo Cho
-## Version: 2.1.0
+## Version: 4.0.0
 ## LoadOnDemand: 1
 ## Dependencies: ForeverSuite
 

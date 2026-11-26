@@ -19,6 +19,15 @@ function StatusPillHud:Init()
         return self.card
     end
     local card = W.Card(nil, 336, 26, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
+    card:EnableMouse(true)
+    card:SetScript("OnMouseUp", function(_, mouseBtn)
+        if ns.UI.HudLayout and ns.UI.HudLayout.unlocked then return end
+        if mouseBtn == "RightButton" then
+            ns.UI.CommandHub:JumpTo("utilities", { subTab = "alts" })
+        else
+            ns.UI.CommandHub:JumpTo("ledger")
+        end
+    end)
     local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY)
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     self.card = card
@@ -38,6 +47,10 @@ end
 
 function StatusPillHud:ApplyVisibility()
     if not self.card then
+        return
+    end
+    if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then
+        self.card:Show()
         return
     end
     local visible = ns.Api.ProfileStore:Get("ui", "showStatusPill")
@@ -68,8 +81,19 @@ function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper, durPct)
         self:Init()
     end
     local bagTxt = (type(freeSlots) == "number") and ("가방 " .. tostring(freeSlots) .. "칸") or "가방 집계 없음"
-    local durTxt = (type(durPct) == "number") and ("내구 " .. tostring(durPct) .. "%") or "내구 —"
+    local lowDur = (type(durPct) == "number" and durPct < 30)
+    local durTxt = (type(durPct) == "number")
+        and (lowDur and ("|cfff87171내구 " .. tostring(durPct) .. "%|r") or ("내구 " .. tostring(durPct) .. "%"))
+        or "내구 —"
     local moneyTxt = (type(sessionDeltaCopper) == "number") and ns.Domain.LedgerModel.FormatCopper(sessionDeltaCopper) or "골드 집계 없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     self.label:SetText(bagTxt .. " · " .. durTxt .. " · " .. moneyTxt .. " · " .. realm)
+    if self.card then
+        if lowDur then
+            W.SetBorderColor(self.card, T.SEMANTIC.DANGER)
+        else
+            W.SetBorderColor(self.card, T.BORDER.HAIRLINE)
+        end
+        self.label:SetTextColor(T.TEXT.PRIMARY[1], T.TEXT.PRIMARY[2], T.TEXT.PRIMARY[3], 1)
+    end
 end

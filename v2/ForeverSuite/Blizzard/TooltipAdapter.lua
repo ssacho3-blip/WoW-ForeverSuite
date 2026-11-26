@@ -11,10 +11,33 @@ local string_match = string.match
 
 local TooltipAdapter = {
     hooked = false,
+    cursorHooked = false,
+    cursorAnchorPredicate = nil,
     onItemCallback = nil,
     onSpellCallback = nil,
 }
 ns.Blizzard.TooltipAdapter = TooltipAdapter
+
+function TooltipAdapter:InitCursorAnchor(predicateFn)
+    self.cursorAnchorPredicate = predicateFn
+    if self.cursorHooked then
+        return true
+    end
+    if type(_G.hooksecurefunc) == "function" and type(_G.GameTooltip_SetDefaultAnchor) == "function" then
+        local ok = pcall(_G.hooksecurefunc, "GameTooltip_SetDefaultAnchor", function(tt, parent)
+            if type(TooltipAdapter.cursorAnchorPredicate) ~= "function" then return end
+            if not TooltipAdapter.cursorAnchorPredicate() then return end
+            if IsTooltipForbidden(tt) then return end
+            if ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then return end
+            if type(tt.SetOwner) == "function" and parent then
+                pcall(tt.SetOwner, tt, parent, "ANCHOR_CURSOR")
+            end
+        end)
+        self.cursorHooked = ok and true or false
+        return self.cursorHooked
+    end
+    return false
+end
 
 local function IsTooltipForbidden(tt)
     if type(tt) ~= "table" then

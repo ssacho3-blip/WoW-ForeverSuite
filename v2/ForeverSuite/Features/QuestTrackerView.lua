@@ -45,6 +45,7 @@ local QuestTrackerView = {
     btnLock = nil,
     btnMinimize = nil,
     scrollHint = nil,
+    scrollBar = nil,
     detailCard = nil,
     rowPool = {},
     scrollOffset = 0,
@@ -181,6 +182,18 @@ function QuestTrackerView:ShowDetailCard(item)
         card._title = title
         card._meta = meta
         card._body = body
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "ForeverSuiteQuestDetailCard" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                _G.UISpecialFrames[#_G.UISpecialFrames + 1] = "ForeverSuiteQuestDetailCard"
+            end
+        end
         self.detailCard = card
     end
 
@@ -232,6 +245,10 @@ function QuestTrackerView:SyncToolbarLabels()
     self.btnZoneFilter:SetActive(cz)
     self.btnLock:SetLabel(lk and "잠김" or "이동")
     self.btnLock:SetActive(lk)
+    if self.container and type(self.container.SetMovable) == "function" then
+        local hudEdit = ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked()
+        self.container:SetMovable(hudEdit or (not lk))
+    end
     self.btnMinimize:SetLabel(mn and "+" or "−")
     self.btnMinimize:SetActive(mn)
 end
@@ -300,11 +317,25 @@ function QuestTrackerView:Init()
         QuestTrackerView:ScrollBy(delta)
     end)
 
-    -- Header bar with Burnished Gold bottom accent rule
+    -- Header bar with Burnished Gold bottom accent rule & direct drag when unlocked
     local hdr = W.Card(box, TRACKER_WIDTH - 2, HEADER_HEIGHT, nil, nil)
     hdr:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
     hdr:SetPoint("TOPRIGHT", box, "TOPRIGHT", -1, -1)
     W.SetBorderColor(hdr, T.BORDER.GOLD_SOFT)
+    if type(hdr.EnableMouse) == "function" then hdr:EnableMouse(true) end
+    if type(hdr.RegisterForDrag) == "function" then hdr:RegisterForDrag("LeftButton") end
+    hdr:SetScript("OnDragStart", function()
+        if GetSetting("trackerLocked", false) == true then return end
+        if ns.Api.SafeAPI.InCombat() then return end
+        if type(box.SetMovable) == "function" then box:SetMovable(true) end
+        if type(box.StartMoving) == "function" then box:StartMoving() end
+    end)
+    hdr:SetScript("OnDragStop", function()
+        if type(box.StopMovingOrSizing) == "function" then box:StopMovingOrSizing() end
+        if GetSetting("trackerLocked", false) ~= true and ns.UI.HudLayout then
+            ns.UI.HudLayout:SaveCurrentPosition("questTracker")
+        end
+    end)
 
     local title = W.Label(hdr, "✦ 퀘스트 (0)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     title:SetPoint("LEFT", hdr, "LEFT", 8, 0)
@@ -336,6 +367,17 @@ function QuestTrackerView:Init()
     hint:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -6, 4)
     hint:Hide()
 
+    local sb = W.ScrollBar(box, 120, function(newOff)
+        QuestTrackerView.scrollOffset = newOff
+        if QuestTrackerView.lastQuests then
+            QuestTrackerView:Render(QuestTrackerView.lastQuests, nil)
+        else
+            QuestTrackerView:RefreshLive()
+        end
+    end)
+    sb:SetPoint("TOPRIGHT", box, "TOPRIGHT", -2, -(HEADER_HEIGHT + BODY_TOP_PAD))
+    sb:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -2, FOOTER_HEIGHT + PADDING_BOTTOM)
+
     self.container = box
     self.headerBar = hdr
     self.titleLbl = title
@@ -344,6 +386,7 @@ function QuestTrackerView:Init()
     self.btnLock = btnLock
     self.btnMinimize = btnMin
     self.scrollHint = hint
+    self.scrollBar = sb
 
     ns.UI.HudLayout:Register("questTracker", box, {
         point = "TOPRIGHT",
@@ -609,6 +652,13 @@ function QuestTrackerView:Render(quests, opts)
     end
 
     local showFooter = (not snap.minimized) and (snap.maxScroll > 0)
+    if self.scrollBar then
+        if showFooter then
+            self.scrollBar:SetMetrics(snap.scrollOffset, (shown > 0 and shown or 1), snap.totalRows)
+        else
+            self.scrollBar:SetMetrics(0, 1, 0)
+        end
+    end
     if self.scrollHint then
         if showFooter then
             local fromN = snap.scrollOffset + 1

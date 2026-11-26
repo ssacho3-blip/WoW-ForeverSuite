@@ -125,7 +125,7 @@ _G.__FS_MOCK.addonExists = { ForeverSuite_GJBridge = false }
 assert(ns.Api.SafeAPI.GetAddOnPresenceState("ForeverSuite_GJBridge") == "NOT_INSTALLED")
 assert(ns.Api.SafeAPI.IsV1Loaded() == false)
 ns.UI.CommandHub:SelectPage("diagnostics")
-assert(string.find(ns.Features.DiagnosticsPage.summaryLabel:GetText(), "버전: 2.0.0", 1, true))
+assert(string.find(ns.Features.DiagnosticsPage.summaryLabel:GetText(), "버전: 3.0.1", 1, true))
 
 -- Missing taintTotal displays "집계 없음" instead of fabricated "0건"
 ns.Api.ProfileStore.db.v2.diagnostics.taintTotal = nil

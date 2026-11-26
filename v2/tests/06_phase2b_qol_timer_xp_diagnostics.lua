@@ -141,10 +141,15 @@ assert(_G.__FS_MOCK.acceptedGroup == 2, "exact cross-realm friend match must aut
 __FS_FIRE_EVENT("PARTY_INVITE_REQUEST", "전우-ForeverKR")
 assert(_G.__FS_MOCK.acceptedGroup == 3, "guild member must auto-accept")
 
--- 6. N7 Regression: Camera Zoom CVar blocked in combat, applied OOC, and RESTORED when toggled OFF!
+-- 6. N7 + P0-3 Regression: combatSafe=false rejected in combat; deferred CVar applies OOC and RESTORES when toggled OFF!
 _G.__FS_MOCK.inCombat = true
-ns.Api.ProfileStore:Set("qol", "maxCameraZoom", true)
+local okZoomCombat, reasonZoomCombat = ns.Api.ProfileStore:Set("qol", "maxCameraZoom", true)
+assert(okZoomCombat == false and reasonZoomCombat == "IN_COMBAT", "P0-3: combatSafe=false setting must fail-closed in combat")
 assert(_G.__FS_MOCK.cvars.cameraDistanceMaxZoomFactor == "1.9", "must NOT touch camera CVar during combat")
+-- Also verify QoLModule itself defers CVar mutation if already enabled before combat
+ns.Api.ProfileStore.db.v2.settings.qol.maxCameraZoom = true
+ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
+assert(_G.__FS_MOCK.cvars.cameraDistanceMaxZoomFactor == "1.9", "QoLModule must NOT mutate camera CVar during combat")
 _G.__FS_MOCK.inCombat = false
 __FS_FIRE_EVENT("PLAYER_REGEN_ENABLED")
 assert(_G.__FS_MOCK.cvars.cameraDistanceMaxZoomFactor == "2.6", "must apply camera CVar safely out of combat")

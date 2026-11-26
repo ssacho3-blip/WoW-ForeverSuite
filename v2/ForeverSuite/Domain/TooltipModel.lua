@@ -60,12 +60,62 @@ function TooltipModel.BuildItemLines(itemID, sellPrice, stackCount, protectedSet
     if type(protectedSet) == "table" and protectedSet[math_floor(itemID)] == true then
         lines[#lines + 1] = {
             left = "[판매 보호 목록 등록됨]",
-            right = "/fs2 protect",
+            right = "/fs protect",
             tone = "WARN",
         }
     end
 
+    if type(opts) == "table" then
+        if type(opts.koTranslation) == "string" and opts.koTranslation ~= "" then
+            lines[#lines + 1] = {
+                left = "한글명",
+                right = opts.koTranslation,
+                tone = "GOLD",
+            }
+        end
+        if type(opts.dropSource) == "string" and opts.dropSource ~= "" then
+            lines[#lines + 1] = {
+                left = "획득처",
+                right = opts.dropSource,
+                tone = "GOLD",
+            }
+        end
+        if opts.isBiS == true then
+            lines[#lines + 1] = {
+                left = "★ BiS 추천 장비",
+                right = tostring(opts.bisNote or "ForeverSuite BiS"),
+                tone = "GOLD",
+            }
+        end
+        if type(opts.profMaterialTag) == "string" and opts.profMaterialTag ~= "" then
+            lines[#lines + 1] = {
+                left = "전문기술 재료",
+                right = opts.profMaterialTag,
+                tone = "MUTED",
+            }
+        end
+    end
+
     return lines
+end
+
+function TooltipModel.BuildTranslationLookup(entries)
+    local byItem, byClause = {}, {}
+    for _, r in ipairs(entries or {}) do
+        if type(r) == "table" then
+            if r.kind == "item" and type(r.itemID) == "number" and type(r.ko) == "string" then
+                byItem[r.itemID] = r.ko
+            elseif r.kind == "clause" and type(r.en) == "string" and type(r.ko) == "string" then
+                byClause[r.en] = r.ko
+            end
+        end
+    end
+    return byItem, byClause
+end
+
+function TooltipModel.TranslateClause(text, byClause)
+    if type(text) ~= "string" or type(byClause) ~= "table" then return nil end
+    return byClause[text]
 end
 
 function TooltipModel.BuildSpellLines(spellID, showSpellID)

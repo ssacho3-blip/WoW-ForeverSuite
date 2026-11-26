@@ -185,7 +185,7 @@ end
 function MerchantModule:ToggleProtectItem(rawArg)
     local itemID = ns.Domain.MerchantModel.ParseItemIDArg(tostring(rawArg or ""))
     if not itemID or itemID <= 0 then
-        ns.Api.SafeAPI.Print("사용법: /fs2 protect <아이템ID 또는 아이템링크>")
+        ns.Api.SafeAPI.Print("사용법: /fs protect <아이템ID 또는 아이템링크>")
         return false
     end
     if not ns.Api.ProfileStore:CanWrite() then

@@ -1,0 +1,15 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · WorldMap Reveal & Heatmaps DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 월드맵 미탐험 밝히기·채집 히트맵·야수 히트맵 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 4.0.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_map_reveal_01.lua
+Pack_map_reveal_02.lua
+Pack_gather_heatmap_01.lua
+Pack_gather_heatmap_02.lua
+Pack_gather_heatmap_03.lua
+Pack_pet_heatmap_01.lua
+Pack_pet_heatmap_02.lua

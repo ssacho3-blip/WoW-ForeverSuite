@@ -12,11 +12,25 @@ local string_format = string.format
 local EncounterTimerHud = {
     card = nil,
     label = nil,
+    detailLabel = nil,
+    activeBossTip = nil,
     state = nil,
     ticker = nil,
     lastView = nil,
 }
 ns.Features.EncounterTimerHud = EncounterTimerHud
+
+local function FindBossTip(encounterName)
+    if type(encounterName) ~= "string" or encounterName == "" then return nil end
+    local pack = _G.ForeverSuiteData and _G.ForeverSuiteData.packs and _G.ForeverSuiteData.packs.dungeon_bosses
+    if type(pack) ~= "table" or type(pack.entries) ~= "table" then return nil end
+    for _, b in ipairs(pack.entries) do
+        if type(b) == "table" and b.title == encounterName and type(b.tip) == "string" and b.tip ~= "" then
+            return b.tip
+        end
+    end
+    return nil
+end
 
 local function ToneColor(tone)
     if tone == "GOLD" then return T.TEXT.GOLD, T.BORDER.GOLD end
@@ -38,11 +52,16 @@ function EncounterTimerHud:Init()
         return self.card
     end
     self:EnsureState()
-    local card = W.Card(nil, 224, 24, "ForeverSuiteV2EncounterTimer", T.ELEVATION.L0_HUD)
-    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY)
-    lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
+    local card = W.Card(nil, 248, 26, "ForeverSuiteV2EncounterTimer", T.ELEVATION.L0_HUD)
+    local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false })
+    lbl:SetPoint("TOP", card, "TOP", 0, -5)
+    local dLbl = W.Label(card, "", "small", T.TEXT.SECONDARY, { justifyH = "CENTER", wordWrap = false })
+    dLbl:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 6, 4)
+    dLbl:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -6, 4)
+    dLbl:Hide()
     self.card = card
     self.label = lbl
+    self.detailLabel = dLbl
 
     ns.UI.HudLayout:Register("encounterTimer", card, {
         point = "TOP",
@@ -96,6 +115,14 @@ function EncounterTimerHud:Refresh()
         self.label:SetText(view.text)
         self.label:SetTextColor(txtCol[1], txtCol[2], txtCol[3], 1)
         W.SetBorderColor(self.card, borderCol)
+        if self.detailLabel and self.activeBossTip and self:IsBossActive() then
+            self.detailLabel:SetText(self.activeBossTip)
+            self.detailLabel:Show()
+            self.card:SetHeight(44)
+        else
+            if self.detailLabel then self.detailLabel:Hide() end
+            self.card:SetHeight(26)
+        end
         self.card:Show()
     else
         self.card:Hide()
@@ -125,12 +152,14 @@ function EncounterTimerHud:OnEncounterStart(encounterName)
     local now = ns.Api.GameAdapters.GetMonotonicTime()
     if now then
         local clean = (not ns.Api.SafeAPI.IsSecret(encounterName) and type(encounterName) == "string") and encounterName or nil
+        self.activeBossTip = FindBossTip(clean)
         ns.Domain.EncounterTimerModel.OnEncounterStart(self:EnsureState(), clean, now)
     end
     self:Refresh()
 end
 
 function EncounterTimerHud:OnEncounterEnd(encounterName, success)
+    self.activeBossTip = nil
     local now = ns.Api.GameAdapters.GetMonotonicTime()
     local clean = (not ns.Api.SafeAPI.IsSecret(encounterName) and type(encounterName) == "string") and encounterName or nil
     local cleanOk = (not ns.Api.SafeAPI.IsSecret(success)) and success or false
@@ -178,7 +207,7 @@ end
 
 function EncounterTimerHud:HandlePullCommand(rawArg)
     if ns.Api.ProfileStore:Get("combat", "showEncounterTimer") == false then
-        ns.Api.SafeAPI.Print("전투·인던 타이머 HUD가 비활성화되어 있습니다(/fs2 settings에서 활성화).")
+        ns.Api.SafeAPI.Print("전투·인던 타이머 HUD가 비활성화되어 있습니다(/fs settings에서 활성화).")
         return false, "HUD_DISABLED"
     end
     local now = ns.Api.GameAdapters.GetMonotonicTime()
@@ -188,7 +217,7 @@ function EncounterTimerHud:HandlePullCommand(rawArg)
     end
     local ok, action, dur = ns.Domain.EncounterTimerModel.StartPull(self:EnsureState(), rawArg, now)
     if not ok then
-        ns.Api.SafeAPI.Print("사용법: /fs2 pull <3~30> (취소: /fs2 pull 0)")
+        ns.Api.SafeAPI.Print("사용법: /fs pull <3~30> (취소: /fs pull 0)")
         return false, action
     end
     if action == "CANCELLED" then
@@ -215,6 +244,6 @@ function EncounterTimerHud:PrintStatus()
     elseif st.lastCombatElapsed then
         ns.Api.SafeAPI.Print("최근 전투 시간: " .. ns.Domain.EncounterTimerModel.FormatMMSS(st.lastCombatElapsed))
     else
-        ns.Api.SafeAPI.Print("활성 전투/인스턴스 타이머 기록이 없습니다. (/fs2 pull 10 으로 풀링 타이머 시작)")
+        ns.Api.SafeAPI.Print("활성 전투/인스턴스 타이머 기록이 없습니다. (/fs pull 10 으로 풀링 타이머 시작)")
     end
 end

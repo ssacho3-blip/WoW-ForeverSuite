@@ -195,6 +195,16 @@ function IsControlKeyDown() return _G.__FS_MOCK.ctrlDown == true end
 function IsAltKeyDown() return _G.__FS_MOCK.altDown == true end
 function GetQuestLink(qid) return "|cffffff00|Hquest:" .. tostring(qid) .. ":60|h[퀘스트 #" .. tostring(qid) .. "]|h|r" end
 function ChatEdit_GetActiveWindow() return _G.__FS_MOCK.activeChatEdit end
+function ChatFrame_OpenChat(text)
+    _G.__FS_MOCK.openedChats = _G.__FS_MOCK.openedChats or {}
+    local str = tostring(text or "")
+    table.insert(_G.__FS_MOCK.openedChats, str)
+    _G.__FS_MOCK.activeChatEdit = {
+        _text = str,
+        GetText = function(self) return self._text end,
+        Insert = function(self, s) self._text = self._text .. tostring(s or "") end,
+    }
+end
 function ChatEdit_InsertLink(link)
     if _G.__FS_MOCK.activeChatEdit then
         table.insert(_G.__FS_MOCK.insertedLinks, link)
@@ -434,6 +444,7 @@ local function MakeMockRegion(kind, parent)
     function r:SetColorTexture(r1, g1, b1, a1) self._color = { r1, g1, b1, a1 } end
     function r:SetTexture(path) self._texture = path end
     function r:SetTexCoord(...) self._texCoord = { ... } end
+    function r:SetVertexColor(r1, g1, b1, a1) self._vertexColor = { r1, g1, b1, a1 } end
     function r:SetText(t) self._text = tostring(t or "") end
     function r:GetText() return self._text end
     function r:SetTextColor(r1, g1, b1, a1) self._textColor = { r1, g1, b1, a1 } end
@@ -521,7 +532,12 @@ local function MakeMockFrame(frameType, name, parent, template)
     end
     function f:SetAutoFocus(v) self._autoFocus = v end
     function f:SetTextInsets(...) self._insets = { ... } end
+    function f:SetFocus() self._focused = true end
     function f:ClearFocus() self._focused = false end
+    function f:HighlightText() self._highlighted = true end
+    function f:SetMultiLine(v) self._multiLine = v end
+    function f:SetMaxLetters(n) self._maxLetters = n end
+    function f:IsVisible() return self._shown == true end
     function f:SetMinMaxValues(a, b) self._min, self._max = a, b end
     function f:SetValueStep(s) self._step = s end
     function f:SetObeyStepOnDrag(v) self._obeyStep = v end
@@ -633,7 +649,7 @@ end
 
 C_AddOns = {
     GetAddOnMetadata = function(_, field)
-        if field == "Version" then return "2.0.0" end
+        if field == "Version" then return "3.0.1" end
         if field == "Interface" then return "16001, 120105" end
         return nil
     end,
@@ -729,6 +745,16 @@ C_UnitAuras = {
 C_Item = {
     GetDetailedItemLevelInfo = function(itemID)
         return (_G.__FS_MOCK.itemLevels or {})[itemID]
+    end,
+    GetItemInfoInstant = function(itemID)
+        local icons = _G.__FS_MOCK.itemIcons or {}
+        if icons[itemID] then
+            return itemID, "Armor", "Cloth", "INVTYPE_HEAD", icons[itemID], 4, 1
+        end
+        if type(itemID) == "number" and itemID > 0 then
+            return itemID, "Item", "Item", "", 134400 + (itemID % 50), 0, 0
+        end
+        return nil
     end,
     GetItemInfo = function(itemID)
         if itemID == 6256 then

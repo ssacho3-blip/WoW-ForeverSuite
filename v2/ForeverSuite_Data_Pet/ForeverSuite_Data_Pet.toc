@@ -1,10 +1,11 @@
 ## Interface: 16001, 120105
 ## Title: |cffd4af37Forever|rSuite · Hunter Pet DB (LoD)
-## Notes: ForeverSuite LoadOnDemand 사냥꾼 야수 길들이기·다중 서식지·기술 전체 DB
+## Notes: ForeverSuite LoadOnDemand 사냥꾼 야수 길들이기·다중 서식지·기술·등급 전체 DB
 ## Author: Youngseo Cho (Derived from local personal archive)
-## Version: 2.2.0
+## Version: 4.0.0
 ## LoadOnDemand: 1
 ## Dependencies: ForeverSuite
 
 Pack_hunter_pets_01.lua
 Pack_hunter_pets_02.lua
+Pack_pet_abilities_01.lua

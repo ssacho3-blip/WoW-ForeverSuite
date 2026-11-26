@@ -1,0 +1,13 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Quest Routes, Tips & Growth DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 퀘스트 대화 루트·상호작용·수집 알림·호위·퀵팁·성장 가이드 전체 DB
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 4.0.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_quest_routes_01.lua
+Pack_quest_routes_02.lua
+Pack_quest_collection_01.lua
+Pack_quest_starters_01.lua
+Pack_quest_tips_01.lua

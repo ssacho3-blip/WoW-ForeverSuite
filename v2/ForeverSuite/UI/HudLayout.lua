@@ -13,11 +13,44 @@ local GRID_STEP = 4
 local HudLayout = {
     unlocked = false,
     registry = {},
+    controlBar = nil,
 }
 ns.UI.HudLayout = HudLayout
 
 local function Snap(v)
     return math_floor(((v or 0) / GRID_STEP) + 0.5) * GRID_STEP
+end
+
+local function EnsureControlBar()
+    if HudLayout.controlBar then
+        return HudLayout.controlBar
+    end
+    local W = ns.UI.Widgets
+    local bar = W.Card(_G.UIParent, 464, 42, "ForeverSuiteV3HudEditBar", T.ELEVATION.L3_OVERLAY)
+    bar:SetPoint("TOP", _G.UIParent, "TOP", 0, -24)
+    W.SetBorderColor(bar, T.BORDER.GOLD)
+
+    local lbl = W.Label(bar, "✦ HUD 배치 편집 모드 · 드래그하여 4px 그리드 정렬", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    lbl:SetPoint("LEFT", bar, "LEFT", 12, 0)
+
+    local doneBtn = W.Button(bar, "✓ 저장 및 잠금", 104, 24, function()
+        HudLayout:SetUnlocked(false)
+        ns.Api.SafeAPI.Print("HUD 위치를 저장하고 잠갔습니다.")
+    end, true)
+    doneBtn:SetPoint("RIGHT", bar, "RIGHT", -8, 0)
+
+    local resetBtn = W.Button(bar, "기본 초기화", 84, 24, function()
+        HudLayout:ResetAll()
+        ns.Api.SafeAPI.Print("모든 HUD 위치를 기본 그리드로 초기화했습니다.")
+    end)
+    resetBtn:SetPoint("RIGHT", doneBtn, "LEFT", -6, 0)
+
+    bar._label = lbl
+    bar._doneBtn = doneBtn
+    bar._resetBtn = resetBtn
+    bar:Hide()
+    HudLayout.controlBar = bar
+    return bar
 end
 
 local function EnsureDragOverlay(rec)
@@ -124,17 +157,47 @@ function HudLayout:Nudge(id, dx, dy)
     return true
 end
 
+function HudLayout:IsUnlocked()
+    return self.unlocked == true
+end
+
 function HudLayout:SetUnlocked(flag)
-    self.unlocked = flag and true or false
+    local nextState = flag and true or false
+    if nextState and ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    local wasUnlocked = self.unlocked
+    self.unlocked = nextState
+    local bar = EnsureControlBar()
+    if self.unlocked then
+        bar:Show()
+    else
+        bar:Hide()
+    end
     for _, rec in pairs(self.registry) do
         local f = rec.frame
         if f.SetMovable then f:SetMovable(self.unlocked) end
         local ov = EnsureDragOverlay(rec)
         if self.unlocked then
+            if not wasUnlocked then
+                rec._wasShownBeforeUnlock = (type(f.IsShown) == "function" and f:IsShown()) and true or false
+            end
+            -- Preview-show inactive/hidden HUDs so users can position every HUD cleanly
+            if type(f.IsShown) == "function" and not f:IsShown() then
+                f:Show()
+            end
             ov:Show()
         else
+            if type(f.StopMovingOrSizing) == "function" then f:StopMovingOrSizing() end
             ov:Hide()
+            if wasUnlocked and rec._wasShownBeforeUnlock == false then
+                f:Hide()
+            end
+            rec._wasShownBeforeUnlock = nil
         end
+    end
+    if wasUnlocked and (not self.unlocked) and ns.Api and ns.Api.EventBus then
+        ns.Api.EventBus:Publish("hud:layout_locked")
     end
     return self.unlocked
 end

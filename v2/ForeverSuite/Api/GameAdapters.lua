@@ -1355,3 +1355,469 @@ function GameAdapters.GetTradeSnapshot()
         receivedItems = table.concat(rItems, ", "),
     }
 end
+
+-- v3.0: Built-in WoW icon & safe whisper/link helpers (0-KB asset strategy; secret-safe input checks first)
+function GameAdapters.GetItemIconSafe(itemID)
+    if SafeAPI.IsSecret(itemID) or type(itemID) ~= "number" or itemID <= 0 then
+        return nil
+    end
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        local ok, _, _, _, _, icon = pcall(C_Item.GetItemInfoInstant, itemID)
+        if ok and (not SafeAPI.IsSecret(icon)) and (type(icon) == "number" or (type(icon) == "string" and icon ~= "")) then
+            return icon
+        end
+    end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, _, _, _, _, _, _, _, _, _, icon = pcall(C_Item.GetItemInfo, itemID)
+        if ok and (not SafeAPI.IsSecret(icon)) and (type(icon) == "number" or (type(icon) == "string" and icon ~= "")) then
+            return icon
+        end
+    end
+    return nil
+end
+
+function GameAdapters.GetSpellIconSafe(spellID)
+    if SafeAPI.IsSecret(spellID) or type(spellID) ~= "number" or spellID <= 0 then
+        return nil
+    end
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local info = SafeAPI.SafeRead(C_Spell.GetSpellInfo, spellID)
+        if info ~= UNAVAILABLE and type(info) == "table" and not SafeAPI.IsSecret(info.iconID) then
+            if type(info.iconID) == "number" or (type(info.iconID) == "string" and info.iconID ~= "") then
+                return info.iconID
+            end
+        end
+    end
+    return nil
+end
+
+function GameAdapters.GetItemLinkSafe(itemID)
+    if SafeAPI.IsSecret(itemID) or type(itemID) ~= "number" or itemID <= 0 then
+        return nil
+    end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, _, link = pcall(C_Item.GetItemInfo, itemID)
+        if ok and (not SafeAPI.IsSecret(link)) and type(link) == "string" and link ~= "" then
+            return link
+        end
+    end
+    if C_Item and type(C_Item.RequestLoadItemDataByID) == "function" then
+        pcall(C_Item.RequestLoadItemDataByID, itemID)
+    end
+    return nil
+end
+
+function GameAdapters.InsertItemChatLink(itemID)
+    local link = GameAdapters.GetItemLinkSafe(itemID)
+    if not link then return false end
+    if type(_G.ChatEdit_InsertLink) == "function" then
+        local ok, res = pcall(_G.ChatEdit_InsertLink, link)
+        if ok and res ~= false then return true end
+    end
+    local edit = (type(_G.ChatEdit_GetActiveWindow) == "function") and SafeAPI.SafeRead(_G.ChatEdit_GetActiveWindow) or nil
+    if edit and edit ~= UNAVAILABLE and type(edit.Insert) == "function" then
+        return pcall(edit.Insert, edit, link) and true or false
+    end
+    return false
+end
+
+-- Opens WoW chat input pre-filled with `/w <sender> <prefill>` without auto-sending (zero spam, zero taint).
+-- Strictly verifies the active chat edit box received the exact draft (supporting both Blizzard FrameXML deferred
+-- setText=1/text=draft and immediate GetText()==draft); fails closed so caller opens CopyPasteModal if unverified.
+function GameAdapters.OpenWhisperDraftSafe(sender, prefillText)
+    if SafeAPI.IsSecret(sender) or type(sender) ~= "string" or sender == "" then
+        return false, "INVALID_SENDER"
+    end
+    if SafeAPI.IsSecret(prefillText) then
+        return false, "SECRET_TEXT"
+    end
+    local cleanSender = string.gsub(sender, "[|%c]", "")
+    local msg = (type(prefillText) == "string" and prefillText ~= "") and string.gsub(prefillText, "[|%c]", "") or ""
+    local draft = "/w " .. cleanSender .. " " .. msg
+    if type(_G.ChatFrame_OpenChat) ~= "function" or type(_G.ChatEdit_GetActiveWindow) ~= "function" then
+        return false, "UNSUPPORTED"
+    end
+    local ok = pcall(_G.ChatFrame_OpenChat, draft)
+    if not ok then
+        return false, "OPEN_FAILED"
+    end
+    local edit = SafeAPI.SafeRead(_G.ChatEdit_GetActiveWindow)
+    if type(edit) ~= "table" or edit == UNAVAILABLE then
+        return false, "NOT_OPENED"
+    end
+    if (not SafeAPI.IsSecret(edit.setText)) and edit.setText == 1
+        and (not SafeAPI.IsSecret(edit.text)) and edit.text == draft
+    then
+        return true, "OPENED"
+    end
+    if type(edit.GetText) == "function" then
+        local okT, txt = pcall(edit.GetText, edit)
+        if okT and (not SafeAPI.IsSecret(txt)) and type(txt) == "string" and txt == draft then
+            return true, "OPENED"
+        end
+    end
+    return false, "DRAFT_MISMATCH"
+end
+
+-- Returns detailed equipped item info map { [slotId] = { itemID, name, ilvl, icon, quality } } for BiS 2-pane comparison.
+-- Resolves effective item level from full equipped item link (preserving instance modifiers) before falling back to itemID.
+function GameAdapters.GetEquippedItemInfoMap()
+    local map = {}
+    if type(_G.GetInventoryItemID) ~= "function" then
+        return map
+    end
+    for slotId = 1, 18 do
+        local itemID = SafeAPI.SafeRead(_G.GetInventoryItemID, "player", slotId)
+        if (not SafeAPI.IsSecret(itemID)) and itemID ~= UNAVAILABLE and type(itemID) == "number" and itemID > 0 then
+            local link = nil
+            if type(_G.GetInventoryItemLink) == "function" then
+                local rawLink = SafeAPI.SafeRead(_G.GetInventoryItemLink, "player", slotId)
+                if (not SafeAPI.IsSecret(rawLink)) and rawLink ~= UNAVAILABLE and type(rawLink) == "string" and rawLink ~= "" then
+                    link = rawLink
+                end
+            end
+            local ilvl = nil
+            if link and C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
+                local v = SafeAPI.SafeRead(C_Item.GetDetailedItemLevelInfo, link)
+                if (not SafeAPI.IsSecret(v)) and v ~= UNAVAILABLE and type(v) == "number" and v > 0 then
+                    ilvl = v
+                end
+            end
+            if ilvl == nil then
+                ilvl = GameAdapters.GetItemLevel(itemID)
+            end
+            local icon = GameAdapters.GetItemIconSafe(itemID)
+            local name, quality = nil, nil
+            local queryRef = link or itemID
+            if C_Item and type(C_Item.GetItemInfo) == "function" then
+                local ok, n, _, q = pcall(C_Item.GetItemInfo, queryRef)
+                if ok then
+                    if not SafeAPI.IsSecret(n) and type(n) == "string" then name = n end
+                    if not SafeAPI.IsSecret(q) and type(q) == "number" then quality = q end
+                end
+            end
+            local key = (slotId == 12) and 11 or ((slotId == 14) and 13 or slotId)
+            local cur = map[key]
+            local shouldReplace = false
+            if not cur then
+                shouldReplace = true
+            elseif cur.ilvl == nil and type(ilvl) == "number" then
+                shouldReplace = true
+            elseif type(cur.ilvl) == "number" and type(ilvl) == "number" and ilvl < cur.ilvl then
+                shouldReplace = true
+            end
+            if shouldReplace then
+                map[key] = {
+                    itemID = itemID,
+                    name = name or ("#" .. tostring(itemID)),
+                    ilvl = ilvl,
+                    icon = icon,
+                    quality = quality,
+                }
+            end
+        end
+    end
+    return map
+end
+
+function GameAdapters.GetPlayerXPSnapshot()
+    local cur = (type(_G.UnitXP) == "function") and SafeAPI.SafeRead(_G.UnitXP, "player") or UNAVAILABLE
+    local maxV = (type(_G.UnitXPMax) == "function") and SafeAPI.SafeRead(_G.UnitXPMax, "player") or UNAVAILABLE
+    if cur == UNAVAILABLE or maxV == UNAVAILABLE or type(cur) ~= "number" or type(maxV) ~= "number" or maxV <= 0 then
+        return nil
+    end
+    local rest = (type(_G.GetXPExhaustion) == "function") and SafeAPI.SafeRead(_G.GetXPExhaustion) or UNAVAILABLE
+    local restNum = (rest ~= UNAVAILABLE and type(rest) == "number" and rest > 0) and rest or 0
+    return {
+        xp = cur,
+        xpMax = maxV,
+        xpPct = math.floor((cur / maxV) * 100 + 0.5),
+        restedPct = math.floor((restNum / maxV) * 100 + 0.5),
+    }
+end
+
+-- B7: Secret-safe loot roll item inspector for Roll Preview
+function GameAdapters.GetLootRollItemSafe(rollID)
+    if SafeAPI.IsSecret(rollID) or type(rollID) ~= "number" or rollID <= 0 then
+        return nil
+    end
+    local link = (type(_G.GetLootRollItemLink) == "function") and SafeAPI.SafeRead(_G.GetLootRollItemLink, rollID) or UNAVAILABLE
+    if link == UNAVAILABLE or type(link) ~= "string" or link == "" then
+        return nil
+    end
+    local idStr = string_match(link, "item:(%d+)")
+    local itemID = idStr and tonumber(idStr) or nil
+    if not itemID or itemID <= 0 then return nil end
+    local name, quality, icon, equipLoc
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, n, _, q, _, _, _, _, _, eq, ic = pcall(C_Item.GetItemInfo, link)
+        if ok then
+            if not SafeAPI.IsSecret(n) and type(n) == "string" then name = n end
+            if not SafeAPI.IsSecret(q) and type(q) == "number" then quality = q end
+            if not SafeAPI.IsSecret(eq) and type(eq) == "string" then equipLoc = eq end
+            if not SafeAPI.IsSecret(ic) then icon = ic end
+        end
+    end
+    local ilvl = GameAdapters.GetItemLevel(itemID)
+    return {
+        rollID = rollID,
+        itemID = itemID,
+        link = link,
+        name = name or ("#" .. tostring(itemID)),
+        quality = quality,
+        itemLevel = ilvl,
+        equipLoc = equipLoc,
+        icon = icon or GameAdapters.GetItemIconSafe(itemID),
+    }
+end
+
+-- I7: Play notification sound file (ForeverSuite_Media_Assets) or built-in SoundKitID safely without touching CVars
+function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel)
+    local ch = (channel == "Master") and "Master" or "SFX"
+    if type(soundKey) == "number" and soundKey > 0 and type(_G.PlaySound) == "function" then
+        return pcall(_G.PlaySound, soundKey, ch) and true or false
+    end
+    if type(soundKey) ~= "string" or soundKey == "" or soundKey == "none" then
+        return false
+    end
+    if soundKey == "raid_warning" and type(_G.PlaySound) == "function" then
+        return pcall(_G.PlaySound, 8959, ch) and true or false
+    end
+    if soundKey == "quest_complete" and type(_G.PlaySound) == "function" then
+        return pcall(_G.PlaySound, 619, ch) and true or false
+    end
+    if type(_G.PlaySoundFile) == "function" then
+        local vol = tonumber(volumePct) or 75
+        local step = (vol <= 35) and 25 or ((vol <= 62) and 50 or ((vol <= 87) and 75 or 100))
+        local path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Notifications\\" .. soundKey .. "_" .. tostring(step) .. ".ogg"
+        local ok = pcall(_G.PlaySoundFile, path, ch)
+        if ok then return true end
+    end
+    if type(_G.PlaySound) == "function" then
+        return pcall(_G.PlaySound, 8959, ch) and true or false
+    end
+    return false
+end
+
+-- D7: Safe addon-message channel for Party Quest Sync (C_ChatInfo.RegisterAddonMessagePrefix / SendAddonMessage)
+function GameAdapters.RegisterAddonPrefixSafe(prefix)
+    if type(prefix) ~= "string" or prefix == "" then return false end
+    if C_ChatInfo and type(C_ChatInfo.RegisterAddonMessagePrefix) == "function" then
+        local ok = pcall(C_ChatInfo.RegisterAddonMessagePrefix, prefix)
+        return ok and true or false
+    end
+    return false
+end
+
+function GameAdapters.SendAddonMessageSafe(prefix, payload, channel)
+    if SafeAPI.InCombat() or GameAdapters.IsChatMessagingLocked() then
+        return false, "LOCKED"
+    end
+    if type(prefix) ~= "string" or type(payload) ~= "string" or #payload > 240 then
+        return false, "INVALID"
+    end
+    local ch = channel or (GameAdapters.IsInRaidSafe() and "RAID" or (GameAdapters.IsInGroupSafe() and "PARTY" or nil))
+    if not ch then return false, "NO_GROUP" end
+    if C_ChatInfo and type(C_ChatInfo.SendAddonMessage) == "function" then
+        local ok = pcall(C_ChatInfo.SendAddonMessage, prefix, payload, ch)
+        return ok and true or false, ok and "SENT" or "FAILED"
+    end
+    return false, "UNSUPPORTED"
+end
+
+-- F5: Read-only Bag + Bank item count scan (zero bag UI conflict with Baganator/Syndicator!)
+function GameAdapters.ScanBagsAndBankCounts(includeBank)
+    local counts = {}
+    if not (C_Container and type(C_Container.GetContainerNumSlots) == "function" and type(C_Container.GetContainerItemInfo) == "function") then
+        return counts
+    end
+    local function ScanBag(bag)
+        local n = SafeAPI.SafeRead(C_Container.GetContainerNumSlots, bag)
+        if n == UNAVAILABLE or type(n) ~= "number" or n <= 0 then return end
+        for slot = 1, n do
+            local info = SafeAPI.SafeRead(C_Container.GetContainerItemInfo, bag, slot)
+            if info ~= UNAVAILABLE and type(info) == "table" and not SafeAPI.IsSecret(info.itemID) and type(info.itemID) == "number" and info.itemID > 0 then
+                local qty = (not SafeAPI.IsSecret(info.stackCount) and type(info.stackCount) == "number" and info.stackCount > 0) and info.stackCount or 1
+                counts[info.itemID] = (counts[info.itemID] or 0) + qty
+            end
+        end
+    end
+    for bag = 0, 4 do ScanBag(bag) end
+    if includeBank then
+        ScanBag(-1)
+        for bag = 5, 11 do ScanBag(bag) end
+    end
+    return counts
+end
+
+-- I3: Spell-based target range check (C_Spell.IsSpellInRange)
+function GameAdapters.IsSpellInRangeSafe(spellID, unit)
+    if type(spellID) ~= "number" or spellID <= 0 then return nil end
+    if C_Spell and type(C_Spell.IsSpellInRange) == "function" then
+        local v = SafeAPI.SafeRead(C_Spell.IsSpellInRange, spellID, unit or "target")
+        if v == UNAVAILABLE then return nil end
+        return IsTruthy(v)
+    end
+    return nil
+end
+
+-- I6: Spell cooldown reader (C_Spell.GetSpellCooldown, secret-safe)
+function GameAdapters.GetSpellCooldownSafe(spellID)
+    if type(spellID) ~= "number" or spellID <= 0 then return nil end
+    if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
+        local cd = SafeAPI.SafeRead(C_Spell.GetSpellCooldown, spellID)
+        if cd ~= UNAVAILABLE and type(cd) == "table"
+            and (not SafeAPI.IsSecret(cd.startTime)) and (not SafeAPI.IsSecret(cd.duration))
+            and type(cd.startTime) == "number" and type(cd.duration) == "number"
+        then
+            return cd.startTime, cd.duration, (not SafeAPI.IsSecret(cd.isEnabled)) and IsTruthy(cd.isEnabled) or true
+        end
+    end
+    return nil
+end
+
+-- F2: Fishing skill level & main-hand lure duration reader
+function GameAdapters.GetFishingStatusSafe()
+    local hasLure, lureMs = false, 0
+    if type(_G.GetWeaponEnchantInfo) == "function" then
+        local ok, mh, mhExp = pcall(_G.GetWeaponEnchantInfo)
+        if ok and (not SafeAPI.IsSecret(mh)) and IsTruthy(mh) then
+            hasLure = true
+            if (not SafeAPI.IsSecret(mhExp)) and type(mhExp) == "number" and mhExp > 0 then
+                lureMs = mhExp
+            end
+        end
+    end
+    local skill, maxSkill = nil, nil
+    if type(_G.GetNumSkillLines) == "function" and type(_G.GetSkillLineInfo) == "function" then
+        local n = SafeAPI.SafeRead(_G.GetNumSkillLines)
+        if n ~= UNAVAILABLE and type(n) == "number" then
+            for i = 1, n do
+                local ok, sName, isHdr, _, sRank, _, _, sMax = pcall(_G.GetSkillLineInfo, i)
+                if ok and (not SafeAPI.IsSecret(sName)) and not isHdr
+                    and (sName == "낚시" or sName == "Fishing")
+                then
+                    if not SafeAPI.IsSecret(sRank) and type(sRank) == "number" then skill = sRank end
+                    if not SafeAPI.IsSecret(sMax) and type(sMax) == "number" then maxSkill = sMax end
+                    break
+                end
+            end
+        end
+    end
+    return {
+        hasLure = hasLure,
+        lureSec = math.floor(lureMs / 1000),
+        skill = skill,
+        maxSkill = maxSkill,
+    }
+end
+
+-- A7: Safe OOC ActionBar snapshot & restore + EditMode export/import + Chat window layout
+function GameAdapters.SnapshotActionBarSafe(maxSlot)
+    local cap = (type(maxSlot) == "number" and maxSlot > 0 and maxSlot <= 120) and maxSlot or 72
+    if type(_G.GetActionInfo) ~= "function" then return {} end
+    local snap = {}
+    for slot = 1, cap do
+        local ok, kind, id, sub = pcall(_G.GetActionInfo, slot)
+        if ok and (not SafeAPI.IsSecret(kind)) and (not SafeAPI.IsSecret(id))
+            and (kind == "spell" or kind == "item" or kind == "macro") and id
+        then
+            snap[slot] = { kind = kind, id = id, sub = (not SafeAPI.IsSecret(sub)) and sub or nil }
+        end
+    end
+    return snap
+end
+
+function GameAdapters.RestoreActionBarSafe(snap)
+    if SafeAPI.InCombat() then return false, "IN_COMBAT" end
+    if type(snap) ~= "table" or type(_G.PlaceAction) ~= "function" then return false, "UNSUPPORTED" end
+    local restored = 0
+    for slot, rec in pairs(snap) do
+        if type(slot) == "number" and slot >= 1 and slot <= 120 and type(rec) == "table" then
+            local picked = false
+            if rec.kind == "spell" and type(_G.PickupSpell) == "function" then
+                picked = pcall(_G.PickupSpell, rec.id)
+            elseif rec.kind == "item" and type(_G.PickupItem) == "function" then
+                picked = pcall(_G.PickupItem, rec.id)
+            elseif rec.kind == "macro" and type(_G.PickupMacro) == "function" then
+                picked = pcall(_G.PickupMacro, rec.id)
+            end
+            if picked then
+                pcall(_G.PlaceAction, slot)
+                if type(_G.ClearCursor) == "function" then pcall(_G.ClearCursor) end
+                restored = restored + 1
+            end
+        end
+    end
+    return true, restored
+end
+
+function GameAdapters.ExportEditModeStringSafe()
+    if SafeAPI.InCombat() then return nil, "IN_COMBAT" end
+    if not (C_EditMode and type(C_EditMode.GetLayouts) == "function" and type(C_EditMode.ConvertLayoutInfoToString) == "function") then
+        return nil, "UNSUPPORTED"
+    end
+    local layouts = SafeAPI.SafeRead(C_EditMode.GetLayouts)
+    if layouts == UNAVAILABLE or type(layouts) ~= "table" or type(layouts.layouts) ~= "table" then
+        return nil, "NO_LAYOUTS"
+    end
+    local activeIdx = layouts.activeLayout or 1
+    local info = layouts.layouts[activeIdx] or layouts.layouts[1]
+    if type(info) ~= "table" then return nil, "NO_ACTIVE_LAYOUT" end
+    local str = SafeAPI.SafeRead(C_EditMode.ConvertLayoutInfoToString, info)
+    if str == UNAVAILABLE or type(str) ~= "string" or str == "" then return nil, "ENCODE_FAILED" end
+    return str, "OK"
+end
+
+function GameAdapters.ImportEditModeStringSafe(layoutStr, layoutName)
+    if SafeAPI.InCombat() then return false, "IN_COMBAT" end
+    if type(layoutStr) ~= "string" or layoutStr == "" then return false, "EMPTY" end
+    if not (C_EditMode and type(C_EditMode.ConvertStringToLayoutInfo) == "function"
+        and type(C_EditMode.GetLayouts) == "function" and type(C_EditMode.SaveLayouts) == "function")
+    then
+        return false, "UNSUPPORTED"
+    end
+    local info = SafeAPI.SafeRead(C_EditMode.ConvertStringToLayoutInfo, layoutStr)
+    if info == UNAVAILABLE or type(info) ~= "table" then return false, "INVALID_STRING" end
+    info.layoutName = (type(layoutName) == "string" and layoutName ~= "") and layoutName or "ForeverSuite"
+    local layouts = SafeAPI.SafeRead(C_EditMode.GetLayouts)
+    if layouts == UNAVAILABLE or type(layouts) ~= "table" then return false, "NO_LAYOUTS" end
+    layouts.layouts = layouts.layouts or {}
+    layouts.layouts[#layouts.layouts + 1] = info
+    local ok = pcall(C_EditMode.SaveLayouts, layouts)
+    return ok and true or false, ok and "IMPORTED" or "SAVE_FAILED"
+end
+
+-- G4/G5: Safe channel join & chat font size
+function GameAdapters.JoinChannelSafe(channelName)
+    if SafeAPI.InCombat() or type(channelName) ~= "string" or channelName == "" then return false end
+    if type(_G.JoinPermanentChannel) == "function" then
+        return pcall(_G.JoinPermanentChannel, channelName) and true or false
+    end
+    if type(_G.JoinChannelByName) == "function" then
+        return pcall(_G.JoinChannelByName, channelName) and true or false
+    end
+    return false
+end
+
+function GameAdapters.SetChatFontSizeSafe(size)
+    if SafeAPI.InCombat() then return false, "IN_COMBAT" end
+    local sz = tonumber(size)
+    if not sz or sz < 10 or sz > 24 then return false, "INVALID_SIZE" end
+    local applied = 0
+    local maxW = _G.NUM_CHAT_WINDOWS or 10
+    for i = 1, maxW do
+        local cf = _G["ChatFrame" .. tostring(i)]
+        if cf then
+            if type(_G.FCF_SetChatWindowFontSize) == "function" then
+                if pcall(_G.FCF_SetChatWindowFontSize, nil, cf, sz) then applied = applied + 1 end
+            elseif type(cf.SetFont) == "function" and type(cf.GetFont) == "function" then
+                local ok, p, _, fl = pcall(cf.GetFont, cf)
+                if ok and type(p) == "string" and pcall(cf.SetFont, cf, p, sz, fl or "") then
+                    applied = applied + 1
+                end
+            end
+        end
+    end
+    return applied > 0, applied
+end

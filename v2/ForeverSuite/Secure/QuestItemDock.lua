@@ -70,7 +70,8 @@ function QuestItemDock:EnsureButtons()
         icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
         btn._icon = icon
 
-        local badge = btn:CreateFontString(nil, "OVERLAY", "FS_Font_Small")
+        local fontObj = (_G.FS_Font_Small ~= nil) and "FS_Font_Small" or "GameFontNormalSmall"
+        local badge = btn:CreateFontString(nil, "OVERLAY", fontObj)
         badge:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
         badge:SetText(tostring(i))
         badge:SetTextColor(0.95, 0.85, 0.35, 1)

@@ -162,7 +162,7 @@ local DEFAULT_SCHEMAS = {
         type = "boolean",
         default = true,
         label = "회색 잡템 자동 판매 (12개 바이백 상한)",
-        desc = "/fs2 protect 보호 목록 제외",
+        desc = "/fs protect 보호 목록 제외",
         combatSafe = true,
     },
     {
@@ -198,7 +198,7 @@ local DEFAULT_SCHEMAS = {
         type = "boolean",
         default = true,
         label = "전투·보스·인던 타이머 & 풀링 카운트다운 HUD",
-        desc = "/fs2 pull 10 및 /fs2 timer 지원",
+        desc = "/fs pull 10 및 /fs timer 지원",
         combatSafe = true,
     },
     {
@@ -344,6 +344,8 @@ local DEFAULT_SCHEMAS = {
             { value = "default_kr", label = "기본 고딕", width = 80 },
             { value = "bold_kr", label = "굵은 고딕", width = 80 },
             { value = "pagetext_kr", label = "명조체", width = 72 },
+            { value = "damage_kr", label = "전투 숫자", width = 80 },
+            { value = "clean_en", label = "영문 고딕", width = 80 },
         },
     },
     {
@@ -423,6 +425,208 @@ local DEFAULT_SCHEMAS = {
         desc = "비전투 파티 한정 (공격대·로그인 시 자동 억제)",
         combatSafe = true,
     },
+    {
+        section = "ui",
+        key = "cursorTooltip",
+        type = "boolean",
+        default = false,
+        label = "마우스 커서 위치에 툴팁 표시 (CursorTooltip)",
+        desc = "비전투 시 기본 툴팁을 커서 옆에 고정합니다",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "tooltipItemSources",
+        type = "boolean",
+        default = true,
+        label = "툴팁에 던전 드랍처 · BiS 추천 · 전문기술 재료 출처 표시",
+        desc = "로드된 LoD 도감에서 아이템 출처를 자동 표시",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "tooltipTranslation",
+        type = "boolean",
+        default = true,
+        label = "아이템·툴팁 영한 번역 보조 표시",
+        desc = "ForeverSuite_Data_Items 영한 번역 사전 연동",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "showDungeonQuickLoot",
+        type = "boolean",
+        default = true,
+        label = "던전 내부 빠른 드랍 팝업 버튼 표시",
+        desc = "던전 입장 시 1클릭 보스 드랍 확인 버튼 표시",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "showRollPreview",
+        type = "boolean",
+        default = true,
+        label = "전리품 주사위 굴림 시 iLvl·BiS 미리보기 토스트",
+        desc = "착용 장비 대비 업그레이드·BiS 여부 즉시 안내",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "navArrowStyle",
+        type = "enum",
+        default = "classic",
+        label = "내비게이션 화살표 스타일 (ForeverSuite_Media_Assets)",
+        desc = "클래식 라운드 / 나침반 / 쐐기 3D / 문장 / 창날 / 심플",
+        combatSafe = true,
+        options = {
+            { value = "classic", label = "클래식", width = 62 },
+            { value = "compass", label = "나침반", width = 62 },
+            { value = "wedge",   label = "쐐기3D", width = 64 },
+            { value = "crest",   label = "문장",   width = 52 },
+            { value = "spear",   label = "창날",   width = 52 },
+            { value = "minimal", label = "심플",   width = 52 },
+        },
+    },
+    {
+        section = "ui",
+        key = "worldMapReveal",
+        type = "boolean",
+        default = false,
+        label = "월드맵 미탐험 지역 안개 밝히기 오버레이 (Zero-Taint)",
+        desc = "UIParent 오버레이 레이어에 미탐험 구역 표시",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "worldMapHeatmap",
+        type = "boolean",
+        default = false,
+        label = "월드맵 채집(약초·광맥) 밀도 히트맵 표시",
+        desc = "ForeverSuite_Data_MapExtra 채집 밀도 오버레이",
+        combatSafe = true,
+    },
+    {
+        section = "profession",
+        key = "fishingDoubleClick",
+        type = "boolean",
+        default = false,
+        label = "낚싯대 장착 시 비전투 우클릭 자동 낚시 시전",
+        desc = "SecureActionButtonTemplate 사용 (전투 진입 시 즉시 해제)",
+        combatSafe = false,
+    },
+    {
+        section = "quest",
+        key = "collectionAlerts",
+        type = "boolean",
+        default = true,
+        label = "퀘스트 수집 완료 배너 및 알림음 표시",
+        desc = "퀘스트 목표 완료 시 토스트·알림음 안내",
+        combatSafe = true,
+    },
+    {
+        section = "quest",
+        key = "partyQuestSync",
+        type = "boolean",
+        default = true,
+        label = "파티원 퀘스트 진행도 동기화 (FSQuest4 애드온 메시지)",
+        desc = "비전투 파티 한정 15초 쓰로틀 동기화",
+        combatSafe = true,
+    },
+    {
+        section = "quest",
+        key = "proximityAlerts",
+        type = "boolean",
+        default = true,
+        label = "근처 퀘스트 대화·보고 목표 접근 알림",
+        desc = "진행 중인 퀘스트 특수 목표 근접 시 안내",
+        combatSafe = true,
+    },
+    {
+        section = "qol",
+        key = "growthAlerts",
+        type = "boolean",
+        default = true,
+        label = "레벨업·구간별 성장 이정표 알림 (GrowthAlert)",
+        desc = "10/15/20/30/40/50/60 주요 해금 콘텐츠 안내",
+        combatSafe = true,
+    },
+    {
+        section = "social",
+        key = "partyWatchAlerts",
+        type = "boolean",
+        default = true,
+        label = "파티 찾기 관심 던전·단어 팝업 알림 (/fs watch 단어)",
+        desc = "허브가 닫혀 있어도 일치 모집글 즉시 알림",
+        combatSafe = true,
+    },
+    {
+        section = "social",
+        key = "showChatButtons",
+        type = "boolean",
+        default = false,
+        label = "채팅 빠른 채널 버튼 바 표시 ([일반][파티][공대][길드][파찾])",
+        desc = "/fs move 로 위치 이동 가능",
+        combatSafe = true,
+    },
+    {
+        section = "combat",
+        key = "showProcAlerts",
+        type = "boolean",
+        default = true,
+        label = "전투 발동(Proc) 경보 배너 HUD (일몰·화살탄막·청명 등)",
+        desc = "발동 버프 감지 시 화면 배너·알림음 표시",
+        combatSafe = true,
+    },
+    {
+        section = "combat",
+        key = "showSkillCooldowns",
+        type = "boolean",
+        default = true,
+        label = "직업 주요 쿨다운 추적 HUD (SkillCooldowns)",
+        desc = "재사용 대기 중인 주요 생존기·공격기 남은 초 표시",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "cursorColor",
+        type = "enum",
+        default = "gold",
+        label = "마우스 커서 FX 색상",
+        desc = "골드 / 시안 / 에메랄드 / 크림슨",
+        combatSafe = true,
+        options = {
+            { value = "gold",    label = "골드",    width = 62 },
+            { value = "cyan",    label = "시안",    width = 62 },
+            { value = "emerald", label = "에메랄드", width = 76 },
+            { value = "crimson", label = "크림슨",  width = 68 },
+        },
+    },
+    {
+        section = "ui",
+        key = "alertSoundKey",
+        type = "enum",
+        default = "dingdong",
+        label = "통합 알림음 선택 (ForeverSuite_Media_Assets)",
+        desc = "띵동 / 하이톤 오이쉬 / 돈통소리 / 빅토리 / 경보 / 끄기",
+        combatSafe = true,
+        options = {
+            { value = "dingdong",       label = "띵동",    width = 56 },
+            { value = "oishii_high",    label = "오이쉬",  width = 62 },
+            { value = "cash",           label = "돈통",    width = 56 },
+            { value = "victory",        label = "빅토리",  width = 62 },
+            { value = "quest_complete", label = "퀘완료",  width = 62 },
+            { value = "none",           label = "무음",    width = 52 },
+        },
+    },
+    {
+        section = "qol",
+        key = "captureLuaErrors",
+        type = "boolean",
+        default = false,
+        label = "인앱 Lua 오류 로그 캡처 활성화 (BugSack 공존)",
+        desc = "진단 페이지에서 최근 30건 오류 리포트 복사 지원",
+        combatSafe = true,
+    },
 }
 
 local Bootstrap = {
@@ -464,23 +668,34 @@ function Bootstrap:Init()
     ns.Api.ProfileStore:RegisterSchema(DEFAULT_SCHEMAS)
     ns.Api.ProfileStore:Init()
 
-    -- Register L2 Command Hub workspace pages (full GodJohnson parity workspaces)
-    ns.UI.CommandHub:RegisterPage(ns.Features.DiagnosticsPage)
+    -- Register L2 Command Hub workspace pages (v3.0 4-Group Unified Hub; Home is default landing)
+    ns.UI.CommandHub:RegisterPage(ns.Features.HomePage)
+    ns.UI.CommandHub:RegisterPage(ns.Features.PartyFinderPage)
+    ns.UI.CommandHub:RegisterPage(ns.Features.QuestGuidePage)
     ns.UI.CommandHub:RegisterPage(ns.Features.DungeonBrowserPage)
     ns.UI.CommandHub:RegisterPage(ns.Features.BiSBrowserPage)
-    ns.UI.CommandHub:RegisterPage(ns.Features.ProfessionPage)
-    ns.UI.CommandHub:RegisterPage(ns.Features.QuestGuidePage)
     ns.UI.CommandHub:RegisterPage(ns.Features.CodexPage)
-    ns.UI.CommandHub:RegisterPage(ns.Features.PartyFinderPage)
+    ns.UI.CommandHub:RegisterPage(ns.Features.ProfessionPage)
     ns.UI.CommandHub:RegisterPage(ns.Features.UtilitiesPage)
     ns.UI.CommandHub:RegisterPage(ns.Features.LedgerPage)
-    ns.UI.CommandHub:RegisterPage(ns.Features.FontsPage)
     ns.UI.CommandHub:RegisterPage(ns.Features.SettingsPage)
+    ns.UI.CommandHub:RegisterPage(ns.Features.FontsPage)
+    ns.UI.CommandHub:RegisterPage(ns.Features.DiagnosticsPage)
 
     ns.Blizzard.WorldMapAdapter:Init()
 
     local mode = ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide"
     ApplyTrackerModeSafely(mode)
+
+    ns.Api.EventBus:Subscribe("hud:layout_locked", function()
+        ns.Features.CombatHudPack:RefreshAll()
+        ns.Features.ThreatMeterHud:Refresh()
+        ns.Features.FishingCardHud:Refresh()
+        ns.Features.NavigationHud:Refresh()
+        ns.Features.CombatAssistHud:Refresh()
+        ns.Features.EncounterTimerHud:Refresh()
+        ns.Features.StatusPillHud:ApplyVisibility()
+    end)
 
     ns.Api.EventBus:Subscribe("setting:changed", function(sec, key, val)
         if sec == "quest" and key == "defaultTrackerMode" then
@@ -491,26 +706,35 @@ function Bootstrap:Init()
             ns.Features.QuestTrackerView:UpdateCombatVisuals()
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
-        elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins") then
+        elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins" or key == "worldMapReveal" or key == "worldMapHeatmap") then
             ns.Features.WorldMapOverlay:ApplyVisibility()
         elseif sec == "ui" and key == "showMinimapButton" then
             ns.Features.MinimapButton:ApplyVisibility()
-        elseif sec == "ui" and (key == "showCursorRing" or key == "cursorStyle" or key == "cursorCombatOnly") then
+        elseif sec == "ui" and (key == "showCursorRing" or key == "cursorStyle" or key == "cursorCombatOnly" or key == "cursorColor") then
             ns.Features.CursorTrailHud:ApplyVisibility()
+        elseif sec == "ui" and key == "navArrowStyle" then
+            ns.Features.NavigationHud:Refresh()
         elseif sec == "ui" and key == "showScreenClock" then
             ns.Features.CombatHudPack:RefreshClock()
         elseif sec == "ui" and (key == "fontPreset" or key == "fontOutline") then
             ns.Features.FontsPage:ApplySavedFonts()
+        elseif sec == "social" and key == "showChatButtons" then
+            ns.Features.ChatToolsModule:RefreshChannelBar()
         elseif sec == "combat" and key == "showThreatMeter" then
             ns.Features.ThreatMeterHud:Refresh()
         elseif sec == "combat" and key == "showEncounterTimer" then
             ns.Features.EncounterTimerHud:Refresh()
+        elseif sec == "combat" and (key == "showProcAlerts" or key == "showSkillCooldowns") then
+            ns.Features.ProcCooldownHud:RefreshProcs()
+            ns.Features.ProcCooldownHud:RefreshCooldowns()
         elseif sec == "combat" and (key == "showComboHud" or key == "showRangeHud" or key == "showShortBuffHud") then
             ns.Features.CombatHudPack:RefreshAll()
         elseif sec == "combat" then
             ns.Features.CombatAssistHud:Refresh()
-        elseif sec == "profession" and key == "showFishingCard" then
+        elseif sec == "profession" and (key == "showFishingCard" or key == "fishingDoubleClick") then
             ns.Features.FishingCardHud:Refresh()
+        elseif sec == "qol" and key == "captureLuaErrors" then
+            ns.Features.DiagnosticsPage:InstallErrorCaptureIfEnabled()
         elseif sec == "qol" and key == "corpseGuide" then
             ns.Features.CorpseGuideModule:Refresh()
         elseif sec == "qol" and key == "maxCameraZoom" then
@@ -529,6 +753,7 @@ function Bootstrap:Init()
     ns.Features.ThreatMeterHud:Init()
     ns.Features.CursorTrailHud:Init()
     ns.Features.CombatHudPack:Init()
+    ns.Features.ProcCooldownHud:Init()
     ns.Features.EncounterTimerHud:Init()
     ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     ns.Features.FishingCardHud:Init()
@@ -536,6 +761,8 @@ function Bootstrap:Init()
     ns.Features.MinimapButton:Init()
     ns.Features.TooltipEnhanceModule:Init()
     ns.Features.ChatToolsModule:Init()
+    ns.Features.QuestExtraModule:Init()
+    ns.Features.DiagnosticsPage:InstallErrorCaptureIfEnabled()
     ns.Features.AutoGreetingModule:SyncInitialRoster()
     ns.Features.FontsPage:ApplySavedFonts()
     ns.Features.LedgerPage:SyncFromPlayerMoney()
@@ -571,12 +798,27 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:questLog", "QUEST_LOG_UPDATE", function()
         ns.Features.QuestTrackerView:RefreshLive()
         ns.Features.QuestAnnounceModule:OnQuestLogUpdate()
+        ns.Features.QuestExtraModule:CheckCollectionAlerts()
+        ns.Features.QuestExtraModule:BroadcastPartyQuestSync(false)
+        if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
+            ns.Features.WorldMapOverlay:InvalidatePinCache()
+        end
     end)
     ns.Api.EventBus:OnEvent("v2:superTrack", "SUPER_TRACKING_CHANGED", function()
         ns.Features.QuestTrackerView:RefreshLive()
     end)
     ns.Api.EventBus:OnEvent("v2:bags", "BAG_UPDATE_DELAYED", function()
         ns.Features.StatusPillHud:RefreshLive()
+        ns.Features.ProfessionPage:RecordBagBankMaterials(false)
+    end)
+    ns.Api.EventBus:OnEvent("v4:bankOpen", "BANKFRAME_OPENED", function()
+        ns.Features.ProfessionPage:RecordBagBankMaterials(true)
+    end)
+    ns.Api.EventBus:OnEvent("v4:lootRoll", "START_LOOT_ROLL", function(_, rollID)
+        ns.Features.DungeonBrowserPage:OnStartLootRoll(rollID)
+    end)
+    ns.Api.EventBus:OnEvent("v4:spellCd", "SPELL_UPDATE_COOLDOWN", function()
+        ns.Features.ProcCooldownHud:RefreshCooldowns()
     end)
     ns.Api.EventBus:OnEvent("v2:durability", "UPDATE_INVENTORY_DURABILITY", function()
         ns.Features.StatusPillHud:RefreshLive()
@@ -603,8 +845,11 @@ function Bootstrap:Init()
         ns.Features.QuestAutomation:OnQuestComplete()
     end)
     ns.Api.EventBus:OnEvent("v2:qAccepted", "QUEST_ACCEPTED", function(_, a1, a2)
+        if ns.Api.SafeAPI.IsSecret(a1) or ns.Api.SafeAPI.IsSecret(a2) then return end
         local qid = (type(a2) == "number") and a2 or a1
-        ns.Features.QuestAutomation:OnQuestAccepted(qid)
+        if type(qid) == "number" and qid > 0 then
+            ns.Features.QuestAutomation:OnQuestAccepted(qid)
+        end
     end)
     ns.Api.EventBus:OnEvent("v2:lootReady", "LOOT_READY", function()
         ns.Features.QoLModule:OnLootReady()
@@ -632,10 +877,11 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:xpUpdate", "PLAYER_XP_UPDATE", function()
         ns.Features.QoLModule:SyncSessionXP()
     end)
-    ns.Api.EventBus:OnEvent("v2:levelUp", "PLAYER_LEVEL_UP", function()
+    ns.Api.EventBus:OnEvent("v2:levelUp", "PLAYER_LEVEL_UP", function(_, newLevel)
         ns.Features.QoLModule:SyncSessionXP()
         ns.Features.CharacterAssistModule:CheckTalents(true)
         ns.Features.UtilitiesPage:RecordCurrentCharacter()
+        ns.Features.QuestExtraModule:CheckGrowthMilestone(newLevel)
     end)
     ns.Api.EventBus:OnEvent("v2:encStart", "ENCOUNTER_START", function(_, _, encounterName)
         ns.Features.EncounterTimerHud:OnEncounterStart(encounterName)
@@ -645,13 +891,16 @@ function Bootstrap:Init()
         ns.Features.DungeonBrowserPage:OnBossKilled(encounterName, success)
     end)
     ns.Api.EventBus:OnEvent("v2:aura", "UNIT_AURA", function(_, unit)
+        if ns.Api.SafeAPI.IsSecret(unit) then return end
         if unit == "player" then
             ns.Features.CombatAssistHud:Refresh()
             ns.Features.CombatHudPack:RefreshShortBuffs()
+            ns.Features.ProcCooldownHud:RefreshProcs()
             ns.Features.AutoGreetingModule:OnPlayerAuraChanged()
         end
     end)
     ns.Api.EventBus:OnEvent("v2:power", "UNIT_POWER_UPDATE", function(_, unit)
+        if ns.Api.SafeAPI.IsSecret(unit) then return end
         if unit == "player" then ns.Features.CombatHudPack:RefreshCombo() end
     end)
     ns.Api.EventBus:OnEvent("v2:targetChanged", "PLAYER_TARGET_CHANGED", function()
@@ -680,13 +929,54 @@ function Bootstrap:Init()
         ns.Features.TradeLogModule:OnTradeClosed()
     end)
     ns.Api.EventBus:OnEvent("v2:hp", "UNIT_HEALTH", function(_, unit)
+        if ns.Api.SafeAPI.IsSecret(unit) then return end
         if unit == "player" then ns.Features.CombatAssistHud:Refresh() end
     end)
     ns.Api.EventBus:OnEvent("v2:enchant", "WEAPON_ENCHANT_CHANGED", function()
         ns.Features.CombatAssistHud:Refresh()
     end)
     ns.Api.EventBus:OnEvent("v2:equip", "UNIT_INVENTORY_CHANGED", function(_, unit)
-        if unit == "player" then ns.Features.FishingCardHud:Refresh() end
+        if ns.Api.SafeAPI.IsSecret(unit) then return end
+        if unit == "player" then
+            ns.Features.FishingCardHud:Refresh()
+            if ns.Features.BiSBrowserPage and ns.Features.BiSBrowserPage.host
+                and type(ns.Features.BiSBrowserPage.host.IsVisible) == "function"
+                and ns.Features.BiSBrowserPage.host:IsVisible()
+            then
+                ns.Features.BiSBrowserPage:Render(ns.Features.BiSBrowserPage.lastQuery)
+            end
+        end
+    end)
+    local itemInfoPending = false
+    ns.Api.EventBus:OnEvent("v2:itemInfo", "GET_ITEM_INFO_RECEIVED", function(_, itemID, okFlag)
+        if ns.Api.SafeAPI.IsSecret(itemID) or ns.Api.SafeAPI.IsSecret(okFlag) or okFlag == false then return end
+        if itemInfoPending then return end
+        local bisVis = ns.Features.BiSBrowserPage and ns.Features.BiSBrowserPage.host
+            and type(ns.Features.BiSBrowserPage.host.IsVisible) == "function"
+            and ns.Features.BiSBrowserPage.host:IsVisible()
+        local dungVis = ns.Features.DungeonBrowserPage and ns.Features.DungeonBrowserPage.host
+            and type(ns.Features.DungeonBrowserPage.host.IsVisible) == "function"
+            and ns.Features.DungeonBrowserPage.host:IsVisible()
+        if not (bisVis or dungVis) then return end
+        itemInfoPending = true
+        local function flush()
+            itemInfoPending = false
+            if ns.Features.BiSBrowserPage and ns.Features.BiSBrowserPage.host
+                and type(ns.Features.BiSBrowserPage.host.IsVisible) == "function"
+                and ns.Features.BiSBrowserPage.host:IsVisible()
+            then
+                ns.Features.BiSBrowserPage:Render(ns.Features.BiSBrowserPage.lastQuery)
+            end
+            if ns.Features.DungeonBrowserPage and ns.Features.DungeonBrowserPage.host
+                and type(ns.Features.DungeonBrowserPage.host.IsVisible) == "function"
+                and ns.Features.DungeonBrowserPage.host:IsVisible()
+            then
+                ns.Features.DungeonBrowserPage:RenderRight()
+            end
+        end
+        if not ns.Api.GameAdapters.RunAfter(0.25, flush) then
+            flush()
+        end
     end)
     ns.Api.EventBus:OnEvent("v2:zone", "ZONE_CHANGED_NEW_AREA", function()
         ns.Features.QuestTrackerView:RefreshLive()
@@ -695,6 +985,12 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
+        if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then
+            ns.UI.HudLayout:SetUnlocked(false)
+        end
+        if ns.Secure and ns.Secure.FishingCastButton then
+            ns.Secure.FishingCastButton:OnCombatEntered()
+        end
         ns.Features.QuestTrackerView:UpdateCombatVisuals(true)
         ns.Features.CombatAssistHud:Refresh(true)
         ns.Features.CombatHudPack:RefreshRange(true)
@@ -705,6 +1001,12 @@ function Bootstrap:Init()
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
         ns.Secure.CombatQueue:Flush()
         ns.Api.NavPort.FlushIfSafe()
+        if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
+            ns.Features.WorldMapOverlay:InvalidatePinCache()
+        end
+        if ns.Features.FontsPage and not ns.Features.FontsPage.lastAppliedPreset then
+            ns.Features.FontsPage:ApplySavedFonts()
+        end
         ns.Features.QuestTrackerView:UpdateCombatVisuals(false)
         ns.Features.QuestTrackerView:ReRenderLast()
         ns.Features.CombatAssistHud:Refresh(false)
@@ -728,10 +1030,15 @@ function Bootstrap:Init()
             local cmd, rest = string_match(trimmed, "^(%S+)%s*(.*)$")
             cmd = cmd and string_lower(cmd) or ""
             if cmd == "move" then
-                local unlocked = ns.UI.HudLayout:ToggleUnlock()
-                ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금")
-            elseif cmd == "codex" or cmd == "ledger" or cmd == "settings" or cmd == "utilities" or cmd == "fonts"
+                local unlocked, reason = ns.UI.HudLayout:ToggleUnlock()
+                if reason == "IN_COMBAT" then
+                    ns.Api.SafeAPI.Print("전투 중에는 HUD 이동 모드를 켤 수 없습니다.")
+                else
+                    ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금")
+                end
+            elseif cmd == "home" or cmd == "codex" or cmd == "ledger" or cmd == "settings" or cmd == "utilities" or cmd == "fonts"
                 or cmd == "dungeons" or cmd == "bis" or cmd == "professions" or cmd == "questguide" or cmd == "partyfinder"
+                or cmd == "diagnostics"
             then
                 local win = ns.UI.CommandHub:EnsureWindow()
                 win:Show()
@@ -748,6 +1055,38 @@ function Bootstrap:Init()
                 ns.Features.UtilitiesPage:HandleProfileCommand(rest)
             elseif cmd == "kw" then
                 ns.Features.ChatToolsModule:SetKeywords(rest)
+            elseif cmd == "watch" then
+                ns.Features.PartyFinderPage:SetWatchKeywords(rest)
+            elseif cmd == "quickloot" then
+                ns.Features.DungeonBrowserPage:ToggleQuickLootPopup()
+            elseif cmd == "channel" then
+                ns.Features.ChatToolsModule:JoinChannel(rest ~= "" and rest or "파티찾기")
+            elseif cmd == "greet" then
+                local gKind, gText = string_match(rest or "", "^(%S+)%s+(.+)$")
+                if gKind == "join" or gKind == "welcome" then
+                    ns.Features.AutoGreetingModule:SetCustomMessage(gKind, gText)
+                    ns.Api.SafeAPI.Print("자동 인사(" .. gKind .. ") 문구 저장됨: " .. gText)
+                elseif gKind == "filter" then
+                    ns.Features.AutoGreetingModule:SetExcludedBuffs(gText)
+                    ns.Api.SafeAPI.Print("버프 감사 제외 목록 저장됨: " .. gText)
+                else
+                    ns.Api.SafeAPI.Print("사용법: /fs greet <join|welcome|filter> <문구>")
+                end
+            elseif cmd == "preset" then
+                local pSub, pArg = string_match(rest or "", "^(%S+)%s*(.*)$")
+                pSub = pSub and string_lower(pSub) or ""
+                if pSub == "cvar" then
+                    ns.Features.PresetManagerModule:ApplyRecommendedGameCVars()
+                elseif pSub == "barsave" then
+                    ns.Features.PresetManagerModule:SaveActionBarLoadout(pArg)
+                elseif pSub == "barload" then
+                    ns.Features.PresetManagerModule:RestoreActionBarLoadout(pArg)
+                elseif pSub == "sync" then
+                    ns.Features.PresetManagerModule:SyncSharedSettingsToChar()
+                    ns.Api.SafeAPI.Print("계정 설정을 캐릭터에 동기화했습니다.")
+                else
+                    ns.Api.SafeAPI.Print("사용법: /fs preset <cvar|barsave|barload|sync>")
+                end
             elseif cmd == "protect" then
                 ns.Features.MerchantModule:ToggleProtectItem(rest)
             elseif cmd == "cheap" then
@@ -765,7 +1104,8 @@ function Bootstrap:Init()
                 ns.Features.NavigationHud:Clear()
                 ns.Api.SafeAPI.Print("웨이포인트를 해제했습니다.")
             elseif cmd == "help" then
-                ns.Api.SafeAPI.Print("명령어: /fs [ledger|codex|settings|move|protect <ID/링크>|cheap|layer|xp [reset]|pull <3~30|0>|timer|clearway] · /way <x> <y> [이름]")
+                ns.Api.SafeAPI.Print("허브 페이지: /fs [dungeons|bis|professions|questguide|codex|partyfinder|utilities|ledger|fonts|settings|move]")
+                ns.Api.SafeAPI.Print("기능 커맨드: /fs [gdkp|kw|train|farm|fav|profile|protect|cheap|layer|xp|pull|timer|clearway] · /way <x> <y> [이름]")
             else
                 ns.UI.CommandHub:Toggle()
             end

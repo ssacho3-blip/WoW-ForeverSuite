@@ -2,7 +2,7 @@
 ## Title: |cffd4af37Forever|rSuite · WorldMap Quest Pins DB (LoD)
 ## Notes: ForeverSuite LoadOnDemand 전 지역 월드맵 미수락 퀘스트(!) 시작 핀 DB
 ## Author: Youngseo Cho (Derived from local personal archive)
-## Version: 2.2.0
+## Version: 4.0.0
 ## LoadOnDemand: 1
 ## Dependencies: ForeverSuite
 

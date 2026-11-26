@@ -2,10 +2,10 @@
 ## Title: |cffd4af37Forever|rSuite
 ## Notes: WoW Forever 1.60.1 Zero-Taint · Obsidian & Burnished Gold 통일 UI 통합 애드온
 ## Author: Youngseo Cho
-## Version: 2.3.0
+## Version: 4.0.0
 ## SavedVariables: ForeverSuiteV2DB, ForeverSuiteDB
 ## SavedVariablesPerCharacter: ForeverSuiteV2CharDB, ForeverSuiteCharDB
-## OptionalDeps: ForeverSuite_Media
+## OptionalDeps: ForeverSuite_Media, ForeverSuite_Media_Assets, ForeverSuite_Fonts_Global
 
 Domain/QuestTrackerModel.lua
 Domain/WorldMapModel.lua
@@ -35,19 +35,24 @@ Domain/TravelQuestModel.lua
 Domain/PowerQoLModel.lua
 Domain/SettingsSchemaModel.lua
 Domain/ProfileMigrationModel.lua
+Domain/HomeDashboardModel.lua
+Domain/GlobalSearchModel.lua
 Api/SafeAPI.lua
 Api/GameAdapters.lua
 Api/EventBus.lua
 Api/ProfileStore.lua
 Secure/CombatQueue.lua
 Secure/QuestItemDock.lua
+Secure/FishingCastButton.lua
 Blizzard/ObjectiveTrackerAdapter.lua
 Blizzard/WorldMapAdapter.lua
 Blizzard/TooltipAdapter.lua
 UI/Tokens.lua
 UI/Widgets.lua
+UI/CompositeWidgets.lua
 UI/HudLayout.lua
 UI/CommandHub.lua
+Features/HomePage.lua
 Features/QuestTrackerView.lua
 Features/WorldMapOverlay.lua
 Features/StatusPillHud.lua
@@ -79,5 +84,8 @@ Features/QuestGuidePage.lua
 Features/PartyFinderPage.lua
 Features/UtilitiesPage.lua
 Features/FontsPage.lua
+Features/QuestExtraModule.lua
+Features/ProcCooldownHud.lua
+Features/PresetManagerModule.lua
 Features/DiagnosticsPage.lua
 Features/Bootstrap.lua

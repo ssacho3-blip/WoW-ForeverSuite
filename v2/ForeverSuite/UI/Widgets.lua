@@ -256,12 +256,34 @@ function Widgets.ListRow(parent, height, onClick)
     sep:Hide()
     row._sep = sep
 
+    local gauge = row:CreateTexture(nil, "BACKGROUND")
+    gauge:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -1)
+    gauge:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 1)
+    gauge:SetWidth(1)
+    gauge:Hide()
+    row._gauge = gauge
+
     row._right = Widgets.Label(row, "", "mono", T.TEXT.SECONDARY, { justifyH = "RIGHT", wordWrap = false })
     row._right:SetPoint("RIGHT", row, "RIGHT", -T.SPACE.SM, 0)
 
     row._left = Widgets.Label(row, "", "body", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
     row._left:SetPoint("LEFT", row, "LEFT", T.SPACE.SM, 0)
     row._left:SetPoint("RIGHT", row._right, "LEFT", -6, 0)
+
+    function row:SetGauge(pct, col, maxWidth)
+        if type(pct) ~= "number" or pct <= 0 or not col then
+            self._gauge:Hide()
+            return
+        end
+        local clamped = (pct > 100) and 100 or pct
+        local baseW = maxWidth or (type(self.GetWidth) == "function" and self:GetWidth()) or 220
+        if not baseW or baseW < 20 then baseW = 220 end
+        local w = math.floor((clamped / 100) * baseW + 0.5)
+        if w < 2 then w = 2 end
+        self._gauge:SetWidth(w)
+        self._gauge:SetColorTexture(col[1], col[2], col[3], col[4] or 0.32)
+        self._gauge:Show()
+    end
 
     function row:SetRowStyle(bgCol, accentCol, accentX, accentW, sepCol, leftPad)
         self._baseBg = bgCol or { 0, 0, 0, 0 }
@@ -393,8 +415,15 @@ function Widgets.PillBar(parent, options, initialValue, onChange)
             end
         end)
         btn:SetPoint("LEFT", bar, "LEFT", x, 0)
+        btn:SetScript("OnLeave", function()
+            Refresh()
+        end)
         table_insert(bar._pills, { value = opt.value, btn = btn })
         x = x + (opt.width or 84) + T.SPACE.SM
+    end
+    function bar:SetValue(v)
+        self._value = v
+        Refresh()
     end
     Refresh()
     return bar

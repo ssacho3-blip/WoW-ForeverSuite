@@ -68,6 +68,9 @@ end
 
 function ThreatMeterHud:Refresh()
     self:Init()
+    if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then
+        return nil
+    end
     local enabled = ns.Api.ProfileStore:Get("combat", "showThreatMeter") ~= false
     if not enabled or not ns.Api.SafeAPI.InCombat() then
         self:StopTicker()
@@ -115,13 +118,19 @@ function ThreatMeterHud:Refresh()
         local r = snap.rows[i]
         if r then
             local col = ToneColor(r.tone)
+            local barCol = (r.class and T.CLASS_COLORS and T.CLASS_COLORS[r.class]) or col
             row._left:SetText(r.name)
             row._left:SetTextColor(col[1], col[2], col[3], 1)
             row._right:SetText(r.rightText)
             row._right:SetTextColor(col[1], col[2], col[3], 1)
-            row:SetRowStyle({ col[1] * 0.16, col[2] * 0.16, col[3] * 0.16, 0.35 }, col, 0, 3, nil, 8)
+            row:SetRowStyle({ col[1] * 0.12, col[2] * 0.12, col[3] * 0.12, 0.25 }, col, 0, 3, nil, 8)
+            if type(row.SetGauge) == "function" then
+                local pct = (type(r.ratio) == "number") and (r.ratio * 100) or 0
+                row:SetGauge(pct, { barCol[1], barCol[2], barCol[3], 0.34 }, METER_WIDTH - 8)
+            end
             row:Show()
         else
+            if type(row.SetGauge) == "function" then row:SetGauge(0, nil) end
             row:Hide()
         end
     end

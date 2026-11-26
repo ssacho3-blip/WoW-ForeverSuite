@@ -11,12 +11,17 @@ local ProfileStore = {
     charDB = nil,
     readOnly = false,
     schemas = {},
+    schemaByKey = {},
 }
 ns.Api.ProfileStore = ProfileStore
 
 function ProfileStore:RegisterSchema(schemaList)
     for i = 1, #(schemaList or {}) do
-        self.schemas[#self.schemas + 1] = schemaList[i]
+        local sc = schemaList[i]
+        self.schemas[#self.schemas + 1] = sc
+        if type(sc) == "table" and type(sc.section) == "string" and type(sc.key) == "string" then
+            self.schemaByKey[sc.section .. "." .. sc.key] = sc
+        end
     end
 end
 
@@ -51,7 +56,11 @@ end
 
 function ProfileStore:Set(section, key, val)
     if not self:CanWrite() then
-        return false
+        return false, "READ_ONLY"
+    end
+    local sc = (type(section) == "string" and type(key) == "string") and self.schemaByKey[section .. "." .. key] or nil
+    if sc and sc.combatSafe == false and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
     end
     self.db.v2.settings[section] = self.db.v2.settings[section] or {}
     self.db.v2.settings[section][key] = val

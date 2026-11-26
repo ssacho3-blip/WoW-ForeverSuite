@@ -19,6 +19,11 @@ const OPTIONAL_LOD_DATA_FOLDERS: &[&str] = &[
     "ForeverSuite_Data_Pet",
     "ForeverSuite_Data_Atlas",
     "ForeverSuite_Data_MapPins",
+    "ForeverSuite_Data_Items",
+    "ForeverSuite_Data_QuestExtra",
+    "ForeverSuite_Data_MapExtra",
+    "ForeverSuite_Media_Assets",
+    "ForeverSuite_Fonts_Global",
 ];
 
 fn is_legacy_addon_folder(name: &str) -> bool {

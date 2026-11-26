@@ -1,0 +1,16 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Full Item Catalog & Translation DB (LoD)
+## Notes: ForeverSuite LoadOnDemand 전체 아이템 레퍼런스 카탈로그(1.56MB) 및 영한 툴팁 번역 사전
+## Author: Youngseo Cho (Derived from local personal archive)
+## Version: 4.0.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+Pack_item_catalog_01.lua
+Pack_item_catalog_02.lua
+Pack_item_catalog_03.lua
+Pack_item_catalog_04.lua
+Pack_item_catalog_05.lua
+Pack_item_catalog_06.lua
+Pack_item_catalog_07.lua
+Pack_item_translations_01.lua

@@ -78,6 +78,13 @@ function CursorTrailHud:Init()
     return ring
 end
 
+local CURSOR_COLORS = {
+    gold    = T.BORDER.GOLD,
+    cyan    = { 0.25, 0.85, 0.98, 1 },
+    emerald = { 0.24, 0.88, 0.52, 1 },
+    crimson = { 0.94, 0.30, 0.30, 1 },
+}
+
 function CursorTrailHud:ApplyVisibility(inCombatOverride)
     if not self.ring then
         return
@@ -85,6 +92,12 @@ function CursorTrailHud:ApplyVisibility(inCombatOverride)
     local enabled = ns.Api.ProfileStore:Get("ui", "showCursorRing") == true
     local combatOnly = ns.Api.ProfileStore:Get("ui", "cursorCombatOnly") == true
     local style = ns.Api.ProfileStore:Get("ui", "cursorStyle") or "ring"
+    local colorKey = ns.Api.ProfileStore:Get("ui", "cursorColor") or "gold"
+    local col = CURSOR_COLORS[colorKey] or T.BORDER.GOLD
+    local sizePref = tonumber(ns.Api.ProfileStore:GetState("cursorSize")) or 28
+    if sizePref < 18 then sizePref = 18 elseif sizePref > 52 then sizePref = 52 end
+    local alphaPref = tonumber(ns.Api.ProfileStore:GetState("cursorAlpha")) or 0.9
+    if alphaPref < 0.25 then alphaPref = 0.25 elseif alphaPref > 1.0 then alphaPref = 1.0 end
     local inCombat
     if inCombatOverride ~= nil then
         inCombat = (inCombatOverride == true)
@@ -95,14 +108,21 @@ function CursorTrailHud:ApplyVisibility(inCombatOverride)
 
     self.active = shouldShow
     self.ring._fxStyle = style
+    W.SetBorderColor(self.ring, col)
+    self.ring:SetAlpha(alphaPref)
+    self.dot:SetTextColor(col[1], col[2], col[3], 1)
+    for i = 1, #self.trails do
+        self.trails[i]._fsBg:SetColorTexture(col[1], col[2], col[3], math.max(0.12, (0.48 - i * 0.06) * alphaPref))
+        W.SetBorderColor(self.trails[i], col)
+    end
     if style == "crosshair" then
-        self.ring:SetSize(34, 34)
+        self.ring:SetSize(sizePref + 6, sizePref + 6)
         self.dot:SetText("┼")
     elseif style == "trail" then
-        self.ring:SetSize(22, 22)
+        self.ring:SetSize(math.max(18, sizePref - 6), math.max(18, sizePref - 6))
         self.dot:SetText("✦")
     else
-        self.ring:SetSize(28, 28)
+        self.ring:SetSize(sizePref, sizePref)
         self.dot:SetText("◦")
     end
 

@@ -29,20 +29,44 @@ function NavigationHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.Card(nil, 224, 48, "ForeverSuiteV2NavArrow", T.ELEVATION.L0_HUD)
+    local card = W.Card(nil, 248, 48, "ForeverSuiteV2NavArrow", T.ELEVATION.L0_HUD)
+    W.SetBorderColor(card, T.BORDER.GOLD_SOFT)
     local arrow = W.Label(card, "•", "title", T.TEXT.GOLD)
     arrow:SetPoint("LEFT", card, "LEFT", 12, 0)
 
-    local title = W.Label(card, "", "body", T.TEXT.PRIMARY)
-    title:SetPoint("TOPLEFT", card, "TOPLEFT", 38, -8)
+    -- E3: Selectable 3D/Ornate Arrow Texture (ForeverSuite_Media_Assets/Arrows/)
+    local arrowTex = card:CreateTexture(nil, "ARTWORK")
+    arrowTex:SetSize(26, 26)
+    arrowTex:SetPoint("LEFT", card, "LEFT", 8, 0)
+    arrowTex:Hide()
 
-    local dist = W.Label(card, "", "mono", T.TEXT.SECONDARY)
-    dist:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 38, 8)
+    local closeBtn = W.MiniButton(card, "×", 20, 20, function()
+        NavigationHud:Clear()
+        ns.Api.SafeAPI.Print("내비게이션 목적지를 해제했습니다.")
+    end, "웨이포인트 해제")
+    closeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -6, -6)
+
+    local title = W.Label(card, "", "body", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
+    title:SetPoint("TOPLEFT", card, "TOPLEFT", 38, -8)
+    title:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -4, -8)
+
+    local dist = W.Label(card, "", "mono", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
+    dist:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 38, 9)
+    dist:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 9)
+
+    local bar = W.Card(card, 240, 3)
+    bar:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 4, 2)
+    W.SetBorderColor(bar, T.BORDER.GOLD)
+    if bar._fsBg then bar._fsBg:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 0.9) end
+    bar:Hide()
 
     self.card = card
     self.arrowLbl = arrow
+    self.arrowTex = arrowTex
     self.titleLbl = title
     self.distLbl = dist
+    self.distBar = bar
+    self.closeBtn = closeBtn
 
     ns.UI.HudLayout:Register("navArrow", card, {
         point = "TOP",
@@ -93,7 +117,10 @@ end
 function NavigationHud:Refresh()
     if not self.target then
         StopTicker()
-        if self.card then self.card:Hide() end
+        if self.distBar then self.distBar:Hide() end
+        if self.card and not (ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked()) then
+            self.card:Hide()
+        end
         return nil
     end
     self:Init()
@@ -120,16 +147,38 @@ function NavigationHud:Refresh()
         ns.Api.SafeAPI.Print("목적지 도착: " .. arrivedLabel)
         return g
     end
+    local styleId = ns.Api.ProfileStore and ns.Api.ProfileStore:Get("ui", "navArrowStyle") or "classic"
+    local texPath = ns.Domain.WorldMapModel and ns.Domain.WorldMapModel.ResolveArrowTexture(styleId) or nil
     self.arrowLbl:SetText(g.arrow)
+    if self.arrowTex and texPath then
+        if not ns.Api.SafeAPI.InCombat() then
+            ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Media_Assets")
+        end
+        self.arrowTex:SetTexture(texPath)
+        if type(self.arrowTex.SetRotation) == "function" and type(g.relAngle) == "number" then
+            self.arrowTex:SetRotation(-g.relAngle)
+        end
+        self.arrowTex:Show()
+        self.arrowLbl:Hide()
+    else
+        if self.arrowTex then self.arrowTex:Hide() end
+        self.arrowLbl:Show()
+    end
     self.titleLbl:SetText(self.target.label)
     self.distLbl:SetText(g.distText)
+    if self.distBar and type(g.distance) == "number" then
+        local ratio = 1 - math.min(1, g.distance / 0.25)
+        local w = math.max(12, math.floor(ratio * 240 + 0.5))
+        self.distBar:SetWidth(w)
+        self.distBar:Show()
+    end
     return g
 end
 
 function NavigationHud:HandleWaySlash(raw)
     local parsed = ns.Domain.NavigationModel.ParseWayArgs(raw)
     if not parsed then
-        ns.Api.SafeAPI.Print("사용법: /way2 <X> <Y> [라벨]  또는  /way2 clear")
+        ns.Api.SafeAPI.Print("사용법: /way <X> <Y> [라벨]  또는  /way clear")
         return false
     end
     if parsed.cmd == "clear" then
@@ -140,7 +189,7 @@ function NavigationHud:HandleWaySlash(raw)
         if self.target then
             ns.Api.SafeAPI.Print("현재 목적지: " .. self.target.label)
         else
-            ns.Api.SafeAPI.Print("활성 목적지가 없습니다. 예: /way2 55.2 41.8 광맥")
+            ns.Api.SafeAPI.Print("활성 목적지가 없습니다. 예: /way 55.2 41.8 광맥")
         end
         return true
     end

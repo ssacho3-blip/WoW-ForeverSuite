@@ -20,6 +20,37 @@ local AutoGreetingModule = {
 }
 ns.Features.AutoGreetingModule = AutoGreetingModule
 
+function AutoGreetingModule:SetCustomMessage(kind, text)
+    if (kind ~= "join" and kind ~= "welcome") or type(text) ~= "string" then return false end
+    local key = (kind == "join") and "autoGreetJoinMsg" or "autoGreetWelcomeMsg"
+    return ns.Api.ProfileStore and ns.Api.ProfileStore:SetState(key, text) == true
+end
+
+function AutoGreetingModule:GetCustomMessage(kind)
+    local key = (kind == "join") and "autoGreetJoinMsg" or "autoGreetWelcomeMsg"
+    local saved = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState(key)
+    if type(saved) == "string" and saved ~= "" then return saved end
+    return ns.Domain.AutoGreetingModel.DEFAULTS[kind]
+end
+
+function AutoGreetingModule:SetExcludedBuffs(csv)
+    return ns.Api.ProfileStore and ns.Api.ProfileStore:SetState("autoGreetExcludedBuffs", tostring(csv or "")) == true
+end
+
+function AutoGreetingModule:IsBuffExcluded(buffName)
+    if type(buffName) ~= "string" or buffName == "" then return false end
+    local csv = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("autoGreetExcludedBuffs") or ""
+    if csv == "" then return false end
+    local low = string.lower(buffName)
+    for tok in string.gmatch(csv, "[^,]+") do
+        local t = string.match(tok, "^%s*(.-)%s*$") or ""
+        if t ~= "" and string.find(low, string.lower(t), 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
 function AutoGreetingModule:SyncInitialRoster()
     local inGroup = ns.Api.GameAdapters.IsInGroupState()
     if inGroup == nil then
@@ -92,7 +123,7 @@ function AutoGreetingModule:OnGroupRosterUpdate()
         if not (locClass and locClass ~= "" and lvl) then
             return false, "MISSING_PLAYER_META"
         end
-        local msg = ns.Domain.AutoGreetingModel.FormatTemplate(ns.Domain.AutoGreetingModel.DEFAULTS.join, {
+        local msg = ns.Domain.AutoGreetingModel.FormatTemplate(self:GetCustomMessage("join"), {
             level = lvl,
             className = locClass,
         })
@@ -141,7 +172,7 @@ function AutoGreetingModule:OnGroupRosterUpdate()
     if not ok then
         return false, reason
     end
-    local msg = ns.Domain.AutoGreetingModel.FormatTemplate(ns.Domain.AutoGreetingModel.DEFAULTS.welcome, {
+    local msg = ns.Domain.AutoGreetingModel.FormatTemplate(self:GetCustomMessage("welcome"), {
         name = newcomer,
     })
     local sent, sStatus = ns.Api.GameAdapters.SendChatSafe(msg, "PARTY")
@@ -177,6 +208,9 @@ function AutoGreetingModule:OnExternalBuffReceived(casterName, buffName)
     end
     if type(casterName) ~= "string" or casterName == "" or casterName == ns.Api.GameAdapters.GetPlayerName() then
         return false, "SELF_OR_EMPTY"
+    end
+    if self:IsBuffExcluded(buffName) then
+        return false, "BUFF_EXCLUDED"
     end
     local now = ns.Api.GameAdapters.GetMonotonicTime()
     local ok, reason, key, exp = ns.Domain.AutoGreetingModel.CanSend("buff", {

@@ -25,7 +25,7 @@ hub:SelectPage("dungeons")
 local dbp = ns.Features.DungeonBrowserPage
 assert(dbp.selectedDungeon ~= nil, "KPI-1: DungeonBrowser must select initial dungeon")
 local dPacks = _G.ForeverSuiteData.packs
-assert(#dPacks.dungeons.entries >= 35, "KPI-1: Expected >=35 dungeons")
+assert(#dPacks.dungeons.entries >= 25, "KPI-1: Expected >=25 deduplicated dungeons")
 assert(#dPacks.dungeon_bosses.entries >= 200, "KPI-1: Expected >=200 dungeon bosses")
 assert(#dPacks.dungeon_quests.entries >= 350, "KPI-1: Expected >=350 dungeon quests")
 assert(#dPacks.dungeon_loot.entries >= 5000, "KPI-1: Expected >=5000 dungeon loot items")

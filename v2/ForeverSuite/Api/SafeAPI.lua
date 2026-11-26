@@ -108,7 +108,7 @@ function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalSh
     end
     local idx = shardIdx
     local tot = totalShards
-    _G.ForeverSuiteData = _G.ForeverSuiteData or { version = "2.1.0", packs = {} }
+    _G.ForeverSuiteData = _G.ForeverSuiteData or { version = "3.0.1", packs = {} }
     _G.ForeverSuiteData.packs = _G.ForeverSuiteData.packs or {}
     local pack = _G.ForeverSuiteData.packs[packId]
     if type(pack) ~= "table" or pack._schema ~= 2 then
@@ -202,6 +202,16 @@ function SafeAPI.GetAddOnLoadedState(name)
         return false
     end
     return nil
+end
+
+function SafeAPI.GetAddonVersion()
+    if C_AddOns and type(C_AddOns.GetAddOnMetadata) == "function" then
+        local v = SafeAPI.SafeRead(C_AddOns.GetAddOnMetadata, "ForeverSuite", "Version")
+        if v ~= UNAVAILABLE and type(v) == "string" and v ~= "" then
+            return v
+        end
+    end
+    return "4.0.0"
 end
 
 function SafeAPI.IsAddOnLoadedByName(name)

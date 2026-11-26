@@ -40,8 +40,41 @@ function GdkpModel.AddSale(sales, itemName, buyer, copperPrice)
         item = itemName,
         buyer = (type(buyer) == "string" and buyer ~= "") and buyer or "미상",
         copper = exact,
+        paid = false,
     })
     return true, "ADDED"
+end
+
+-- H2: Auto-match completed trade gold against unpaid GDKP sales for a buyer
+function GdkpModel.MatchBuyerTradePayment(sales, partnerName, receivedCopper)
+    if type(sales) ~= "table" or type(partnerName) ~= "string" or partnerName == "" then return 0, 0 end
+    if type(receivedCopper) ~= "number" or receivedCopper <= 0 then return 0, 0 end
+    local remaining = math_floor(receivedCopper)
+    local settledCount = 0
+    local settledCopper = 0
+    local pLow = string.lower(partnerName)
+    for _, s in ipairs(sales) do
+        if type(s) == "table" and not s.paid and type(s.buyer) == "string" and string.lower(s.buyer) == pLow
+            and type(s.copper) == "number" and s.copper > 0 and s.copper <= remaining
+        then
+            s.paid = true
+            remaining = remaining - s.copper
+            settledCount = settledCount + 1
+            settledCopper = settledCopper + s.copper
+        end
+    end
+    return settledCount, settledCopper
+end
+
+-- H2: Payout distribution checklist tracker (per-member paid status)
+function GdkpModel.MarkMemberPayout(payoutMap, memberName, givenCopper, perMemberCopper)
+    if type(payoutMap) ~= "table" or type(memberName) ~= "string" or memberName == "" then return false end
+    if type(givenCopper) ~= "number" or givenCopper <= 0 then return false end
+    if type(perMemberCopper) == "number" and perMemberCopper > 0 and givenCopper < math_floor(perMemberCopper * 0.9) then
+        return false
+    end
+    payoutMap[memberName] = { paid = true, copper = math_floor(givenCopper) }
+    return true
 end
 
 function GdkpModel.ComputeSplit(sales, memberCount, organizerCutPct)

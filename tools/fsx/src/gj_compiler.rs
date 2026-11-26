@@ -138,14 +138,18 @@ fn create_sandboxed_lua() -> Result<Lua> {
     Ok(lua)
 }
 
-fn exec_zip_lua<R: Read + std::io::Seek>(
+fn exec_zip_lua_patched<R: Read + std::io::Seek>(
     lua: &Lua,
     archive: &mut ZipArchive<R>,
     path: &str,
     required: bool,
     loaded_sources: &mut Vec<String>,
+    replacements: &[(&str, &str)],
 ) -> Result<bool> {
-    if let Some(src) = read_zip_lua(archive, path)? {
+    if let Some(mut src) = read_zip_lua(archive, path)? {
+        for (from, to) in replacements {
+            src = src.replacen(from, to, 1);
+        }
         let res = lua.load(&src).set_name(path).set_mode(ChunkMode::Text).exec();
         if let Err(e) = res {
             if required {
@@ -160,6 +164,16 @@ fn exec_zip_lua<R: Read + std::io::Seek>(
     } else {
         Ok(false)
     }
+}
+
+fn exec_zip_lua<R: Read + std::io::Seek>(
+    lua: &Lua,
+    archive: &mut ZipArchive<R>,
+    path: &str,
+    required: bool,
+    loaded_sources: &mut Vec<String>,
+) -> Result<bool> {
+    exec_zip_lua_patched(lua, archive, path, required, loaded_sources, &[])
 }
 
 fn serialize_lua_entry(tbl: &Table) -> Result<String> {
@@ -261,9 +275,13 @@ fn stage_lod_addon(
             }
             body.push_str("})\n");
 
-            if body.contains("GJCompanion") {
+            if body.contains("GJCompanion") || body.contains("GodJohnsonGoldBorder") {
                 let _ = fs::remove_dir_all(&stage_dir);
-                bail!("Forbidden 'GJCompanion' token leaked into {addon_name}/{file_name}");
+                bail!("Forbidden legacy token leaked into {addon_name}/{file_name}");
+            }
+            if body.contains("table: 0x") || body.contains("function: 0x") {
+                let _ = fs::remove_dir_all(&stage_dir);
+                bail!("Corrupted Lua memory address leaked into {addon_name}/{file_name}");
             }
             full_moon::parse(&body).map_err(|errs| {
                 let _ = fs::remove_dir_all(&stage_dir);
@@ -293,7 +311,7 @@ fn stage_lod_addon(
 ## Title: |cffd4af37Forever|rSuite · {toc_title} (LoD)\n\
 ## Notes: {toc_notes}\n\
 ## Author: Youngseo Cho (Derived from local personal archive)\n\
-## Version: 2.2.0\n\
+## Version: 4.0.0\n\
 ## LoadOnDemand: 1\n\
 ## Dependencies: ForeverSuite\n\n"
     );
@@ -407,13 +425,29 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLootDetails4201.lua", true, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/MapTransportData.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonMaps.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Maps4130.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaranMaps468.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonInterior219.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBossPins.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBossRouteData223.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonKrolSteps259.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonOtherSteps259.lua", false, &mut src)?;
+            exec_zip_lua_patched(
+                &lua,
+                &mut archive,
+                "GodJohnsonGoldBorder/DungeonPortrait221.lua",
+                false,
+                &mut src,
+                &[("local appearances={", "GJCompanion.DungeonPortraits221={")],
+            )?;
 
             let (d_in, d_skip, d_rows) = collect_entries_from_lua(
                 &lua,
                 r#"
                 local C = GJCompanion
                 local rows, inp, skip = {}, 0, 0
-                local seen = {}
+                local byKey, byInst, byTitle = {}, {}, {}
                 local entByInst = {}
                 for inst, ed in pairs(C.DungeonEntranceData4110 or {}) do
                     if type(ed) == "table" and type(ed.points) == "table" and ed.points[1] then
@@ -430,39 +464,130 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                     if x > 1 or y > 1 then return x / 100.0, y / 100.0 end
                     return x, y
                 end
+                local function cleanLevels(lv)
+                    local s = tostring(lv or "")
+                    s = string.gsub(s, "%s*·%s*클래식 참고", "")
+                    s = string.gsub(s, "^%s+", "")
+                    s = string.gsub(s, "%s+$", "")
+                    return s
+                end
+                local function trimTrailDot(s)
+                    while true do
+                        local trimmed = string.gsub(s, "%s+$", "")
+                        if #trimmed >= 2 and string.sub(trimmed, -2) == "·" then
+                            s = string.sub(trimmed, 1, -3)
+                        else
+                            return trimmed
+                        end
+                    end
+                end
+                local function cleanZone(z, entNote, region, pSize)
+                    local s = tostring(z or "")
+                    if type(entNote) == "string" and entNote ~= "" then
+                        local pos = string.find(s, entNote, 1, true)
+                        if pos then
+                            s = trimTrailDot(string.sub(s, 1, pos - 1))
+                        end
+                    end
+                    if s == "" and type(region) == "string" and region ~= "" then
+                        s = region .. (type(pSize) == "number" and pSize > 0 and (" · " .. tostring(pSize) .. "인") or "")
+                    end
+                    return s
+                end
+                local function isNumericKey(k)
+                    return type(k) == "string" and string.match(k, "^%d+$") ~= nil
+                end
                 local function addDungeon(d, fallbackKey)
                     if type(d) ~= "table" or type(d.name) ~= "string" or d.name == "" then skip = skip + 1; return end
                     local key = tostring(d.key or fallbackKey or d.instance or d.name)
-                    if seen[key] then return end
-                    seen[key] = true
                     local inst = (type(d.instance) == "number") and d.instance or 0
+                    local hasExplicitPartySize = type(d.partySize) == "number" and d.partySize > 0
+                    local pSize = hasExplicitPartySize and d.partySize or (d.isRaid and 40 or 5)
+                    local qCount = type(d.quests) == "table" and #d.quests or 0
+                    local bCount = type(d.bosses) == "table" and #d.bosses or 0
+                    local lvClean = cleanLevels(d.levels)
+                    local ed = (inst > 0) and entByInst[inst] or nil
+                    local entNote = ""
+                    local mapID, nx, ny = nil, nil, nil
+                    if ed and ed.points and ed.points[1] then
+                        local pt = ed.points[1]
+                        local tx, ty = normCoord(pt.x, pt.y)
+                        if type(pt.mapID) == "number" and tx and ty and tx >= 0 and tx <= 1 and ty >= 0 and ty <= 1 then
+                            mapID, nx, ny = pt.mapID, tx, ty
+                            entNote = tostring(ed.instructions or pt.description or pt.label or "")
+                        end
+                    end
+                    local rawZone = tostring(d.intro or d.region or d.levels or "")
+                    local zoneClean = cleanZone(rawZone, entNote, d.region, pSize)
+                    local existing = byKey[key] or (inst > 0 and byInst[inst]) or nil
+                    if not existing then
+                        local byT = byTitle[d.name]
+                        if byT and (inst == 0 or (byT.instance or 0) == 0 or byT.instance == inst) then
+                            existing = byT
+                        end
+                    end
+                    if existing then
+                        if isNumericKey(existing.id) and (not isNumericKey(key)) then
+                            existing.id = key
+                        end
+                        if inst > 0 and (existing.instance == 0 or existing.instance == nil) then
+                            existing.instance = inst
+                            byInst[inst] = existing
+                        end
+                        if bCount > (existing.bossCount or 0) then existing.bossCount = bCount end
+                        if qCount > (existing.questCount or 0) then existing.questCount = qCount end
+                        if d.isRaid == true then existing.isRaid = true end
+                        if hasExplicitPartySize then
+                            existing.partySize = d.partySize
+                        end
+                        if lvClean ~= "" and (existing.levels == "" or #lvClean < #existing.levels) then
+                            existing.levels = lvClean
+                        end
+                        if type(d.route) == "string" and #d.route > #(existing.note or "") then
+                            existing.note = d.route
+                        end
+                        if zoneClean ~= "" and (existing.zone == "" or (#existing.zone > 60 and #zoneClean < #existing.zone)) then
+                            existing.zone = zoneClean
+                        end
+                        if mapID and not existing.mapID then
+                            existing.mapID = mapID; existing.x = nx; existing.y = ny
+                        end
+                        if entNote ~= "" and (not existing.entranceNote or existing.entranceNote == "" or existing.entranceNote == "던전 입구") then
+                            existing.entranceNote = entNote
+                        end
+                        byKey[key] = existing
+                        return
+                    end
                     local row = {
                         id = key,
                         instance = inst,
                         title = d.name,
-                        levels = tostring(d.levels or ""),
+                        levels = lvClean,
                         faction = tostring(d.guideFaction or d.faction or "Both"),
                         isRaid = d.isRaid == true,
-                        partySize = type(d.partySize) == "number" and d.partySize or (d.isRaid and 40 or 5),
-                        zone = tostring(d.intro or d.region or d.levels or ""),
+                        partySize = pSize,
+                        zone = zoneClean,
                         note = tostring(d.route or ""),
-                        questCount = type(d.quests) == "table" and #d.quests or 0,
-                        bossCount = type(d.bosses) == "table" and #d.bosses or 0,
+                        questCount = qCount,
+                        bossCount = bCount,
                         category = "dungeon",
                     }
-                    local ed = (inst > 0) and entByInst[inst] or nil
-                    if ed and ed.points and ed.points[1] then
-                        local pt = ed.points[1]
-                        local nx, ny = normCoord(pt.x, pt.y)
-                        if type(pt.mapID) == "number" and nx and ny and nx >= 0 and nx <= 1 and ny >= 0 and ny <= 1 then
-                            row.mapID = pt.mapID; row.x = nx; row.y = ny
-                            row.entranceNote = tostring(ed.instructions or pt.description or pt.label or "")
-                        end
+                    if mapID then
+                        row.mapID = mapID; row.x = nx; row.y = ny
+                        row.entranceNote = entNote
                     end
                     rows[#rows+1] = row
+                    byKey[key] = row
+                    byTitle[d.name] = row
+                    if inst > 0 then byInst[inst] = row end
                 end
                 for _, d in ipairs(C.Dungeons or {}) do inp = inp + 1; addDungeon(d, nil) end
                 for k, d in pairs(C.DungeonInfo or {}) do inp = inp + 1; addDungeon(d, k) end
+                for _, row in ipairs(rows) do
+                    if row.zone == "" or (row.entranceNote and row.zone == row.entranceNote) then
+                        row.zone = tostring(row.partySize or 5) .. "인" .. (row.levels ~= "" and (" · " .. row.levels) or "")
+                    end
+                end
                 table.sort(rows, function(a,b)
                     if tostring(a.title) ~= tostring(b.title) then return tostring(a.title) < tostring(b.title) end
                     return tostring(a.id) < tostring(b.id)
@@ -596,6 +721,14 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 for id, it in pairs(C.DungeonLootDetails4201 or {}) do
                     if type(id) == "number" and type(it) == "table" and not merged[id] then merged[id] = it end
                 end
+                local SLOT_TO_INV = {
+                    ["머리"] = 1, ["목"] = 2, ["어깨"] = 3, ["가슴"] = 5, ["허리"] = 6,
+                    ["다리"] = 7, ["발"] = 8, ["손목"] = 9, ["손"] = 10, ["손가락"] = 11,
+                    ["장신구"] = 13, ["등"] = 15, ["망토"] = 15, ["주장비"] = 16, ["한손"] = 16,
+                    ["한손 장비"] = 16, ["양손"] = 16, ["양손 장비"] = 16, ["보조장비"] = 17,
+                    ["방패"] = 17, ["원거리"] = 18, ["원거리 장비"] = 18, ["마법봉"] = 18,
+                    ["투척"] = 18, ["성물"] = 18, ["성서"] = 18,
+                }
                 local ids = {}
                 for id in pairs(merged) do ids[#ids+1] = id end
                 table.sort(ids)
@@ -605,6 +738,7 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                     local name = type(it.name) == "string" and it.name or nil
                     if name and name ~= "" then
                         local src = bossByItem[id]
+                        local slotName = type(it.slot) == "string" and it.slot or ""
                         local row = {
                             itemID = id,
                             title = name,
@@ -612,11 +746,12 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                             quality = type(it.quality) == "number" and it.quality or 1,
                             itemLevel = type(it.itemLevel) == "number" and it.itemLevel or 0,
                             reqLevel = type(it.requiredLevel) == "number" and it.requiredLevel or 0,
-                            slot = type(it.slot) == "string" and it.slot or "",
+                            slot = slotName,
+                            equipSlot = SLOT_TO_INV[slotName] or 0,
                             itemType = type(it.type) == "string" and it.type or "",
                             dungeon = src and src.dungeon or "",
                             boss = src and src.boss or "",
-                            zone = src and (src.dungeon .. " · " .. src.boss) or ((type(it.slot) == "string" and it.slot ~= "" and it.slot) or (type(it.type) == "string" and it.type or "던전 드랍")),
+                            zone = src and (src.dungeon .. " · " .. src.boss) or ((slotName ~= "" and slotName) or (type(it.type) == "string" and it.type or "던전 드랍")),
                         }
                         rows[#rows+1] = row
                     else
@@ -627,17 +762,207 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            let (st_in, st_skip, st_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local qids = {}
+                for qid in pairs(C.DungeonVerifiedSteps259 or {}) do
+                    if type(qid) == "number" then qids[#qids+1] = qid end
+                end
+                table.sort(qids)
+                for _, qid in ipairs(qids) do
+                    inp = inp + 1
+                    local s = C.DungeonVerifiedSteps259[qid]
+                    if type(s) == "table" and type(s.name) == "string" and s.name ~= "" then
+                        local reqs = {}
+                        for _, r in ipairs(s.requires or {}) do
+                            if type(r) == "number" then reqs[#reqs+1] = tostring(r) end
+                        end
+                        local row = {
+                            questID = qid,
+                            title = s.name,
+                            faction = tostring(s.faction or "Both"),
+                            minLevel = type(s.minLevel) == "number" and s.minLevel or 0,
+                            questLevel = type(s.questLevel) == "number" and s.questLevel or 0,
+                            giver = tostring(s.giver or ""),
+                            npcID = type(s.npcID) == "number" and s.npcID or 0,
+                            source = tostring(s.source or s.note or ""),
+                            dungeon = tostring(s.dungeon or ""),
+                            requiresCsv = table.concat(reqs, ","),
+                            supersededBy = type(s.supersededBy) == "number" and s.supersededBy or 0,
+                        }
+                        if type(s.mapID) == "number" and type(s.x) == "number" and type(s.y) == "number" then
+                            local nx, ny = s.x, s.y
+                            if nx > 1 or ny > 1 then nx, ny = nx / 100.0, ny / 100.0 end
+                            if nx >= 0 and nx <= 1 and ny >= 0 and ny <= 1 then
+                                row.mapID = s.mapID; row.x = nx; row.y = ny
+                            end
+                        end
+                        rows[#rows+1] = row
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (pt_in, pt_skip, pt_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local nids = {}
+                for nid in pairs(C.DungeonPortraits221 or {}) do
+                    if type(nid) == "number" then nids[#nids+1] = nid end
+                end
+                table.sort(nids)
+                for _, nid in ipairs(nids) do
+                    inp = inp + 1
+                    local p = C.DungeonPortraits221[nid]
+                    if type(p) == "table" and type(p[1]) == "number" then
+                        rows[#rows+1] = {
+                            npcID = nid,
+                            displayID = p[1],
+                            fileDataID = type(p[2]) == "number" and p[2] or 0,
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (mm_in, mm_skip, mm_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local labels = C.DungeonMapArtworkLabels or {}
+                local bossPts = C.DungeonArtworkBossPoints or {}
+                local cat = C.DungeonMapCatalog or {}
+                local instIds = {}
+                for inst in pairs(cat) do
+                    if type(inst) == "number" then instIds[#instIds+1] = inst end
+                end
+                table.sort(instIds)
+                local seenTex = {}
+                local function formatPins(tex)
+                    local pts = bossPts[tex]
+                    if type(pts) ~= "table" then return "" end
+                    local keys = {}
+                    for k in pairs(pts) do keys[#keys+1] = tostring(k) end
+                    table.sort(keys)
+                    local acc = {}
+                    for _, ks in ipairs(keys) do
+                        local v = pts[tonumber(ks) or ks]
+                        if type(v) == "table" and type(v[1]) == "number" and type(v[2]) == "number" then
+                            acc[#acc+1] = ks .. ":" .. tostring(v[1]) .. ":" .. tostring(v[2])
+                        end
+                    end
+                    return table.concat(acc, "|")
+                end
+                for _, inst in ipairs(instIds) do
+                    local c = cat[inst]
+                    if type(c) == "table" then
+                        local pages = c.pages or {}
+                        if #pages == 0 and type(c.texture) == "string" then
+                            pages = { { name = c.name or "", texture = c.texture, extension = c.extension or "tga" } }
+                        end
+                        for idx, pg in ipairs(pages) do
+                            inp = inp + 1
+                            if type(pg) == "table" and type(pg.texture) == "string" and pg.texture ~= "" then
+                                local ext = tostring(pg.extension or "tga")
+                                local lbl = labels[pg.texture]
+                                local title = (type(lbl) == "table" and type(lbl.title) == "string" and lbl.title) or tostring(pg.name or c.name or pg.texture)
+                                seenTex[pg.texture] = true
+                                rows[#rows+1] = {
+                                    instance = inst,
+                                    pageIndex = idx,
+                                    texture = pg.texture,
+                                    extension = ext,
+                                    title = title,
+                                    pageName = tostring(pg.name or ""),
+                                    note = tostring(pg.note or ""),
+                                    bossPinsCsv = formatPins(pg.texture),
+                                }
+                            else
+                                skip = skip + 1
+                            end
+                        end
+                    end
+                end
+                -- Also include standalone artwork label sheets not already in DungeonMapCatalog
+                local texNames = {}
+                for tex in pairs(labels) do if not seenTex[tex] then texNames[#texNames+1] = tex end end
+                table.sort(texNames)
+                for _, tex in ipairs(texNames) do
+                    inp = inp + 1
+                    local lbl = labels[tex]
+                    if type(lbl) == "table" and type(lbl.title) == "string" then
+                        rows[#rows+1] = {
+                            instance = 0,
+                            pageIndex = 1,
+                            texture = tex,
+                            extension = "tga",
+                            title = lbl.title,
+                            pageName = "",
+                            note = "",
+                            bossPinsCsv = formatPins(tex),
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                -- Also include Maraudon boss route guide notes
+                local mIds = {}
+                for nid in pairs(C.MaraudonBossGuide311 or {}) do if type(nid) == "number" then mIds[#mIds+1] = nid end end
+                table.sort(mIds)
+                for _, nid in ipairs(mIds) do
+                    inp = inp + 1
+                    local mg = C.MaraudonBossGuide311[nid]
+                    if type(mg) == "table" then
+                        rows[#rows+1] = {
+                            instance = 349,
+                            pageIndex = 99,
+                            texture = "CL_Maraudon_GJ4131",
+                            extension = "tga",
+                            npcID = nid,
+                            title = tostring(mg.location or ""),
+                            note = tostring(mg.tip or ""),
+                            outside = mg.outside == true,
+                        }
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut d_packs = vec![
+                ("dungeons".into(), "던전 가이드 전체".into(), "dungeon".into(), src.clone(), d_in, d_skip, d_rows),
+                ("dungeon_bosses".into(), "던전 보스 및 드랍 매핑".into(), "dungeon".into(), src.clone(), b_in, b_skip, b_rows),
+                ("dungeon_quests".into(), "던전 퀘스트 준비 목록".into(), "dungeon".into(), src.clone(), q_in, q_skip, q_rows),
+                ("dungeon_loot".into(), "던전 드랍 아이템 전체".into(), "dungeon".into(), src.clone(), l_in, l_skip, l_rows),
+            ];
+            if !st_rows.is_empty() {
+                d_packs.push(("dungeon_steps".into(), "던전 단계별 진행 체크리스트".into(), "dungeon".into(), src.clone(), st_in, st_skip, st_rows));
+            }
+            if !pt_rows.is_empty() {
+                d_packs.push(("dungeon_portraits".into(), "던전 보스 초상화·모델 매핑".into(), "dungeon".into(), src.clone(), pt_in, pt_skip, pt_rows));
+            }
+            if !mm_rows.is_empty() {
+                d_packs.push(("dungeon_map_meta".into(), "던전 내부 지도·보스 핀·루트 메타".into(), "dungeon".into(), src, mm_in, mm_skip, mm_rows));
+            }
+
             let (st, prov) = stage_lod_addon(
                 v2_root,
                 "ForeverSuite_Data_Dungeon",
                 "Dungeon & Loot DB",
-                "ForeverSuite LoadOnDemand 던전·보스·퀘스트·드랍 전체 DB",
-                vec![
-                    ("dungeons".into(), "던전 가이드 전체".into(), "dungeon".into(), src.clone(), d_in, d_skip, d_rows),
-                    ("dungeon_bosses".into(), "던전 보스 및 드랍 매핑".into(), "dungeon".into(), src.clone(), b_in, b_skip, b_rows),
-                    ("dungeon_quests".into(), "던전 퀘스트 준비 목록".into(), "dungeon".into(), src.clone(), q_in, q_skip, q_rows),
-                    ("dungeon_loot".into(), "던전 드랍 아이템 전체".into(), "dungeon".into(), src, l_in, l_skip, l_rows),
-                ],
+                "ForeverSuite LoadOnDemand 던전·보스·퀘스트·드랍·내부지도·단계별 체크리스트 전체 DB",
+                d_packs,
             )?;
             staged_addons.push(st);
             all_prov.extend(prov);
@@ -652,6 +977,7 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             exec_zip_lua(&lua, &mut archive, "GodJohnsonBiSData/BiSData.lua", true, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonBiSData/Acquisitions408.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonBiSData/BiSQuestRewards452.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/BiSEvidence.lua", false, &mut src)?;
 
             let (inp, skip, rows) = collect_entries_from_lua(
                 &lua,
@@ -660,11 +986,30 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 local rows, inp, skip = {}, 0, 0
                 local items = (type(C.BiSData) == "table" and type(C.BiSData.items) == "table") and C.BiSData.items or {}
                 local recipes = (type(C.AcquisitionFacts408) == "table" and type(C.AcquisitionFacts408.recipes) == "table") and C.AcquisitionFacts408.recipes or {}
+                local sourcesMap = (type(C.AcquisitionFacts408) == "table" and type(C.AcquisitionFacts408.sources) == "table") and C.AcquisitionFacts408.sources or {}
+                local function flattenText(v)
+                    if type(v) == "string" then return v end
+                    if type(v) == "number" then return tostring(v) end
+                    if type(v) == "table" then
+                        local acc = {}
+                        for _, item in ipairs(v) do
+                            local s = flattenText(item)
+                            if s ~= "" then acc[#acc+1] = s end
+                        end
+                        if #acc > 0 then return table.concat(acc, " / ") end
+                        if type(v.where) == "string" and v.where ~= "" then return v.where end
+                        if type(v.text) == "string" and v.text ~= "" then return v.text end
+                        if type(v.name) == "string" and v.name ~= "" then return v.name end
+                    end
+                    return ""
+                end
                 local SLOT_TO_INV = {
                     ["머리"] = 1, ["목"] = 2, ["어깨"] = 3, ["가슴"] = 5, ["허리"] = 6,
                     ["다리"] = 7, ["발"] = 8, ["손목"] = 9, ["손"] = 10, ["손가락"] = 11,
                     ["장신구"] = 13, ["등"] = 15, ["망토"] = 15, ["주장비"] = 16, ["한손"] = 16,
-                    ["양손"] = 16, ["보조장비"] = 17, ["방패"] = 17, ["원거리"] = 18, ["마법봉"] = 18,
+                    ["한손 장비"] = 16, ["양손"] = 16, ["양손 장비"] = 16, ["보조장비"] = 17,
+                    ["방패"] = 17, ["원거리"] = 18, ["원거리 장비"] = 18, ["마법봉"] = 18,
+                    ["투척"] = 18, ["성물"] = 18, ["성서"] = 18,
                 }
                 local ids = {}
                 for id in pairs(items) do if type(id) == "number" then ids[#ids+1] = id end end
@@ -689,8 +1034,18 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                         if type(recs) == "table" then
                             for _, r in ipairs(recs) do
                                 if type(r) == "table" and r.profession then
-                                    acqParts[#acqParts+1] = "제작(" .. tostring(r.profession) .. " " .. tostring(r.skill or "") .. "): " .. tostring(r.source or "")
+                                    local skVal = r.skill or r.skillEstimate
+                                    local skStr = (skVal ~= nil) and (" " .. tostring(skVal)) or ""
+                                    local srcStr = flattenText(r.source)
+                                    acqParts[#acqParts+1] = "제작(" .. tostring(r.profession) .. skStr .. ")" .. (srcStr ~= "" and (": " .. srcStr) or "")
                                 end
+                            end
+                        end
+                        local srcs = sourcesMap[id]
+                        if type(srcs) == "table" then
+                            for _, sItem in ipairs(srcs) do
+                                local stxt = flattenText(sItem)
+                                if stxt ~= "" then acqParts[#acqParts+1] = stxt end
                             end
                         end
                         if type(it.obtain) == "string" and it.obtain ~= "" then acqParts[#acqParts+1] = it.obtain end
@@ -719,12 +1074,65 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            let (ev_in, ev_skip, ev_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local classes = (type(C.BiSEvidence) == "table" and type(C.BiSEvidence.classes) == "table") and C.BiSEvidence.classes or {}
+                local cNames = {}
+                for cls in pairs(classes) do cNames[#cNames+1] = cls end
+                table.sort(cNames)
+                for _, cls in ipairs(cNames) do
+                    local cTbl = classes[cls]
+                    if type(cTbl) == "table" and type(cTbl.specs) == "table" then
+                        for _, sp in ipairs(cTbl.specs) do
+                            inp = inp + 1
+                            if type(sp) == "table" and type(sp.key) == "string" then
+                                local prio = {}
+                                for _, p in ipairs(sp.priorities or {}) do
+                                    if type(p) == "string" then prio[#prio+1] = p end
+                                end
+                                local statNotes = {}
+                                if type(sp.effects) == "table" then
+                                    local sk = {}
+                                    for k in pairs(sp.effects) do sk[#sk+1] = tostring(k) end
+                                    table.sort(sk)
+                                    for _, k in ipairs(sk) do
+                                        if type(sp.effects[k]) == "string" then
+                                            statNotes[#statNotes+1] = k .. ": " .. sp.effects[k]
+                                        end
+                                    end
+                                end
+                                rows[#rows+1] = {
+                                    class = cls,
+                                    spec = sp.key,
+                                    title = tostring(sp.name or sp.key),
+                                    role = tostring(sp.role or ""),
+                                    summary = tostring(sp.summary or ""),
+                                    priorities = table.concat(prio, " | "),
+                                    statNotes = table.concat(statNotes, "\n"),
+                                }
+                            else
+                                skip = skip + 1
+                            end
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut bis_packs = vec![("bis".into(), "BiS 장비 및 획득처 전체".into(), "bis".into(), src.clone(), inp, skip, rows)];
+            if !ev_rows.is_empty() {
+                bis_packs.push(("bis_evidence".into(), "직업·전문화별 BiS 능력치 우선순위 가이드".into(), "bis".into(), src, ev_in, ev_skip, ev_rows));
+            }
             let (st, prov) = stage_lod_addon(
                 v2_root,
                 "ForeverSuite_Data_BiS",
                 "BiS Gear DB",
-                "ForeverSuite LoadOnDemand BiS 장비·비교·획득처 전체 DB",
-                vec![("bis".into(), "BiS 장비 및 획득처 전체".into(), "bis".into(), src, inp, skip, rows)],
+                "ForeverSuite LoadOnDemand BiS 장비·비교·전문화 가중치·획득처 전체 DB",
+                bis_packs,
             )?;
             staged_addons.push(st);
             all_prov.extend(prov);
@@ -742,6 +1150,15 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             exec_zip_lua(&lua, &mut archive, "GodJohnsonProfessionData/FishingDirections205.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonProfessionData/CookingDirections205.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonProfessionData/ProfessionMasters279.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ProfessionMaterialData.lua", false, &mut src)?;
+            exec_zip_lua_patched(
+                &lua,
+                &mut archive,
+                "GodJohnsonGoldBorder/ProfessionRecommendations419.lua",
+                false,
+                &mut src,
+                &[("local picks={", "GJCompanion.ProfPicks419={")],
+            )?;
 
             let (g_in, g_skip, g_rows) = collect_entries_from_lua(
                 &lua,
@@ -865,16 +1282,79 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            let (m_in, m_skip, m_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local ids = {}
+                for id in pairs(C.ProfessionMaterialData or {}) do
+                    if type(id) == "number" then ids[#ids+1] = id end
+                end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    inp = inp + 1
+                    local rec = C.ProfessionMaterialData[id]
+                    if type(rec) == "table" and type(rec[1]) == "string" then
+                        rows[#rows+1] = {
+                            itemID = id,
+                            kind = rec[1],
+                            profMask = type(rec[2]) == "number" and rec[2] or 0,
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (pr_in, pr_skip, pr_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local ids = {}
+                for id in pairs(C.ProfPicks419 or {}) do
+                    if type(id) == "number" then ids[#ids+1] = id end
+                end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    inp = inp + 1
+                    local p = C.ProfPicks419[id]
+                    if type(p) == "table" and type(p.label) == "string" then
+                        rows[#rows+1] = {
+                            itemID = id,
+                            label = p.label,
+                            reason = tostring(p.reason or ""),
+                            condition = tostring(p.condition or ""),
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut prof_packs = vec![
+                ("prof_guides".into(), "전문기술 구간별 육성 가이드".into(), "profession".into(), src.clone(), g_in, g_skip, g_rows),
+                ("professions".into(), "전문기술 제조법 전체".into(), "profession".into(), src.clone(), r_in, r_skip, r_rows),
+                ("prof_trainers".into(), "전문기술 교관·대가·낚시/요리 길안내".into(), "profession".into(), src.clone(), t_in, t_skip, t_rows),
+            ];
+            if !m_rows.is_empty() {
+                prof_packs.push(("prof_materials".into(), "전문기술 재료 역추적 인덱스".into(), "profession".into(), src.clone(), m_in, m_skip, m_rows));
+            }
+            if !pr_rows.is_empty() {
+                prof_packs.push(("prof_recommendations".into(), "전문기술 실전 추천 품목".into(), "profession".into(), src, pr_in, pr_skip, pr_rows));
+            }
+
             let (st, prov) = stage_lod_addon(
                 v2_root,
                 "ForeverSuite_Data_Profession",
                 "Profession DB",
-                "ForeverSuite LoadOnDemand 12대 전문기술(독 제조 포함) 육성 가이드·제조법·교관 전체 DB",
-                vec![
-                    ("prof_guides".into(), "전문기술 구간별 육성 가이드".into(), "profession".into(), src.clone(), g_in, g_skip, g_rows),
-                    ("professions".into(), "전문기술 제조법 전체".into(), "profession".into(), src.clone(), r_in, r_skip, r_rows),
-                    ("prof_trainers".into(), "전문기술 교관·대가·낚시/요리 길안내".into(), "profession".into(), src, t_in, t_skip, t_rows),
-                ],
+                "ForeverSuite LoadOnDemand 12대 전문기술(독 제조 포함) 육성 가이드·제조법·재료·추천·교관 전체 DB",
+                prof_packs,
             )?;
             staged_addons.push(st);
             all_prov.extend(prov);
@@ -917,6 +1397,8 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                             itemLevel = type(it.itemLevel) == "number" and it.itemLevel or 0,
                             mode = tostring(off.mode or "reward"),
                             team = tostring(off.team or "Neutral"),
+                            costText = tostring(off.costText or off.priceText or off.reputation or ""),
+                            availability = tostring(off.availability or ""),
                             zone = tostring(off.mode or "보상") .. (off.team and (" · " .. tostring(off.team)) or ""),
                             note = tostring(off.sourceText or (v and (tostring(v.name or "") .. " (" .. tostring(v.zone or "") .. ")")) or ""),
                         }
@@ -1038,12 +1520,55 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            let (ab_in, ab_skip, ab_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local data = C.HunterPetData4114 or {}
+                local abs = data.abilities or {}
+                local function addAb(a, fallbackId)
+                    inp = inp + 1
+                    if type(a) == "table" and type(a.name) == "string" and a.name ~= "" then
+                        rows[#rows+1] = {
+                            abilityID = type(a.id) == "number" and a.id or (type(fallbackId) == "number" and fallbackId or 0),
+                            title = a.name,
+                            rank = type(a.rank) == "number" and a.rank or 0,
+                            spellID = type(a.spellID) == "number" and a.spellID or 0,
+                            family = tostring(a.family or ""),
+                            note = tostring(a.description or a.summary or ""),
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                if #abs > 0 then
+                    for idx, a in ipairs(abs) do addAb(a, idx) end
+                else
+                    local ids = {}
+                    for k in pairs(abs) do if type(k) == "number" then ids[#ids+1] = k end end
+                    table.sort(ids)
+                    for _, k in ipairs(ids) do addAb(abs[k], k) end
+                end
+                table.sort(rows, function(a,b)
+                    if a.title ~= b.title then return a.title < b.title end
+                    return (a.rank or 0) < (b.rank or 0)
+                end)
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut pet_packs = vec![("hunter_pets".into(), "사냥꾼 야수 도감 전체".into(), "pet".into(), src.clone(), inp, skip, rows)];
+            if !ab_rows.is_empty() {
+                pet_packs.push(("pet_abilities".into(), "사냥꾼 야수 기술·등급 전체".into(), "pet".into(), src, ab_in, ab_skip, ab_rows));
+            }
+
             let (st, prov) = stage_lod_addon(
                 v2_root,
                 "ForeverSuite_Data_Pet",
                 "Hunter Pet DB",
-                "ForeverSuite LoadOnDemand 사냥꾼 야수 길들이기·다중 서식지·기술 전체 DB",
-                vec![("hunter_pets".into(), "사냥꾼 야수 도감 전체".into(), "pet".into(), src, inp, skip, rows)],
+                "ForeverSuite LoadOnDemand 사냥꾼 야수 길들이기·다중 서식지·기술·등급 전체 DB",
+                pet_packs,
             )?;
             staged_addons.push(st);
             all_prov.extend(prov);
@@ -1060,6 +1585,7 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/MapTransportData.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/LibraryBooksData450.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ClassQuestData.lua", true, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ClassQuestRewardData433.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ClassQuestWalkthroughData434.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ClassQuestMartialGuide434.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ClassQuestHunterPriestGuide434.lua", false, &mut src)?;
@@ -1162,6 +1688,7 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 local rows, inp, skip = {}, 0, 0
                 local walks = C.ClassQuestWalkthrough434 or {}
                 local chains = C.QuestChainStarts270 or {}
+                local rewards = C.ClassQuestRewardData433 or {}
                 local ids = {}
                 for id in pairs(C.ClassQuests or {}) do if type(id) == "number" then ids[#ids+1] = id end end
                 table.sort(ids)
@@ -1185,6 +1712,20 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                                 if type(nid) == "number" then nextIds[#nextIds+1] = tostring(nid) end
                             end
                         end
+                        local rewSummaryParts, rewItemIds = {}, {}
+                        local rw = rewards[id]
+                        if type(rw) == "table" and type(rw.items) == "table" then
+                            for _, ri in ipairs(rw.items) do
+                                if type(ri) == "table" and type(ri.name) == "string" and ri.name ~= "" then
+                                    local tag = ri.choice and "[선택] " or ""
+                                    local desc = (type(ri.description) == "string" and ri.description ~= "") and (" (" .. ri.description .. ")") or ""
+                                    rewSummaryParts[#rewSummaryParts+1] = tag .. ri.name .. desc
+                                    if type(ri.id) == "number" and ri.id > 0 then
+                                        rewItemIds[#rewItemIds+1] = tostring(ri.id)
+                                    end
+                                end
+                            end
+                        end
                         local row = {
                             questID = id,
                             title = q.name,
@@ -1196,6 +1737,8 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                             zone = "Lv." .. tostring(q.level or 0) .. " (최소 " .. tostring(q.minLevel or 0) .. ")",
                             walkthrough = table.concat(stepLines, "\n"),
                             chainCsv = table.concat(nextIds, ","),
+                            rewardSummary = table.concat(rewSummaryParts, "\n"),
+                            rewardItemIDs = table.concat(rewItemIds, ","),
                         }
                         if st and type(st.mapID) == "number" and type(st.x) == "number" and type(st.y) == "number" then
                             local sx, sy = st.x, st.y
@@ -1382,6 +1925,600 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             all_prov.extend(prov);
         }
 
+        // ---------------------------------------------------------------------
+        // 8. ForeverSuite_Data_Items (Full 1.56 MB ItemReferenceData5089 + EN<->KR Translation Tables)
+        // ---------------------------------------------------------------------
+        {
+            let lua = create_sandboxed_lua()?;
+            let mut src = Vec::new();
+            let has_ref = exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ItemReferenceData5089.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ItemTranslation445.lua", false, &mut src)?;
+            exec_zip_lua_patched(
+                &lua,
+                &mut archive,
+                "GodJohnsonGoldBorder/TooltipTranslation438.lua",
+                false,
+                &mut src,
+                &[("local exact={", "GJCompanion.TooltipExact438={")],
+            )?;
+
+            let mut item_packs = Vec::new();
+            if has_ref {
+                let (c_in, c_skip, c_rows) = collect_entries_from_lua(
+                    &lua,
+                    r#"
+                    local C = GJCompanion
+                    local data = (type(C.PrepareItemReferenceCatalog5089) == "function") and C.PrepareItemReferenceCatalog5089() or {}
+                    local items = (type(data) == "table" and type(data.items) == "table") and data.items or {}
+                    local trans = (type(C.ItemTranslations445) == "table" and type(C.ItemTranslations445.names) == "table") and C.ItemTranslations445.names or {}
+                    local rows, inp, skip = {}, 0, 0
+                    local ids = {}
+                    for id in pairs(items) do if type(id) == "number" then ids[#ids+1] = id end end
+                    table.sort(ids)
+                    local INV_NAME = {
+                        [1]="머리",[2]="목",[3]="어깨",[4]="속옷",[5]="가슴",[6]="허리",[7]="다리",[8]="발",
+                        [9]="손목",[10]="손",[11]="손가락",[12]="장신구",[13]="한손",[14]="방패",[15]="원거리",
+                        [16]="등",[17]="양손",[18]="가방",[19]="휘장",[20]="가슴",[21]="주장비",[22]="보조장비",
+                        [23]="보조장비",[25]="투척",[26]="원거리",[28]="성물",
+                    }
+                    for _, id in ipairs(ids) do
+                        inp = inp + 1
+                        local it = items[id]
+                        local koName = trans[id] or (type(it) == "table" and (it.koName or it.name)) or nil
+                        local enName = (type(it) == "table" and type(it.enName) == "string") and it.enName or ((type(it) == "table" and type(it.altName) == "string") and it.altName or "")
+                        local title = (type(koName) == "string" and koName ~= "") and koName or ((enName ~= "") and enName or nil)
+                        if type(it) == "table" and title then
+                            local inv = type(it.inventoryType) == "number" and it.inventoryType or 0
+                            local slotName = INV_NAME[inv] or ""
+                            rows[#rows+1] = {
+                                itemID = id,
+                                title = title,
+                                altName = enName,
+                                quality = type(it.quality) == "number" and it.quality or 1,
+                                itemLevel = type(it.itemLevel) == "number" and it.itemLevel or 0,
+                                icon = type(it.icon) == "number" and it.icon or 0,
+                                slot = slotName,
+                                equipSlot = inv,
+                                classID = type(it.classID) == "number" and it.classID or 0,
+                                setName = type(it.setName) == "string" and it.setName or "",
+                                zone = (type(it.setName) == "string" and it.setName ~= "") and ("세트 · " .. it.setName) or (slotName ~= "" and slotName or "아이템 도감"),
+                            }
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                    return { input = inp, skipped = skip, rows = rows }
+                    "#,
+                )?;
+                if !c_rows.is_empty() {
+                    item_packs.push(("item_catalog".into(), "전체 아이템 레퍼런스 카탈로그".into(), "item".into(), src.clone(), c_in, c_skip, c_rows));
+                }
+            }
+
+            let (tr_in, tr_skip, tr_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local names = (type(C.ItemTranslations445) == "table" and type(C.ItemTranslations445.names) == "table") and C.ItemTranslations445.names or {}
+                local nids = {}
+                for id in pairs(names) do if type(id) == "number" then nids[#nids+1] = id end end
+                table.sort(nids)
+                for _, id in ipairs(nids) do
+                    inp = inp + 1
+                    local ko = names[id]
+                    if type(ko) == "string" and ko ~= "" then
+                        rows[#rows+1] = { kind = "item", itemID = id, ko = ko }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                local exact = C.TooltipExact438 or {}
+                local eKeys = {}
+                for k in pairs(exact) do if type(k) == "string" then eKeys[#eKeys+1] = k end end
+                table.sort(eKeys)
+                for _, k in ipairs(eKeys) do
+                    inp = inp + 1
+                    local v = exact[k]
+                    if type(v) == "string" and v ~= "" then
+                        rows[#rows+1] = { kind = "clause", en = k, ko = v }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+            if !tr_rows.is_empty() {
+                item_packs.push(("item_translations".into(), "아이템·툴팁 영한 번역 사전".into(), "item".into(), src, tr_in, tr_skip, tr_rows));
+            }
+            if !item_packs.is_empty() {
+                let (st, prov) = stage_lod_addon(
+                    v2_root,
+                    "ForeverSuite_Data_Items",
+                    "Full Item Catalog & Translation DB",
+                    "ForeverSuite LoadOnDemand 전체 아이템 레퍼런스 카탈로그(1.56MB) 및 영한 툴팁 번역 사전",
+                    item_packs,
+                )?;
+                staged_addons.push(st);
+                all_prov.extend(prov);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 9. ForeverSuite_Data_QuestExtra (Dialogue Routes, Interaction Targets, Collection, Starters, Escorts, QuickTips, Growth)
+        // ---------------------------------------------------------------------
+        {
+            let lua = create_sandboxed_lua()?;
+            let mut src = Vec::new();
+            lua.load("GJCompanion.QuestObjectiveTargets = {}").set_mode(ChunkMode::Text).exec().ok();
+            exec_zip_lua_patched(
+                &lua, &mut archive, "GodJohnsonGoldBorder/QuestDialogueRoutes.lua", false, &mut src,
+                &[("local finish={", "GJCompanion.QuestDialogueFinish={")],
+            )?;
+            exec_zip_lua_patched(
+                &lua, &mut archive, "GodJohnsonGoldBorder/QuestInteractionTargets196.lua", false, &mut src,
+                &[("local additions={", "GJCompanion.QuestInteractionAdditions={")],
+            )?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/QuestCollectionData447.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/QuestStarterData424.lua", false, &mut src)?;
+            exec_zip_lua_patched(
+                &lua, &mut archive, "GodJohnsonGoldBorder/EscortQuests249.lua", false, &mut src,
+                &[("local escorts = {", "GJCompanion.EscortQuestsMap = {")],
+            )?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/QuestPracticalTips279.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/QuickTipsData428.lua", false, &mut src)?;
+            exec_zip_lua_patched(
+                &lua, &mut archive, "GodJohnsonGoldBorder/GrowthGuideData5042.lua", false, &mut src,
+                &[("local tips={", "GJCompanion.GrowthTips5042={")],
+            )?;
+
+            let (qr_in, qr_skip, qr_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local fIds = {}
+                for qid in pairs(C.QuestDialogueFinish or {}) do if type(qid) == "number" then fIds[#fIds+1] = qid end end
+                table.sort(fIds)
+                for _, qid in ipairs(fIds) do
+                    inp = inp + 1
+                    local f = C.QuestDialogueFinish[qid]
+                    if type(f) == "table" and type(f[1]) == "number" and type(f[2]) == "number" and type(f[3]) == "number" then
+                        local nx, ny = f[2], f[3]
+                        if nx > 1 or ny > 1 then nx, ny = nx / 100.0, ny / 100.0 end
+                        rows[#rows+1] = {
+                            kind = "dialogue",
+                            questID = qid,
+                            mapID = f[1],
+                            x = nx,
+                            y = ny,
+                            title = tostring(f[4] or ("퀘스트 #" .. tostring(qid))),
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                local aIds = {}
+                for qid in pairs(C.QuestInteractionAdditions or {}) do if type(qid) == "number" then aIds[#aIds+1] = qid end end
+                table.sort(aIds)
+                for _, qid in ipairs(aIds) do
+                    for _, obj in ipairs(C.QuestInteractionAdditions[qid] or {}) do
+                        inp = inp + 1
+                        if type(obj) == "table" and type(obj.name) == "string" and obj.name ~= "" then
+                            local tLabels = {}
+                            for _, tg in ipairs(obj.targets or {}) do
+                                if type(tg) == "table" and tg.label then tLabels[#tLabels+1] = tostring(tg.label) end
+                            end
+                            rows[#rows+1] = {
+                                kind = "interact",
+                                questID = qid,
+                                itemID = type(obj.itemID) == "number" and obj.itemID or 0,
+                                count = type(obj.count) == "number" and obj.count or 1,
+                                action = tostring(obj.action or "interact"),
+                                title = obj.name,
+                                note = table.concat(tLabels, " / "),
+                            }
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (qc_in, qc_skip, qc_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local items = (type(C.QuestCollectionData447) == "table" and type(C.QuestCollectionData447.items) == "table") and C.QuestCollectionData447.items or {}
+                local ids = {}
+                for id in pairs(items) do if type(id) == "number" then ids[#ids+1] = id end end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    inp = inp + 1
+                    local it = items[id]
+                    if type(it) == "table" and type(it.name) == "string" and it.name ~= "" then
+                        local qList, iList = {}, {}
+                        for qid in pairs(it.quests or {}) do if type(qid) == "number" then qList[#qList+1] = tostring(qid) end end
+                        for iid in pairs(it.instances or {}) do if type(iid) == "number" then iList[#iList+1] = tostring(iid) end end
+                        table.sort(qList); table.sort(iList)
+                        rows[#rows+1] = {
+                            itemID = id,
+                            title = it.name,
+                            altName = tostring(it.en or ""),
+                            questsCsv = table.concat(qList, ","),
+                            instancesCsv = table.concat(iList, ","),
+                            generalDrop = it.generalDrop == true,
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (qs_in, qs_skip, qs_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                for _, r in ipairs(C.QuestStarterRecords4024 or {}) do
+                    inp = inp + 1
+                    if type(r) == "table" and type(r.itemID) == "number" then
+                        local qList, nList = {}, {}
+                        for _, qid in ipairs(r.quests or {}) do qList[#qList+1] = tostring(qid) end
+                        for _, nid in ipairs(r.npcs or {}) do nList[#nList+1] = tostring(nid) end
+                        rows[#rows+1] = {
+                            itemID = r.itemID,
+                            minLevel = type(r.minLevel) == "number" and r.minLevel or 0,
+                            faction = tostring(r.faction or "Both"),
+                            questsCsv = table.concat(qList, ","),
+                            npcsCsv = table.concat(nList, ","),
+                        }
+                    else
+                        skip = skip + 1
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (qt_in, qt_skip, qt_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local eIds = {}
+                for qid in pairs(C.EscortQuestsMap or {}) do if type(qid) == "number" then eIds[#eIds+1] = qid end end
+                table.sort(eIds)
+                for _, qid in ipairs(eIds) do
+                    inp = inp + 1
+                    rows[#rows+1] = { kind = "escort", questID = qid, title = "호위 퀘스트 #" .. tostring(qid), category = "escort", note = "파티원과 함께 호위 시작 권장 · 선행 몹 정리 후 수락하세요." }
+                end
+                for _, qt in ipairs(C.QuickTipsData428 or {}) do
+                    inp = inp + 1
+                    if type(qt) == "table" and type(qt.title) == "string" then
+                        rows[#rows+1] = {
+                            kind = "quicktip",
+                            key = tostring(qt.key or ""),
+                            category = tostring(qt.category or "general"),
+                            title = qt.title,
+                            summary = tostring(qt.summary or ""),
+                            meta = tostring(qt.meta or ""),
+                            note = tostring(qt.body or ""),
+                        }
+                    end
+                end
+                local gKeys = {}
+                for k in pairs(C.GrowthTips5042 or {}) do gKeys[#gKeys+1] = tostring(k) end
+                table.sort(gKeys)
+                for _, k in ipairs(gKeys) do
+                    inp = inp + 1
+                    local g = C.GrowthTips5042[k]
+                    if type(g) == "table" and type(g.title) == "string" then
+                        rows[#rows+1] = {
+                            kind = "growth",
+                            key = k,
+                            category = "growth",
+                            title = g.title,
+                            note = table.concat(g.lines or {}, "\n"),
+                        }
+                    end
+                end
+                if type(C.KrolPreparationWarning279) == "string" and C.KrolPreparationWarning279 ~= "" then
+                    inp = inp + 1
+                    rows[#rows+1] = { kind = "practical", key = "krol_warn", category = "dungeon", title = "크롤도크 보루 사전 준비 주의", note = C.KrolPreparationWarning279 }
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut qx_packs = Vec::new();
+            if !qr_rows.is_empty() { qx_packs.push(("quest_routes".into(), "퀘스트 대화 루트·상호작용 대상".into(), "quest".into(), src.clone(), qr_in, qr_skip, qr_rows)); }
+            if !qc_rows.is_empty() { qx_packs.push(("quest_collection".into(), "퀘스트 수집 완료 알림 데이터".into(), "quest".into(), src.clone(), qc_in, qc_skip, qc_rows)); }
+            if !qs_rows.is_empty() { qx_packs.push(("quest_starters".into(), "퀘스트 시작 아이템·드랍처 힌트".into(), "quest".into(), src.clone(), qs_in, qs_skip, qs_rows)); }
+            if !qt_rows.is_empty() { qx_packs.push(("quest_tips".into(), "호위 퀘스트·퀵 팁·성장 가이드".into(), "quest".into(), src, qt_in, qt_skip, qt_rows)); }
+            if !qx_packs.is_empty() {
+                let (st, prov) = stage_lod_addon(
+                    v2_root,
+                    "ForeverSuite_Data_QuestExtra",
+                    "Quest Routes, Tips & Growth DB",
+                    "ForeverSuite LoadOnDemand 퀘스트 대화 루트·상호작용·수집 알림·호위·퀵팁·성장 가이드 전체 DB",
+                    qx_packs,
+                )?;
+                staged_addons.push(st);
+                all_prov.extend(prov);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 10. ForeverSuite_Data_MapExtra (WorldMap Fog-of-War Reveal + Gather & Pet Heatmaps)
+        // ---------------------------------------------------------------------
+        {
+            let lua = create_sandboxed_lua()?;
+            let mut src = Vec::new();
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/MapRevealData.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonAtlasData/GatherHeatmapData411.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonHunterPetData/PetHeatmapData4115.lua", false, &mut src)?;
+
+            let (mr_in, mr_skip, mr_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local mids = {}
+                for mid in pairs(C.MapRevealData or {}) do if type(mid) == "number" then mids[#mids+1] = mid end end
+                table.sort(mids)
+                for _, mid in ipairs(mids) do
+                    for _, ov in ipairs(C.MapRevealData[mid] or {}) do
+                        inp = inp + 1
+                        if type(ov) == "table" and type(ov.files) == "table" and #ov.files > 0 then
+                            local fl = {}
+                            for _, fid in ipairs(ov.files) do fl[#fl+1] = tostring(fid) end
+                            rows[#rows+1] = {
+                                mapID = mid,
+                                w = type(ov.w) == "number" and ov.w or 256,
+                                h = type(ov.h) == "number" and ov.h or 256,
+                                x = type(ov.x) == "number" and ov.x or 0,
+                                y = type(ov.y) == "number" and ov.y or 0,
+                                filesCsv = table.concat(fl, ","),
+                            }
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (gh_in, gh_skip, gh_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local function rewriteMedia(p)
+                    if type(p) ~= "string" then return "" end
+                    return (string.gsub(p, "Interface\\AddOns\\GodJohnsonGoldBorder\\Media\\", "Interface\\AddOns\\ForeverSuite_Media_Assets\\"))
+                end
+                local iIds = {}
+                for iid in pairs(C.GatherHeatmapData411 or {}) do if type(iid) == "number" then iIds[#iIds+1] = iid end end
+                table.sort(iIds)
+                for _, iid in ipairs(iIds) do
+                    local byMap = C.GatherHeatmapData411[iid]
+                    local mIds = {}
+                    for mid in pairs(byMap or {}) do if type(mid) == "number" then mIds[#mIds+1] = mid end end
+                    table.sort(mIds)
+                    for _, mid in ipairs(mIds) do
+                        inp = inp + 1
+                        local rec = byMap[mid]
+                        if type(rec) == "table" and type(rec.file) == "string" then
+                            local tc = rec.texCoord or {0,1,0,1}
+                            rows[#rows+1] = {
+                                itemID = iid,
+                                mapID = mid,
+                                points = type(rec.points) == "number" and rec.points or 0,
+                                file = rewriteMedia(rec.file),
+                                u1 = type(tc[1]) == "number" and tc[1] or 0,
+                                u2 = type(tc[2]) == "number" and tc[2] or 1,
+                                v1 = type(tc[3]) == "number" and tc[3] or 0,
+                                v2 = type(tc[4]) == "number" and tc[4] or 1,
+                            }
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let (ph_in, ph_skip, ph_rows) = collect_entries_from_lua(
+                &lua,
+                r#"
+                local C = GJCompanion
+                local rows, inp, skip = {}, 0, 0
+                local function rewriteMedia(p)
+                    if type(p) ~= "string" then return "" end
+                    return (string.gsub(p, "Interface\\AddOns\\GodJohnsonGoldBorder\\Media\\", "Interface\\AddOns\\ForeverSuite_Media_Assets\\"))
+                end
+                local ph = C.PetHeatmapData4115 or {}
+                local sprites = ph.sprites or {}
+                local byNpc = ph.beasts or ph.byNpc or ph.maps or {}
+                if #sprites > 0 then
+                    for idx, sp in ipairs(sprites) do
+                        inp = inp + 1
+                        if type(sp) == "table" and type(sp.file) == "string" then
+                            local uv = sp.uv or {0,1,0,1}
+                            rows[#rows+1] = {
+                                spriteIndex = idx,
+                                file = rewriteMedia(sp.file),
+                                u1 = type(uv[1]) == "number" and uv[1] or 0,
+                                u2 = type(uv[2]) == "number" and uv[2] or 1,
+                                v1 = type(uv[3]) == "number" and uv[3] or 0,
+                                v2 = type(uv[4]) == "number" and uv[4] or 1,
+                            }
+                        else
+                            skip = skip + 1
+                        end
+                    end
+                end
+                return { input = inp, skipped = skip, rows = rows }
+                "#,
+            )?;
+
+            let mut mx_packs = Vec::new();
+            if !mr_rows.is_empty() { mx_packs.push(("map_reveal".into(), "월드맵 미탐험 지역 밝히기 오버레이".into(), "map".into(), src.clone(), mr_in, mr_skip, mr_rows)); }
+            if !gh_rows.is_empty() { mx_packs.push(("gather_heatmap".into(), "채집물(약초·광맥) 밀도 히트맵".into(), "map".into(), src.clone(), gh_in, gh_skip, gh_rows)); }
+            if !ph_rows.is_empty() { mx_packs.push(("pet_heatmap".into(), "사냥꾼 야수 출현 밀도 히트맵".into(), "map".into(), src, ph_in, ph_skip, ph_rows)); }
+            if !mx_packs.is_empty() {
+                let (st, prov) = stage_lod_addon(
+                    v2_root,
+                    "ForeverSuite_Data_MapExtra",
+                    "WorldMap Reveal & Heatmaps DB",
+                    "ForeverSuite LoadOnDemand 월드맵 미탐험 밝히기·채집 히트맵·야수 히트맵 전체 DB",
+                    mx_packs,
+                )?;
+                staged_addons.push(st);
+                all_prov.extend(prov);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 11. ForeverSuite_Media_Assets (LoD Binary Media Pack: Dungeon Maps, Arrows, Heatmaps, Sounds, Fonts)
+        // ---------------------------------------------------------------------
+        {
+            let addon_name = "ForeverSuite_Media_Assets";
+            let target_dir = v2_root.join(addon_name);
+            let pid = std::process::id();
+            let stage_dir = v2_root.join(format!(".{addon_name}.stage.{pid}"));
+            let prev_dir = v2_root.join(format!(".{addon_name}.prev.{pid}"));
+            if stage_dir.exists() {
+                fs::remove_dir_all(&stage_dir)?;
+            }
+            fs::create_dir_all(&stage_dir)?;
+
+            let mut copied_count = 0usize;
+            let mut sound_files: Vec<String> = Vec::new();
+            let mut font_files: Vec<String> = Vec::new();
+            let mut map_files: Vec<String> = Vec::new();
+            let mut arrow_files: Vec<String> = Vec::new();
+            let prefix = "GodJohnsonGoldBorder/Media/";
+
+            for i in 0..archive.len() {
+                let mut entry = archive.by_index(i)?;
+                if entry.is_dir() {
+                    continue;
+                }
+                let name = entry.name().to_string();
+                let Some(rel) = name.strip_prefix(prefix) else {
+                    continue;
+                };
+                if rel.contains("..") || rel.starts_with('/') {
+                    continue;
+                }
+                let low = rel.to_lowercase();
+                let keep = if rel.starts_with("Maps/") && (low.ends_with(".tga") || low.ends_with(".blp")) {
+                    map_files.push(rel.to_string());
+                    true
+                } else if rel.starts_with("Dungeon4130/") && (low.ends_with(".tga") || low.ends_with(".blp")) {
+                    map_files.push(rel.to_string());
+                    true
+                } else if rel.starts_with("Arrows/") && low.ends_with(".tga") {
+                    arrow_files.push(rel.to_string());
+                    true
+                } else if (rel.starts_with("GatherHeat4110/") || rel.starts_with("PetHeat4115/")) && low.ends_with(".tga") {
+                    true
+                } else if rel.starts_with("Fonts/") && (low.ends_with(".ttf") || low.ends_with(".otf")) {
+                    font_files.push(rel.to_string());
+                    true
+                } else if rel.starts_with("Notifications/") && (low.ends_with(".ogg") || low.ends_with(".wav") || low.ends_with(".mp3")) {
+                    // Keep 4 volume steps (_25/_50/_75/_100) + non-suffixed clips for crisp volume control without CVar writes
+                    let stem = low.rsplit('/').next().unwrap_or("");
+                    let keep_snd = stem.ends_with("_25.ogg")
+                        || stem.ends_with("_50.ogg")
+                        || stem.ends_with("_75.ogg")
+                        || stem.ends_with("_100.ogg")
+                        || !stem.contains('_')
+                        || stem.ends_with(".wav")
+                        || stem.ends_with(".mp3");
+                    if keep_snd {
+                        sound_files.push(rel.to_string());
+                    }
+                    keep_snd
+                } else {
+                    false
+                };
+                if !keep {
+                    continue;
+                }
+                if entry.size() > MAX_ZIP_ENTRY_BYTES {
+                    continue;
+                }
+                let dst = stage_dir.join(rel);
+                if let Some(parent) = dst.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut buf = Vec::with_capacity(entry.size() as usize);
+                entry.read_to_end(&mut buf)?;
+                fs::write(&dst, &buf)?;
+                copied_count += 1;
+            }
+
+            if copied_count > 0 {
+                sound_files.sort();
+                font_files.sort();
+                map_files.sort();
+                arrow_files.sort();
+                let manifest_lua = format!(
+                    "-- Auto-generated ForeverSuite Media Assets Manifest\n\
+_G.ForeverSuiteMediaAssets = {{\n\
+    root = \"Interface\\\\AddOns\\\\ForeverSuite_Media_Assets\\\\\",\n\
+    counts = {{ total = {}, maps = {}, arrows = {}, sounds = {}, fonts = {} }},\n\
+}}\n",
+                    copied_count,
+                    map_files.len(),
+                    arrow_files.len(),
+                    sound_files.len(),
+                    font_files.len()
+                );
+                full_moon::parse(&manifest_lua)
+                    .map_err(|e| anyhow::anyhow!("Invalid AssetsManifest.lua: {e:?}"))?;
+                fs::write(stage_dir.join("AssetsManifest.lua"), manifest_lua.as_bytes())?;
+                let toc = "## Interface: 16001, 120105\n\
+## Title: |cffd4af37Forever|rSuite · Media Assets (LoD)\n\
+## Notes: ForeverSuite LoadOnDemand 던전 내부 지도·화살표·히트맵·알림음·한글 폰트 통합 미디어 팩\n\
+## Author: Youngseo Cho\n\
+## Version: 4.0.0\n\
+## LoadOnDemand: 1\n\
+## Dependencies: ForeverSuite\n\n\
+AssetsManifest.lua\n";
+                fs::write(stage_dir.join(format!("{addon_name}.toc")), toc.as_bytes())?;
+                staged_addons.push(StagedAddon {
+                    stage_dir,
+                    target_dir,
+                    prev_dir,
+                });
+                all_prov.push(GjPackProvenance {
+                    addon_name: addon_name.to_string(),
+                    pack_id: "media_assets".into(),
+                    title: "던전 내부 지도·화살표·히트맵·알림음·한글 폰트 통합 미디어".into(),
+                    source_files: vec!["Media/Maps".into(), "Media/Dungeon4130".into(), "Media/Arrows".into(), "Media/Notifications".into(), "Media/Fonts".into()],
+                    input_count: copied_count,
+                    output_count: copied_count,
+                    skipped_count: 0,
+                    shards: 1,
+                    output_sha256: sha256_bytes(manifest_lua.as_bytes()),
+                });
+            } else {
+                let _ = fs::remove_dir_all(&stage_dir);
+            }
+        }
+
         Ok(())
     })();
 
@@ -1416,7 +2553,14 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
     let total_entries: usize = manifest.packs.iter().map(|p| p.output_count).sum();
     let total_shards: usize = manifest.packs.iter().map(|p| p.shards).sum();
     println!(
-        "[OK] fsx data compile-gj: generated 7 LoD addon packs ({} sub-packs, {} total entries across {} shards)",
+        "[OK] fsx data compile-gj: generated {} LoD addon packs ({} sub-packs, {} total entries across {} shards)",
+        {
+            let mut uniq = std::collections::BTreeSet::new();
+            for p in &manifest.packs {
+                uniq.insert(p.addon_name.as_str());
+            }
+            uniq.len()
+        },
         manifest.packs.len(),
         total_entries,
         total_shards

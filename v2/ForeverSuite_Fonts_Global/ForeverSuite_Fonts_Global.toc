@@ -1,0 +1,9 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Global Fonts (Opt-In)
+## Notes: ForeverSuite v4.0 게임 전역·전투 데미지·채팅 한글 폰트 선택 적용 모듈 (기본 OFF · /fs 폰트 탭에서 활성화)
+## Author: Youngseo Cho
+## Version: 4.0.0
+## SavedVariables: ForeverSuiteGlobalFontsDB
+## OptionalDeps: ForeverSuite_Media_Assets
+
+GlobalFonts.lua

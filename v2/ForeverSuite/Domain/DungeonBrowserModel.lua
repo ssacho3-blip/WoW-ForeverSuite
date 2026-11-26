@@ -166,3 +166,133 @@ function DungeonBrowserModel.FormatDuration(sec)
     local r = s - m * 60
     return string_format("%02d:%02d", m, r)
 end
+
+-- B5: Resolve interior map pages & boss pins for a dungeon (from dungeon_map_meta pack)
+function DungeonBrowserModel.GetMapPagesForDungeon(metaRows, dungeon)
+    local pages, notes = {}, {}
+    if type(dungeon) ~= "table" or type(metaRows) ~= "table" then
+        return pages, notes
+    end
+    local dInst = (type(dungeon.instance) == "number" and dungeon.instance > 0) and dungeon.instance or nil
+    local dName = tostring(dungeon.title or "")
+    for _, m in ipairs(metaRows) do
+        if type(m) == "table" then
+            local instMatch = dInst and m.instance == dInst
+            local nameMatch = (not instMatch) and dName ~= "" and type(m.title) == "string" and string_find(m.title, dName, 1, true)
+            if instMatch or nameMatch then
+                if m.pageIndex == 99 then
+                    table_insert(notes, m)
+                elseif type(m.texture) == "string" and m.texture ~= "" then
+                    table_insert(pages, m)
+                end
+            end
+        end
+    end
+    return pages, notes
+end
+
+-- B5: Parse "1:280:38|2:252:22|C:254:157" into pixel pin list on 512x512 artwork
+function DungeonBrowserModel.ParseBossPins(csv)
+    local pins = {}
+    if type(csv) ~= "string" or csv == "" then return pins end
+    for entry in string_gmatch(csv, "[^|]+") do
+        local label, xs, ys = string.match(entry, "^([^:]+):([%d%.%-]+):([%d%.%-]+)$")
+        local x, y = tonumber(xs), tonumber(ys)
+        if label and x and y then
+            table_insert(pins, {
+                label = label,
+                px = x,
+                py = y,
+                nx = x / 512.0,
+                ny = y / 512.0,
+            })
+        end
+    end
+    return pins
+end
+
+function DungeonBrowserModel.ResolveMapTexturePath(page)
+    if type(page) ~= "table" or type(page.texture) ~= "string" or page.texture == "" then
+        return nil
+    end
+    local tex = page.texture
+    local ext = (type(page.extension) == "string" and page.extension ~= "") and page.extension or "tga"
+    if string_find(tex, "^Dungeon%d+$") then
+        return "Interface\\AddOns\\ForeverSuite_Media_Assets\\Dungeon4130\\" .. tex .. "." .. ext
+    end
+    return "Interface\\AddOns\\ForeverSuite_Media_Assets\\Maps\\" .. tex .. "." .. ext
+end
+
+-- B6: Filter verified step-by-step dungeon quest checklists for a dungeon
+function DungeonBrowserModel.FilterStepsForDungeon(stepRows, dungeon, dungeonQuestSet, completedSet)
+    local out = {}
+    if type(stepRows) ~= "table" or type(dungeon) ~= "table" then return out end
+    local dName = tostring(dungeon.title or "")
+    local qSet = type(dungeonQuestSet) == "table" and dungeonQuestSet or {}
+    local comp = type(completedSet) == "table" and completedSet or {}
+    for _, st in ipairs(stepRows) do
+        if type(st) == "table" and type(st.questID) == "number" then
+            local match = qSet[st.questID] == true
+                or (dName ~= "" and type(st.dungeon) == "string" and st.dungeon == dName)
+                or (dName ~= "" and type(st.source) == "string" and string_find(st.source, dName, 1, true) ~= nil)
+            if match then
+                local done = comp[st.questID] == true
+                table_insert(out, {
+                    step = st,
+                    done = done,
+                })
+            end
+        end
+    end
+    return out
+end
+
+-- B6: Lookup creature portrait displayID / fileDataID by npcID
+function DungeonBrowserModel.IndexPortraitsByNpcID(rows)
+    local map = {}
+    for _, r in ipairs(rows or {}) do
+        if type(r) == "table" and type(r.npcID) == "number" and r.npcID > 0 then
+            map[r.npcID] = r
+        end
+    end
+    return map
+end
+
+-- B4: Compute dungeon XP/hour (nil if elapsed < 10s or xp <= 0 — zero fabrication)
+function DungeonBrowserModel.ComputeXpPerHour(xpGained, elapsedSec)
+    if type(xpGained) ~= "number" or xpGained <= 0 or type(elapsedSec) ~= "number" or elapsedSec < 10 then
+        return nil
+    end
+    return math_floor((xpGained * 3600) / elapsedSec + 0.5)
+end
+
+-- B7: Evaluate loot roll item vs equipped slot & BiS catalog
+function DungeonBrowserModel.EvaluateRollItem(itemID, itemLevel, equipSlot, equippedMap, bisSet)
+    if type(itemID) ~= "number" or itemID <= 0 then return nil end
+    local isBiS = (type(bisSet) == "table" and bisSet[itemID] == true)
+    local eqIlvl = (type(equippedMap) == "table" and type(equipSlot) == "number" and equipSlot > 0) and equippedMap[equipSlot] or nil
+    local delta = (type(itemLevel) == "number" and itemLevel > 0 and type(eqIlvl) == "number" and eqIlvl > 0)
+        and (math_floor(itemLevel) - math_floor(eqIlvl)) or nil
+    local verdict = "참고"
+    local tone = "SECONDARY"
+    if isBiS then
+        verdict = (delta and delta > 0) and ("★ BiS (+" .. tostring(delta) .. ")") or "★ BiS 추천"
+        tone = "GOLD"
+    elseif delta and delta > 0 then
+        verdict = "+" .. tostring(delta) .. " 업그레이드"
+        tone = "SUCCESS"
+    elseif delta and delta == 0 then
+        verdict = "동급"
+        tone = "SECONDARY"
+    elseif delta and delta < 0 then
+        verdict = tostring(delta) .. " 하위"
+        tone = "DANGER"
+    end
+    return {
+        itemID = itemID,
+        isBiS = isBiS,
+        delta = delta,
+        verdict = verdict,
+        tone = tone,
+    }
+end

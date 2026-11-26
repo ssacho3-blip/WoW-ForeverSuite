@@ -118,10 +118,10 @@ function FontsPage:Build(parent)
 
     local presetOpts = {}
     for _, p in ipairs(ns.Domain.FontModel.PRESETS) do
-        presetOpts[#presetOpts + 1] = { value = p.id, label = p.label, width = 122 }
+        presetOpts[#presetOpts + 1] = { value = p.id, label = p.label, width = 178 }
     end
     local curPreset = ns.Api.ProfileStore:Get("ui", "fontPreset") or "default_kr"
-    local pBar = W.PillBar(parent, presetOpts, curPreset, function(v)
+    local pBar = W.FlowPillGroup(parent, presetOpts, curPreset, 756, function(v)
         local prev = ns.Api.ProfileStore:Get("ui", "fontPreset") or "default_kr"
         if not ns.Api.ProfileStore:Set("ui", "fontPreset", v) then
             return false
@@ -134,10 +134,11 @@ function FontsPage:Build(parent)
         return true
     end)
     pBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -68)
-    pBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -68)
+    self.presetBar = pBar
 
+    local nextY = 68 + (pBar._totalHeight or 52) + 14
     local outlineLbl = W.Label(parent, "외곽선 스타일", "small", T.TEXT.SECONDARY)
-    outlineLbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -106)
+    outlineLbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -nextY)
     local curOutline = ns.Api.ProfileStore:Get("ui", "fontOutline") or "none"
     local oBar = W.PillBar(parent, {
         { value = "none", label = "그림자만(기본)", width = 108 },
@@ -149,36 +150,113 @@ function FontsPage:Build(parent)
         end
         return false
     end)
-    oBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -126)
-    oBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -126)
+    oBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(nextY + 20))
+    oBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(nextY + 20))
+    self.outlineBar = oBar
 
     local curDelta = ns.Api.ProfileStore:GetState("fontSizeDelta") or 0
     local slider = W.Slider(parent, "글자 크기 보정 (-2 ~ +4 pt)", -2, 4, 1, curDelta, function(v)
         ns.Api.ProfileStore:SetState("fontSizeDelta", ns.Domain.FontModel.NormalizeSizeDelta(v))
         FontsPage:ApplySavedFonts()
     end)
-    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -166)
-    slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -140, -166)
+    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(nextY + 60))
+    slider:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -140, -(nextY + 60))
+    self.sizeSlider = slider
 
     local resetBtn = W.Button(parent, "기본값 복원", 112, 26, function()
+        if ns.Api.SafeAPI.InCombat() then
+            ns.Api.SafeAPI.Print("전투 중에는 폰트를 초기화할 수 없습니다.")
+            return
+        end
         ns.Api.ProfileStore:Set("ui", "fontPreset", "default_kr")
         ns.Api.ProfileStore:Set("ui", "fontOutline", "none")
         ns.Api.ProfileStore:SetState("fontSizeDelta", 0)
+        if FontsPage.presetBar and type(FontsPage.presetBar.SetValue) == "function" then
+            FontsPage.presetBar:SetValue("default_kr", true)
+        end
+        if FontsPage.outlineBar and type(FontsPage.outlineBar.SetValue) == "function" then
+            FontsPage.outlineBar:SetValue("none")
+        end
+        if FontsPage.sizeSlider and FontsPage.sizeSlider._slider and type(FontsPage.sizeSlider._slider.SetValue) == "function" then
+            FontsPage.sizeSlider._slider:SetValue(0)
+        end
         FontsPage:ApplySavedFonts()
         ns.Api.SafeAPI.Print("폰트 설정을 기본값으로 복원했습니다.")
     end, true)
-    resetBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -172)
+    resetBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(nextY + 66))
 
-    local previewCard = W.Card(parent, 580, 96, nil, nil)
-    previewCard:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -216)
-    previewCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -216)
+    local previewCard = W.Card(parent, 580, 74, nil, nil)
+    previewCard:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(nextY + 104))
+    previewCard:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, -(nextY + 104))
     W.SetBorderColor(previewCard, T.BORDER.GOLD_SOFT)
     local pHdr = W.Label(previewCard, "미리보기 표본 (완성형 · 자모 · 숫자 · 기호)", "small", T.TEXT.GOLD)
-    pHdr:SetPoint("TOPLEFT", previewCard, "TOPLEFT", 12, -10)
+    pHdr:SetPoint("TOPLEFT", previewCard, "TOPLEFT", 12, -8)
     local pBody = W.Label(previewCard, ns.Domain.FontModel.SAMPLE_TEXT, "heading", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = true })
-    pBody:SetPoint("TOPLEFT", previewCard, "TOPLEFT", 12, -34)
-    pBody:SetPoint("BOTTOMRIGHT", previewCard, "BOTTOMRIGHT", -12, 10)
+    pBody:SetPoint("TOPLEFT", previewCard, "TOPLEFT", 12, -28)
+    pBody:SetPoint("BOTTOMRIGHT", previewCard, "BOTTOMRIGHT", -12, 8)
     self.previewLbl = pBody
+
+    -- K2: Opt-in Global World / Combat Damage / Chat Font Override Switcher (ForeverSuite_Fonts_Global)
+    local gCard = W.Card(parent, 580, 148, nil, nil)
+    gCard:SetPoint("TOPLEFT", previewCard, "BOTTOMLEFT", 0, -10)
+    gCard:SetPoint("TOPRIGHT", previewCard, "BOTTOMRIGHT", 0, -10)
+    W.SetBorderColor(gCard, T.BORDER.GOLD)
+    local gHdr = W.Label(gCard, "✦ 게임 전역 · 전투 데미지 · 채팅 한글 폰트 (ForeverSuite_Fonts_Global 선택 모듈)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    gHdr:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -8)
+
+    local gApi = _G.ForeverSuiteGlobalFonts
+    local gCfg = (type(gApi) == "table" and type(gApi.GetConfig) == "function") and gApi.GetConfig() or { enabled = false, worldFont = "default_blizz", damageFont = "default_blizz", damageScale = 1.0, chatFontSize = 14 }
+    local gToggle = W.Toggle(gCard, "전역 월드·데미지·채팅 폰트 적용 활성화 (변경 후 /reload 권장)", gCfg.enabled == true, function(v)
+        if type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.Configure) == "function" then
+            _G.ForeverSuiteGlobalFonts.Configure({ enabled = v })
+            ns.Api.SafeAPI.Print(v and "전역 폰트 적용 ON (/reload 시 월드·데미지 텍스트 전체 반영)" or "전역 폰트 적용 OFF (다음 접속/리로드부터 블리자드 기본 폰트)")
+            return true
+        end
+        ns.Api.SafeAPI.Print("ForeverSuite_Fonts_Global 애드온이 활성화되어 있지 않습니다.")
+        return false
+    end)
+    gToggle:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -26)
+    gToggle:SetWidth(460)
+
+    local gFontOpts = {
+        { value = "default_blizz", label = "기본(2002)", width = 76 },
+        { value = "gmarket",       label = "지마켓산스", width = 78 },
+        { value = "gyeonggi",      label = "경기천년",  width = 68 },
+        { value = "gothic_a1",     label = "고딕A1",    width = 62 },
+        { value = "dnf_blade",     label = "던파블레이드", width = 88 },
+        { value = "galmuri11",     label = "갈무리11",  width = 68 },
+        { value = "kcc_ganpan",    label = "KCC간판",   width = 68 },
+        { value = "levelup",       label = "레벨업",    width = 58 },
+    }
+    local gBar = W.FlowPillGroup(gCard, gFontOpts, gCfg.worldFont or "default_blizz", 720, function(v)
+        if type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.Configure) == "function" then
+            _G.ForeverSuiteGlobalFonts.Configure({ worldFont = v, damageFont = v })
+            ns.Api.SafeAPI.Print("전역·전투 데미지 폰트 선택: " .. tostring(v) .. " (/reload 시 전체 적용)")
+            return true
+        end
+        return false
+    end)
+    gBar:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -52)
+
+    local chatSlider = W.Slider(gCard, "채팅창 글자 크기 (10 ~ 22 pt)", 10, 22, 1, (gCfg.chatFontSize and gCfg.chatFontSize >= 10) and gCfg.chatFontSize or 14, function(v)
+        ns.Api.ProfileStore:SetState("chatFontSize", v)
+        if ns.Features.ChatToolsModule then ns.Features.ChatToolsModule:ApplyChatFontSize(v) end
+        if type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.Configure) == "function" then
+            _G.ForeverSuiteGlobalFonts.Configure({ chatFontSize = v })
+        end
+    end)
+    chatSlider:SetPoint("BOTTOMLEFT", gCard, "BOTTOMLEFT", 12, 8)
+    chatSlider:SetWidth(330)
+
+    local dmgSlider = W.Slider(gCard, "전투 데미지 숫자 배율 (70% ~ 200%)", 70, 200, 10, math.floor((gCfg.damageScale or 1.0) * 100 + 0.5), function(v)
+        local scale = v / 100.0
+        ns.Api.GameAdapters.SetCVarSafe("WorldTextScale", tostring(scale))
+        if type(_G.ForeverSuiteGlobalFonts) == "table" and type(_G.ForeverSuiteGlobalFonts.Configure) == "function" then
+            _G.ForeverSuiteGlobalFonts.Configure({ damageScale = scale })
+        end
+    end)
+    dmgSlider:SetPoint("BOTTOMRIGHT", gCard, "BOTTOMRIGHT", -12, 8)
+    dmgSlider:SetWidth(330)
 
     local st = W.Label(parent, "", "small", T.TEXT.MUTED)
     st:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 4)
@@ -187,5 +265,17 @@ function FontsPage:Build(parent)
 end
 
 function FontsPage:OnShow()
+    local curPreset = ns.Api.ProfileStore:Get("ui", "fontPreset") or "default_kr"
+    local curOutline = ns.Api.ProfileStore:Get("ui", "fontOutline") or "none"
+    local curDelta = ns.Api.ProfileStore:GetState("fontSizeDelta") or 0
+    if self.presetBar and type(self.presetBar.SetValue) == "function" then
+        self.presetBar:SetValue(curPreset, true)
+    end
+    if self.outlineBar and type(self.outlineBar.SetValue) == "function" then
+        self.outlineBar:SetValue(curOutline)
+    end
+    if self.sizeSlider and self.sizeSlider._slider and type(self.sizeSlider._slider.SetValue) == "function" then
+        self.sizeSlider._slider:SetValue(curDelta)
+    end
     self:ApplySavedFonts()
 end

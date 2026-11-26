@@ -146,3 +146,46 @@ function WorldMapModel.FilterPOIs(pois, mapID, category, query, limit)
     end
     return out
 end
+
+-- E6: Filter WorldMap Fog-of-War reveal tiles for a mapID
+function WorldMapModel.FilterRevealTiles(revealRows, mapID)
+    local out = {}
+    if type(mapID) ~= "number" or mapID <= 0 or type(revealRows) ~= "table" then return out end
+    for _, r in ipairs(revealRows) do
+        if type(r) == "table" and r.mapID == mapID and type(r.filesCsv) == "string" and r.filesCsv ~= "" then
+            table_insert(out, r)
+        end
+    end
+    return out
+end
+
+-- E7: Filter Gather Heatmap sprites for a mapID
+function WorldMapModel.FilterGatherHeatmaps(rows, mapID, limit)
+    local out = {}
+    if type(mapID) ~= "number" or mapID <= 0 or type(rows) ~= "table" then return out end
+    local cap = (type(limit) == "number" and limit > 0) and limit or 6
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.mapID == mapID and type(r.file) == "string" and r.file ~= "" then
+            table_insert(out, r)
+            if #out >= cap then break end
+        end
+    end
+    return out
+end
+
+-- E3: Selectable Navigation Arrow Styles (ForeverSuite_Media_Assets/Arrows/)
+WorldMapModel.ARROW_STYLES = {
+    { id = "minimal", label = "심플 화살표",     texture = nil },
+    { id = "classic", label = "클래식 라운드",   texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\Rounded418\\roundedClassic-face.tga" },
+    { id = "compass", label = "나침반 링",       texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\CompassRim.tga" },
+    { id = "wedge",   label = "쐐기 3D",         texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\Rounded418\\roundedWedge-face.tga" },
+    { id = "crest",   label = "문장 장식",       texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\CrestRim.tga" },
+    { id = "spear",   label = "창날 화살표",     texture = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\SpearRim.tga" },
+}
+
+function WorldMapModel.ResolveArrowTexture(styleId)
+    for _, st in ipairs(WorldMapModel.ARROW_STYLES) do
+        if st.id == styleId then return st.texture end
+    end
+    return nil
+end

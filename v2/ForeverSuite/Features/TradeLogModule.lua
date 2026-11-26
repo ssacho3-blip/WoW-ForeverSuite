@@ -55,7 +55,9 @@ function TradeLogModule:OnTradeUpdated()
 end
 
 function TradeLogModule:OnTradeAcceptUpdate(pAcc, tAcc)
-    if pAcc == 1 or pAcc == true or tAcc == 1 or tAcc == true then
+    local pOk = (not ns.Api.SafeAPI.IsSecret(pAcc)) and (pAcc == 1 or pAcc == true)
+    local tOk = (not ns.Api.SafeAPI.IsSecret(tAcc)) and (tAcc == 1 or tAcc == true)
+    if pOk or tOk then
         self.hadAccept = true
     end
     self:OnTradeUpdated()
@@ -77,6 +79,10 @@ function TradeLogModule:CommitSnapshot(snap)
             .. " (지급 " .. ns.Domain.LedgerModel.FormatCopper(snap.givenCopper)
             .. " / 수령 " .. ns.Domain.LedgerModel.FormatCopper(snap.receivedCopper) .. ")"
         )
+        -- H2: Auto-match completed trades against unpaid GDKP buyer sales & member payouts
+        if ns.Features.UtilitiesPage and type(ns.Features.UtilitiesPage.OnCompletedTradeForGdkp) == "function" then
+            ns.Features.UtilitiesPage:OnCompletedTradeForGdkp(snap.partner, snap.receivedCopper, snap.givenCopper)
+        end
         return true
     end
     return false

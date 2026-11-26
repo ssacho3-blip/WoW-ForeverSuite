@@ -1,0 +1,9 @@
+## Interface: 16001, 120105
+## Title: |cffd4af37Forever|rSuite · Media Assets (LoD)
+## Notes: ForeverSuite LoadOnDemand 던전 내부 지도·화살표·히트맵·알림음·한글 폰트 통합 미디어 팩
+## Author: Youngseo Cho
+## Version: 4.0.0
+## LoadOnDemand: 1
+## Dependencies: ForeverSuite
+
+AssetsManifest.lua
