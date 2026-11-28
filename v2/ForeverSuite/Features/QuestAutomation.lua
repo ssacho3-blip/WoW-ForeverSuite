@@ -11,6 +11,9 @@ local function CanAutomate(settingKey)
     if ns.Api.SafeAPI.IsV1Loaded() then
         return false
     end
+    if ns.Bridges and ns.Bridges.BridgeHost and ns.Bridges.BridgeHost:IsFeatureYielded("quest_automation") then
+        return false
+    end
     if ns.Api.GameAdapters.IsShiftDown() then
         return false
     end

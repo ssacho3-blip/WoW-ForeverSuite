@@ -1,4 +1,4 @@
-name: ForeverSuite v2 CI
+name: ForeverSuite v6 CI
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Run Rust fsx unit tests
         run: cargo test --manifest-path tools/fsx/Cargo.toml
 
-      - name: Build fsx and verify Zero-Taint 6-Layer AST & Lua 5.1 VM suites
+      - name: Build fsx and verify 7-Layer AST, Lua 5.1 VM suites & <=18MB 3-folder package
         run: |
           cargo build --manifest-path tools/fsx/Cargo.toml
           ./tools/fsx/target/debug/fsx check v2/ForeverSuite
@@ -27,3 +27,10 @@ jobs:
           ./tools/fsx/target/debug/fsx check v2/ForeverSuite_Data
           ./tools/fsx/target/debug/fsx test v2
           ./tools/fsx/target/debug/fsx install --source v2 --addons-dir /tmp --prune-legacy --dry-run
+          ./tools/fsx/target/debug/fsx package --source v2 --out /tmp/fsx-ci-dist --max-mb 18
+          rm -rf /tmp/fsx-ci-unpack && mkdir -p /tmp/fsx-ci-unpack
+          unzip -q /tmp/fsx-ci-dist/ForeverSuite-v*.zip -d /tmp/fsx-ci-unpack
+          ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite
+          ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite_Data
+          ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite_Media
+          ./tools/fsx/target/debug/fsx install --source /tmp/fsx-ci-unpack --addons-dir /tmp --dry-run

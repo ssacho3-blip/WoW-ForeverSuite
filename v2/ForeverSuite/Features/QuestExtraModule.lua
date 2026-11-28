@@ -181,6 +181,9 @@ end
 function QuestExtraModule:CheckProximityAlerts()
     if ns.Api.ProfileStore:Get("quest", "proximityAlerts") == false then return 0 end
     if ns.Api.SafeAPI.InCombat() then return 0 end
+    if ns.Bridges and ns.Bridges.BridgeHost and ns.Bridges.BridgeHost:IsFeatureYielded("rare_alerts") then
+        return 0
+    end
     local pos = ns.Api.GameAdapters.GetPlayerPosition()
     if not pos then return 0 end
     local packs = self:EnsureExtraData()
@@ -205,7 +208,9 @@ function QuestExtraModule:CheckProximityAlerts()
 end
 
 function QuestExtraModule:SyncProximityTicker(forceStop)
-    local enabled = (not forceStop) and (not ns.Api.SafeAPI.InCombat()) and (ns.Api.ProfileStore:Get("quest", "proximityAlerts") ~= false)
+    local yieldedToRare = ns.Bridges and ns.Bridges.BridgeHost
+        and ns.Bridges.BridgeHost:IsFeatureYielded("rare_alerts") or false
+    local enabled = (not forceStop) and (not yieldedToRare) and (not ns.Api.SafeAPI.InCombat()) and (ns.Api.ProfileStore:Get("quest", "proximityAlerts") ~= false)
     local quests = enabled and ns.Api.SafeAPI.CollectQuestLog() or {}
     if enabled and #quests > 0 then
         if not self.proximityTicker then

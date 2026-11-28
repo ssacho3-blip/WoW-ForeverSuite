@@ -165,6 +165,7 @@ function QoLModule:ApplyCameraZoomIfEnabled()
             if ok then
                 self.savedCameraZoom = nil
                 ns.Api.ProfileStore:SetState("cameraZoomPrev", nil)
+                ns.Api.ProfileStore:ClearCvarJournal("cameraDistanceMaxZoomFactor")
             end
             return ok, reason
         end
@@ -175,13 +176,17 @@ function QoLModule:ApplyCameraZoomIfEnabled()
         return false, "YIELDED_TO_V1"
     end
 
-    if savedPrev == nil then
+    local origZoom = savedPrev
+    if origZoom == nil then
         local prev = ns.Api.GameAdapters.GetCVarRaw("cameraDistanceMaxZoomFactor")
         if prev ~= nil and tostring(prev) ~= "" then
-            local prevStr = tostring(prev)
-            self.savedCameraZoom = prevStr
-            ns.Api.ProfileStore:SetState("cameraZoomPrev", prevStr)
+            origZoom = tostring(prev)
+            self.savedCameraZoom = origZoom
+            ns.Api.ProfileStore:SetState("cameraZoomPrev", origZoom)
         end
+    end
+    if origZoom ~= nil and tostring(origZoom) ~= "" then
+        ns.Api.ProfileStore:RecordCvarJournal("cameraDistanceMaxZoomFactor", tostring(origZoom))
     end
     return ns.Api.GameAdapters.SetCVarSafe("cameraDistanceMaxZoomFactor", "2.6")
 end

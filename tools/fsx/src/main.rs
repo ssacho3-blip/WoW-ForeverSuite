@@ -3,6 +3,7 @@ mod data;
 mod gj_compiler;
 mod install;
 mod manifest;
+mod package;
 mod taint_report;
 mod test_runner;
 
@@ -38,7 +39,7 @@ enum Commands {
         #[command(subcommand)]
         action: DataAction,
     },
-    /// Backup-first atomic deployer with SHA-256 tree verification (macOS & Windows)
+    /// Backup-first atomic deployer with SHA-256 tree verification & external backup rotation (macOS & Windows)
     Install {
         /// Source root containing addon folders (e.g. v2)
         #[arg(long)]
@@ -55,9 +56,42 @@ enum Commands {
         /// Archive and remove legacy ForeverSuiteV2, ForeverSuite_GJBridge, and GodJohnson* folders
         #[arg(long)]
         prune_legacy: bool,
+        /// External backup root directory (defaults to ~/.foreversuite/backups)
+        #[arg(long)]
+        backup_dir: Option<PathBuf>,
+        /// Number of most recent backup generations to retain (default: 2)
+        #[arg(long, default_value_t = 2)]
+        keep: usize,
+        /// Remove legacy internal .fsx_prev_backup_* directories from AddOns after verified install
+        #[arg(long)]
+        prune_internal_backups: bool,
         /// Validate and plan deployment without writing to AddOns
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Restore the newest verified backup generation from ~/.foreversuite/backups into AddOns
+    Rollback {
+        /// Target WoW _forever_/Interface/AddOns directory
+        #[arg(long)]
+        addons_dir: PathBuf,
+        /// External backup root directory (defaults to ~/.foreversuite/backups)
+        #[arg(long)]
+        backup_dir: Option<PathBuf>,
+    },
+    /// Build verified 3-folder release ZIP + SHA-256 with size hard cap & Private/ leak guard
+    Package {
+        /// Source root containing v2 addon folders (e.g. v2)
+        #[arg(long)]
+        source: PathBuf,
+        /// Output directory for release ZIP and SHA-256
+        #[arg(long)]
+        out: PathBuf,
+        /// Optional release tag (e.g. v6.0.0) enforced against ForeverSuite.toc Version
+        #[arg(long)]
+        tag: Option<String>,
+        /// Maximum allowed uncompressed package size in MiB (default: 18)
+        #[arg(long, default_value_t = 18)]
+        max_mb: u64,
     },
     /// Parse Blizzard Logs/taint.log and ForeverSuite SavedVariables diagnostics/GJ usage telemetry
     TaintReport {
@@ -131,15 +165,31 @@ fn main() -> Result<()> {
             wtf_dir,
             no_wtf_backup,
             prune_legacy,
+            backup_dir,
+            keep,
+            prune_internal_backups,
             dry_run,
-        } => install::run_install(
+        } => install::run_install_with_options(
             &source,
             &addons_dir,
             wtf_dir.as_deref(),
             no_wtf_backup,
             prune_legacy,
+            backup_dir.as_deref(),
+            keep,
+            prune_internal_backups,
             dry_run,
         ),
+        Commands::Rollback {
+            addons_dir,
+            backup_dir,
+        } => install::run_rollback(&addons_dir, backup_dir.as_deref()),
+        Commands::Package {
+            source,
+            out,
+            tag,
+            max_mb,
+        } => package::run_package(&source, &out, tag.as_deref(), max_mb),
         Commands::TaintReport {
             taint_log,
             saved_vars,

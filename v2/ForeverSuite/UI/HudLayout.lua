@@ -621,6 +621,9 @@ function HudLayout:SetUnlocked(flag)
     if wasUnlocked and (not self.unlocked) and ns.Api and ns.Api.EventBus then
         ns.Api.EventBus:Publish("hud:layout_locked")
     end
+    if ns.UI and ns.UI.Director and type(ns.UI.Director.SyncFromProvider) == "function" then
+        ns.UI.Director:SyncFromProvider(true)
+    end
     return self.unlocked
 end
 

@@ -428,6 +428,8 @@ local function MakeMockRegion(kind, parent)
         _width = 0,
         _height = 0,
     }
+    function r:SetParent(p) self._parent = p end
+    function r:GetParent() return self._parent end
     function r:SetAllPoints(target) self._allPoints = target or self._parent end
     function r:ClearAllPoints() self._points = {} end
     function r:SetPoint(...) table.insert(self._points, { ... }) end

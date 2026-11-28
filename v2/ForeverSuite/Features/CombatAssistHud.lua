@@ -66,6 +66,13 @@ function CombatAssistHud:Refresh(inCombatOverride)
 
     if (not inCombat) and (not isDeadOrGhost) and ns.Api.ProfileStore:Get("combat", "buffReminder") ~= false then
         local engClass = ns.Api.GameAdapters.GetPlayerClass()
+        if engClass == "SHAMAN" and ns.Bridges and ns.Bridges.BridgeHost
+            and ns.Bridges.BridgeHost:IsFeatureYielded("shaman_assist")
+        then
+            self.lastMissing = {}
+            self.strip:Hide()
+            return "YIELDED_SHAMAN"
+        end
         local allSpells = ns.Domain.CombatAlertModel.CollectAllSpellIDsForClass(engClass)
         local cls, known, active, mhEnchant, auraReadable = ns.Api.GameAdapters.GetPlayerClassAndBuffs(allSpells)
         if not auraReadable then

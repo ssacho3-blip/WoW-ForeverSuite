@@ -22,6 +22,7 @@ enum Layer {
     Domain,
     Api,
     Blizzard,
+    Bridges,
     Secure,
     Ui,
     Features,
@@ -39,6 +40,7 @@ impl Layer {
             "Domain" => Layer::Domain,
             "Api" => Layer::Api,
             "Blizzard" => Layer::Blizzard,
+            "Bridges" => Layer::Bridges,
             "Secure" => Layer::Secure,
             "UI" => Layer::Ui,
             "Features" => Layer::Features,
@@ -96,12 +98,22 @@ impl AstRuleChecker {
         None
     }
 
-    fn extract_suffix_key(suf: &Suffix) -> Option<String> {
+    fn extract_suffix_key(&self, suf: &Suffix) -> Option<String> {
         if let Suffix::Index(idx) = suf {
             match idx {
                 Index::Dot { name, .. } => return Some(name.token().to_string()),
                 Index::Brackets { expression, .. } => {
-                    return Self::strip_quotes(&expression.to_string());
+                    let raw = expression.to_string();
+                    let trimmed = raw.trim();
+                    if let Some(lit) = Self::strip_quotes(trimmed) {
+                        return Some(lit);
+                    }
+                    if let Some(aliased) = self.aliases.get(trimmed) {
+                        if let Some(lit) = Self::strip_quotes(aliased) {
+                            return Some(lit);
+                        }
+                        return Some(aliased.clone());
+                    }
                 }
                 _ => {}
             }
@@ -116,9 +128,35 @@ impl AstRuleChecker {
         }
     }
 
+    fn resolve_alias_chain(&self, raw: &str) -> String {
+        let mut cur = raw.trim().to_string();
+        for _ in 0..8 {
+            if let Some(next) = self.aliases.get(&cur) {
+                if next == &cur {
+                    break;
+                }
+                cur = next.clone();
+            } else if let Some(dot) = cur.find('.') {
+                let prefix = &cur[..dot];
+                if let Some(next_prefix) = self.aliases.get(prefix) {
+                    let candidate = format!("{}{}", next_prefix, &cur[dot..]);
+                    if candidate == cur {
+                        break;
+                    }
+                    cur = candidate;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        cur
+    }
+
     fn canonical_path(&self, head: &str, keys: &[String]) -> Vec<String> {
         let mut parts = Vec::new();
-        let resolved_head = self.aliases.get(head).map(String::as_str).unwrap_or(head);
+        let resolved_head = self.resolve_alias_chain(head);
         for seg in resolved_head.split('.') {
             if !seg.is_empty() {
                 parts.push(seg.to_string());
@@ -206,6 +244,40 @@ impl AstRuleChecker {
                     .to_string(),
             );
         }
+        // v6 7-layer isolation: Blizzard <-> Bridges mutual exclusion + Bridges cannot depend upward on UI/Features
+        if self.layer == Layer::Blizzard
+            && parts.len() >= 2
+            && parts[0] == "ns"
+            && parts[1] == "Bridges"
+        {
+            self.push_violation(
+                "Blizzard/ layer must NOT reference ns.Bridges (Rank 3 mutual exclusion)"
+                    .to_string(),
+            );
+        }
+        if self.layer == Layer::Bridges
+            && parts.len() >= 2
+            && parts[0] == "ns"
+            && matches!(parts[1].as_str(), "Blizzard" | "UI" | "Features")
+        {
+            self.push_violation(format!(
+                "Bridges/ layer must NOT depend on ns.{} (allowed: Domain, Api, Secure)",
+                parts[1]
+            ));
+        }
+        if self.layer == Layer::Api
+            && parts.len() >= 2
+            && parts[0] == "ns"
+            && matches!(
+                parts[1].as_str(),
+                "Secure" | "Blizzard" | "Bridges" | "UI" | "Features"
+            )
+        {
+            self.push_violation(format!(
+                "Api/ layer must NOT depend upward on ns.{}",
+                parts[1]
+            ));
+        }
         if first.starts_with("C_") && parts.len() >= 2 {
             self.check_c_api(first, &parts[1]);
         }
@@ -216,7 +288,7 @@ impl AstRuleChecker {
         let suffixes: Vec<&Suffix> = call.suffixes().collect();
         let mut keys = Vec::new();
         for suf in &suffixes {
-            if let Some(k) = Self::extract_suffix_key(suf) {
+            if let Some(k) = self.extract_suffix_key(suf) {
                 keys.push(k);
             } else {
                 break;
@@ -224,6 +296,62 @@ impl AstRuleChecker {
         }
         let parts = self.canonical_path(&raw_head, &keys);
         self.check_canonical_symbol(&parts, &raw_head);
+
+        // D1 invariant: also catch rawset(_G, "ForeverSuiteDB"|"ForeverSuiteCharDB", ...)
+        // and direct rawset(ForeverSuiteDB|ForeverSuiteCharDB, ...) including aliased vars
+        if parts.first().map(String::as_str) == Some("rawset") {
+            for suf in &suffixes {
+                if let Suffix::Call(Call::AnonymousCall(FunctionArgs::Parentheses {
+                    arguments,
+                    ..
+                })) = suf
+                {
+                    let args: Vec<String> = arguments
+                        .iter()
+                        .map(|e| e.to_string().trim().to_string())
+                        .collect();
+                    let target_arg = args.first().map(String::as_str).unwrap_or("");
+                    let resolved_target_full = self.resolve_alias_chain(target_arg);
+                    // Also resolve bracket-key variable aliases like _G[svKey] -> _G.ForeverSuiteDB
+                    let target_normalized = if let (Some(lb), Some(rb)) =
+                        (resolved_target_full.find('['), resolved_target_full.find(']'))
+                    {
+                        if rb > lb {
+                            let head_part = &resolved_target_full[..lb];
+                            let inner_raw = resolved_target_full[lb + 1..rb].trim();
+                            let inner_res = self.resolve_alias_chain(inner_raw);
+                            let inner_clean = Self::strip_quotes(&inner_res).unwrap_or(inner_res);
+                            format!("{head_part}.{inner_clean}{}", &resolved_target_full[rb + 1..])
+                        } else {
+                            resolved_target_full.clone()
+                        }
+                    } else {
+                        resolved_target_full.clone()
+                    };
+                    let target_root = target_normalized
+                        .trim_start_matches("_G.")
+                        .split('.')
+                        .next()
+                        .unwrap_or("");
+                    if matches!(target_root, "ForeverSuiteDB" | "ForeverSuiteCharDB") {
+                        self.push_violation(format!(
+                            "D1 invariant: rawset({target_root}, ...) into legacy v1 SavedVariables is forbidden"
+                        ));
+                    }
+                    if resolved_target_full == "_G" {
+                        if let Some(raw_k) = args.get(1) {
+                            let resolved_k = self.resolve_alias_chain(raw_k);
+                            let key_clean = Self::strip_quotes(&resolved_k).unwrap_or(resolved_k);
+                            if matches!(key_clean.as_str(), "ForeverSuiteDB" | "ForeverSuiteCharDB") {
+                                self.push_violation(format!(
+                                    "D1 invariant: rawset(_G, '{key_clean}', ...) into legacy v1 SavedVariables is forbidden"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let is_create_frame = parts.first().map(String::as_str) == Some("CreateFrame");
         if is_create_frame {
@@ -382,26 +510,47 @@ impl Visitor for AstRuleChecker {
 
     fn visit_assignment(&mut self, node: &Assignment) {
         for var in node.variables() {
-            if let Var::Expression(ve) = var {
-                let raw_head = Self::prefix_ident(ve.prefix());
-                let mut keys = Vec::new();
-                for suf in ve.suffixes() {
-                    if let Some(k) = Self::extract_suffix_key(suf) {
-                        keys.push(k);
-                    }
-                }
-                let parts = self.canonical_path(&raw_head, &keys);
-                if let Some(first) = parts.first() {
-                    if matches!(first.as_str(), "ObjectiveTrackerFrame" | "WorldMapFrame")
-                        && parts.len() >= 2
+            match var {
+                Var::Name(tok) => {
+                    let name = tok.token().to_string();
+                    if matches!(name.as_str(), "ForeverSuiteDB" | "ForeverSuiteCharDB")
+                        && !self.is_local(&name)
                     {
                         self.push_violation(format!(
-                            "Direct field write onto Blizzard frame '{}' is forbidden: '{}'",
-                            first,
-                            var.to_string().trim()
+                            "D1 invariant: writing legacy v1 SavedVariables global '{}' is forbidden (active SV is ForeverSuiteV2DB)",
+                            name
                         ));
                     }
                 }
+                Var::Expression(ve) => {
+                    let raw_head = Self::prefix_ident(ve.prefix());
+                    let mut keys = Vec::new();
+                    for suf in ve.suffixes() {
+                        if let Some(k) = self.extract_suffix_key(suf) {
+                            keys.push(k);
+                        }
+                    }
+                    let parts = self.canonical_path(&raw_head, &keys);
+                    if let Some(first) = parts.first() {
+                        if matches!(first.as_str(), "ForeverSuiteDB" | "ForeverSuiteCharDB") {
+                            self.push_violation(format!(
+                                "D1 invariant: mutating legacy v1 SavedVariables '{}' is forbidden: '{}'",
+                                first,
+                                var.to_string().trim()
+                            ));
+                        }
+                        if matches!(first.as_str(), "ObjectiveTrackerFrame" | "WorldMapFrame")
+                            && parts.len() >= 2
+                        {
+                            self.push_violation(format!(
+                                "Direct field write onto Blizzard frame '{}' is forbidden: '{}'",
+                                first,
+                                var.to_string().trim()
+                            ));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -422,7 +571,7 @@ impl Visitor for AstRuleChecker {
                     let raw_head = Self::prefix_ident(ve.prefix());
                     let mut keys = Vec::new();
                     for suf in ve.suffixes() {
-                        if let Some(k) = Self::extract_suffix_key(suf) {
+                        if let Some(k) = self.extract_suffix_key(suf) {
                             keys.push(k);
                         }
                     }
@@ -443,6 +592,150 @@ impl Visitor for AstRuleChecker {
     }
 }
 
+pub fn check_secret_dataflow(rel_path: &Path, source: &str) -> Vec<String> {
+    let label = rel_path.to_string_lossy().to_string();
+    let mut violations = Vec::new();
+    let mut secret_vars: HashSet<String> = HashSet::new();
+    let mut next_line_secret = false;
+
+    let secret_sources = [
+        "GetAuraDuration",
+        "GetSpellCooldownDuration",
+        "GetAuraApplicationDisplayCount",
+    ];
+    let forbidden_sinks = ["tostring(", "string.format(", "tonumber("];
+
+    for (idx, raw) in source.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw.trim();
+        if trimmed.contains("---@secret") {
+            next_line_secret = true;
+            continue;
+        }
+        if trimmed.starts_with("--") || trimmed.is_empty() {
+            continue;
+        }
+
+        // Reset secret taint scope on new top-level function definitions so vars do not bleed across functions
+        if (raw.starts_with("function ") || raw.starts_with("local function ")) && !secret_vars.is_empty() {
+            secret_vars.clear();
+        }
+
+        // Capture secret-tainted locals or bare assignments from ---@secret or secret-returning 1.60.1 APIs
+        // Supports BOTH direct calls `C_X.GetAuraDuration(...)` AND `pcall(C_X.GetAuraDuration, ...)`!
+        let assign_slice = trimmed.strip_prefix("local ").unwrap_or(trimmed);
+        let is_control_stmt = trimmed.starts_with("if ")
+            || trimmed.starts_with("elseif ")
+            || trimmed.starts_with("while ")
+            || trimmed.starts_with("return ");
+        if !is_control_stmt {
+            if let Some((lhs, rhs)) = assign_slice.split_once('=') {
+                if !rhs.starts_with('=') && !lhs.ends_with('~') && !lhs.ends_with('<') && !lhs.ends_with('>') {
+                    let is_source = next_line_secret
+                        || secret_sources.iter().any(|src| contains_whole_ident(rhs, src));
+                    if is_source {
+                        let is_pcall = contains_whole_ident(rhs, "pcall");
+                        for (arg_idx, name) in lhs.split(',').enumerate() {
+                            let ident = name.trim();
+                            // In `local ok, val = pcall(SecretFn, ...)`, only the 1st boolean status var is non-secret.
+                            let skip_status = is_pcall && arg_idx == 0;
+                            if !skip_status
+                                && !ident.is_empty()
+                                && ident != "_"
+                                && ident.bytes().all(is_ident_char)
+                            {
+                                secret_vars.insert(ident.to_string());
+                            }
+                        }
+                        next_line_secret = false;
+                        continue;
+                    }
+                }
+            }
+        }
+        next_line_secret = false;
+
+        if secret_vars.is_empty() {
+            continue;
+        }
+
+        // Sanitizer: ONLY positive `if ...IsSecret(v)... then return` (NEVER `not ...IsSecret(v)`!) clears v
+        if trimmed.contains("IsSecret(") && trimmed.contains("return") {
+            let mut to_remove = Vec::new();
+            for v in &secret_vars {
+                let pat = format!("IsSecret({v})");
+                if let Some(pos) = trimmed.find(&pat) {
+                    // Walk backwards over qualified call chain (e.g. `ns.Api.SafeAPI.` or `_G.`) and optional `(`
+                    let bytes = trimmed.as_bytes();
+                    let mut p = pos;
+                    while p > 0 {
+                        let b = bytes[p - 1];
+                        if is_ident_char(b) || b == b'.' || b == b':' {
+                            p -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    let mut prefix = trimmed[..p].trim_end();
+                    while let Some(stripped) = prefix.strip_suffix('(') {
+                        prefix = stripped.trim_end();
+                    }
+                    let negated = prefix.ends_with("not")
+                        && prefix
+                            .strip_suffix("not")
+                            .map(|rest| {
+                                rest.is_empty()
+                                    || !rest.as_bytes().last().copied().map(is_ident_char).unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+                    if !negated {
+                        to_remove.push(v.clone());
+                    }
+                }
+            }
+            for v in to_remove {
+                secret_vars.remove(&v);
+            }
+            continue;
+        }
+
+        let allowed_nil_check = trimmed.contains("~= nil") || trimmed.contains("== nil");
+
+        for v in &secret_vars {
+            if !contains_whole_ident(trimmed, v) {
+                continue;
+            }
+            // Detect forbidden sinks on opaque @secret values EVEN inside SetText/CreateDurationTextBinding calls!
+            let bad_concat = trimmed.contains(&format!("{v}.."))
+                || trimmed.contains(&format!("{v} .."))
+                || trimmed.contains(&format!(".. {v}"))
+                || trimmed.contains(&format!("..{v}"));
+            let bad_len = trimmed.contains(&format!("#{v}"));
+            let bad_rel = [" > ", " < ", " >= ", " <= ", " == ", " ~= ", ">0", "<0"]
+                .iter()
+                .any(|op| trimmed.contains(op))
+                && !allowed_nil_check;
+            let bad_arith = [" + ", " - ", " * ", " / ", "+1", "-1"]
+                .iter()
+                .any(|op| trimmed.contains(op));
+            let bad_fn = forbidden_sinks
+                .iter()
+                .any(|f| trimmed.contains(f) && contains_whole_ident(trimmed, v));
+            let bad_if = trimmed.starts_with(&format!("if {v} then"))
+                || trimmed.starts_with(&format!("elseif {v} then"))
+                || trimmed.starts_with(&format!("if not {v} then"))
+                || trimmed.starts_with(&format!("elseif not {v} then"));
+
+            if bad_concat || bad_len || bad_rel || bad_arith || bad_fn || bad_if {
+                violations.push(format!(
+                    "[{label}:{line_no}] I1 @secret violation: illegal operation on opaque secret '{v}' -> '{trimmed}'"
+                ));
+            }
+        }
+    }
+    violations
+}
+
 pub fn check_lua_source(rel_path: &Path, source: &str) -> Vec<String> {
     let label = rel_path.to_string_lossy().to_string();
     let ast = match full_moon::parse(source) {
@@ -457,6 +750,7 @@ pub fn check_lua_source(rel_path: &Path, source: &str) -> Vec<String> {
 
     let mut checker = AstRuleChecker::new(label, Layer::from_rel_path(rel_path));
     checker.visit_ast(&ast);
+    checker.violations.extend(check_secret_dataflow(rel_path, source));
     checker.violations.sort();
     checker.violations.dedup();
     checker.violations
@@ -893,5 +1187,63 @@ f['myFlag'] = true\n",
         fs::write(v2.join("ForeverSuite_Data_QuestExtra/Pack_quest_tips_01.lua"), &exact_half).unwrap();
         let over_half = check_fabricated_pack_data(v2);
         assert!(over_half.iter().any(|e| e.contains("mass-duplicated")), "54.5% (6/11) must fail: {over_half:?}");
+    }
+
+    #[test]
+    fn v6_enforces_bridges_mutual_exclusion_and_legacy_sv_readonly() {
+        let b_to_bliz = check_lua_source(
+            Path::new("Bridges/Bad.lua"),
+            "local _, ns = ...\nlocal B = ns.Blizzard\nlocal x = B.TooltipAdapter\nlocal y = ns.Features.HomePage\n",
+        );
+        assert!(b_to_bliz.iter().any(|e| e.contains("ns.Blizzard")), "missed chained Bridges->Blizzard: {b_to_bliz:?}");
+        assert!(b_to_bliz.iter().any(|e| e.contains("ns.Features")), "missed Bridges->Features: {b_to_bliz:?}");
+
+        let bliz_to_b = check_lua_source(
+            Path::new("Blizzard/Bad.lua"),
+            "local _, ns = ...\nlocal x = ns.Bridges.BridgeHost\n",
+        );
+        assert!(bliz_to_b.iter().any(|e| e.contains("ns.Bridges")), "missed Blizzard->Bridges: {bliz_to_b:?}");
+
+        let sv_write = check_lua_source(
+            Path::new("Api/BadSV.lua"),
+            "local G = _G\nlocal svKey = 'ForeverSuiteDB'\n_G[svKey] = {}\nrawset(G, svKey, {})\nrawset(ForeverSuiteDB.profile, 'x', 1)\nrawset(_G['ForeverSuiteDB'], 'y', 2)\nForeverSuiteDB.foo = 1\n_G.ForeverSuiteCharDB.bar = 2\n",
+        );
+        assert!(sv_write.iter().any(|e| e.contains("ForeverSuiteDB")), "missed ForeverSuiteDB write: {sv_write:?}");
+        assert!(sv_write.iter().any(|e| e.contains("rawset(ForeverSuiteDB")), "missed nested rawset(ForeverSuiteDB.profile / _G['ForeverSuiteDB']): {sv_write:?}");
+        assert!(sv_write.iter().any(|e| e.contains("rawset(_G, 'ForeverSuiteDB'")), "missed aliased rawset(G, svKey): {sv_write:?}");
+        assert!(sv_write.iter().any(|e| e.contains("ForeverSuiteCharDB")), "missed ForeverSuiteCharDB write: {sv_write:?}");
+    }
+
+    #[test]
+    fn ac6_secret_dataflow_catches_5_mutants_and_allows_opaque_sinks() {
+        let mutants = r#"
+---@secret
+local dur = C_UnitAuras.GetAuraDuration("player", 1)
+if dur > 0 then end
+local s1 = dur .. "s"
+local s2 = tostring(dur)
+local n1 = dur + 1
+local n2 = #dur
+local okVal, displayVal = pcall(C_UnitAuras.GetAuraApplicationDisplayCount, "player", 1, 1, 99)
+if not ns.Api.SafeAPI.IsSecret(displayVal) then return end
+fontString:SetText(tostring(displayVal))
+local badAdd = displayVal + 1
+if not displayVal then end
+"#;
+        let errs = check_lua_source(Path::new("Api/BadSecret.lua"), mutants);
+        assert!(errs.len() >= 8, "AC-6 must catch direct + pcall + SetText(tostring) + negated IsSecret mutants, got: {errs:?}");
+
+        let clean = r#"
+local okDur, durObj = pcall(C_UnitAuras.GetAuraDuration, "player", 1)
+if okDur and durObj ~= nil then
+    pcall(C_DurationUtil.CreateDurationTextBinding, durObj, fontString)
+end
+function OtherFn()
+    local durObj = 10
+    local safe = durObj + 1
+end
+"#;
+        let ok_errs = check_lua_source(Path::new("Api/GoodSecret.lua"), clean);
+        assert!(ok_errs.is_empty(), "opaque C_DurationUtil sink and separate function scope must pass cleanly: {ok_errs:?}");
     }
 }

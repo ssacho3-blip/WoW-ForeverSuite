@@ -479,12 +479,14 @@ function GameAdapters.SetCVarSafe(name, value)
         return false, "INVALID"
     end
     if C_CVar and type(C_CVar.SetCVar) == "function" then
-        local ok = pcall(C_CVar.SetCVar, name, tostring(value))
-        return ok and true or false, ok and "APPLIED" or "FAILED"
+        local ok, res = pcall(C_CVar.SetCVar, name, tostring(value))
+        local applied = ok and res ~= false
+        return applied, applied and "APPLIED" or "FAILED"
     end
     if type(_G.SetCVar) == "function" then
-        local ok = pcall(_G.SetCVar, name, tostring(value))
-        return ok and true or false, ok and "APPLIED" or "FAILED"
+        local ok, res = pcall(_G.SetCVar, name, tostring(value))
+        local applied = ok and res ~= false
+        return applied, applied and "APPLIED" or "FAILED"
     end
     return false, "UNSUPPORTED"
 end
@@ -1513,6 +1515,36 @@ function GameAdapters.GetExtendedCharacterStats()
             st.moveSpeedPct = math.floor((eff / 7.0) * 100 + 0.5)
         end
     end
+    -- Phase 3 v6 extended stats (Carbon audit: Healing, Ranged AP, MP5 cast/base, Melee/Spell Hit%)
+    st.meleeAP = st.attackPower
+    st.speedPct = st.moveSpeedPct
+    if type(_G.GetSpellBonusHealing) == "function" then
+        local h = SafeAPI.SafeRead(_G.GetSpellBonusHealing)
+        if h ~= UNAVAILABLE and type(h) == "number" then st.healingPower = h end
+    end
+    if type(_G.UnitRangedAttackPower) == "function" then
+        local ok, base, pos, neg = pcall(_G.UnitRangedAttackPower, "player")
+        if ok and (not SafeAPI.IsSecret(base)) and type(base) == "number" then
+            local p = (not SafeAPI.IsSecret(pos) and type(pos) == "number") and pos or 0
+            local n = (not SafeAPI.IsSecret(neg) and type(neg) == "number") and neg or 0
+            st.rangedAP = base + p + n
+        end
+    end
+    if type(_G.GetManaRegen) == "function" then
+        local ok, base, casting = pcall(_G.GetManaRegen)
+        if ok and (not SafeAPI.IsSecret(base)) and type(base) == "number" then
+            st.mp5Base = math.floor(base * 5 + 0.5)
+            st.mp5Cast = ((not SafeAPI.IsSecret(casting)) and type(casting) == "number") and math.floor(casting * 5 + 0.5) or nil
+        end
+    end
+    if type(_G.GetHitModifier) == "function" then
+        local mh = SafeAPI.SafeRead(_G.GetHitModifier)
+        if mh ~= UNAVAILABLE and type(mh) == "number" then st.meleeHitPct = mh end
+    end
+    if type(_G.GetSpellHitModifier) == "function" then
+        local sh = SafeAPI.SafeRead(_G.GetSpellHitModifier)
+        if sh ~= UNAVAILABLE and type(sh) == "number" then st.spellHitPct = sh end
+    end
     return st
 end
 
@@ -1772,8 +1804,20 @@ function GameAdapters.GetLootRollItemSafe(rollID)
     }
 end
 
+-- C2/C7: Dependency-inverted audio ducking predicate (wired by Composition Root to Bridges/Spoken)
+GameAdapters.audioDuckPredicate = nil
+function GameAdapters.SetAudioDuckPredicate(fn)
+    GameAdapters.audioDuckPredicate = (type(fn) == "function") and fn or nil
+end
+
 -- I7: Play notification sound file (ForeverSuite_Media_Assets) or built-in SoundKitID safely without touching CVars
-function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel)
+function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel, isSurvivalAlert)
+    if type(GameAdapters.audioDuckPredicate) == "function" then
+        local okDuck, shouldDuck = pcall(GameAdapters.audioDuckPredicate, isSurvivalAlert == true)
+        if okDuck and shouldDuck == true then
+            return false
+        end
+    end
     local ch = (channel == "Master") and "Master" or "SFX"
     if type(soundKey) == "number" and soundKey > 0 and type(_G.PlaySound) == "function" then
         return pcall(_G.PlaySound, soundKey, ch) and true or false
@@ -2045,4 +2089,66 @@ function GameAdapters.SetChatFontSizeSafe(size)
         end
     end
     return applied > 0, applied
+end
+
+function GameAdapters.IsPlayerFeignDeath()
+    if type(_G.UnitIsFeignDeath) == "function" then
+        local v = SafeAPI.SafeRead(_G.UnitIsFeignDeath, "player")
+        return v ~= SafeAPI.UNAVAILABLE and v == true
+    end
+    return false
+end
+
+function GameAdapters.IsPlayerMounted()
+    if type(_G.IsMounted) == "function" then
+        local v = SafeAPI.SafeRead(_G.IsMounted)
+        return v ~= SafeAPI.UNAVAILABLE and v == true
+    end
+    return false
+end
+
+function GameAdapters.GetGatheringTrackers()
+    local out = {}
+    if not (C_Minimap and type(C_Minimap.GetNumTrackingTypes) == "function" and type(C_Minimap.GetTrackingInfo) == "function") then
+        return out
+    end
+    local n = SafeAPI.SafeRead(C_Minimap.GetNumTrackingTypes)
+    if n == SafeAPI.UNAVAILABLE or type(n) ~= "number" or n <= 0 then
+        return out
+    end
+    for i = 1, n do
+        local ok, infoOrName, _, active, category = pcall(C_Minimap.GetTrackingInfo, i)
+        if ok then
+            local name, isActive, isSpell
+            if type(infoOrName) == "table" then
+                name = infoOrName.name
+                isActive = infoOrName.active == true
+                isSpell = infoOrName.type == "spell" or infoOrName.subType == 1
+            else
+                name = infoOrName
+                isActive = active == true
+                isSpell = (category == "spell")
+            end
+            if type(name) == "string" and name ~= "" and isSpell then
+                if string.find(name, "약초", 1, true) or string.find(name, "광맥", 1, true)
+                    or string.find(name, "광물", 1, true) or string.find(name, "보물", 1, true)
+                    or string.find(name, "Herb", 1, true) or string.find(name, "Mineral", 1, true)
+                    or string.find(name, "Treasure", 1, true)
+                then
+                    out[#out + 1] = { index = i, name = name, active = isActive }
+                end
+            end
+        end
+    end
+    return out
+end
+
+function GameAdapters.SetTrackingSafe(trackingIndex, active)
+    if SafeAPI.InCombat() or type(trackingIndex) ~= "number" or trackingIndex < 1 then
+        return false
+    end
+    if C_Minimap and type(C_Minimap.SetTracking) == "function" then
+        return pcall(C_Minimap.SetTracking, trackingIndex, active == true) and true or false
+    end
+    return false
 end

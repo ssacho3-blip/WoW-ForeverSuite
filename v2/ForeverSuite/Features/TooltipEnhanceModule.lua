@@ -13,6 +13,7 @@ local tostring = tostring
 local TooltipEnhanceModule = {
     initialized = false,
     triedPacksLoad = false,
+    _builtEpoch = -1,
     sourceIndex = nil,
     bisIndex = nil,
     profMatIndex = nil,
@@ -55,6 +56,17 @@ function TooltipEnhanceModule:EnsureIndexes()
     end
     local packs = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
     if type(packs) ~= "table" then return end
+    local curEpoch = (ns.Api.DataHub and ns.Api.DataHub:GetEpoch()) or 0
+    if self._builtEpoch == curEpoch and self.sourceIndex ~= nil then
+        return
+    end
+    self._builtEpoch = curEpoch
+    -- Reset derived indexes whenever DataHub epoch advances (new LoD shard completed or item cache updated)
+    self.sourceIndex = nil
+    self.bisIndex = nil
+    self.profMatIndex = nil
+    self.itemTransMap = nil
+    self.clauseTransMap = nil
 
     if (not self.sourceIndex) and type(packs.dungeon_loot) == "table" and type(packs.dungeon_loot.entries) == "table" then
         local idx = {}
@@ -113,9 +125,12 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
     local starterRec = (wantSources and ns.Features.QuestExtraModule) and ns.Features.QuestExtraModule:GetStarterHintForItem(itemID) or nil
     local starterHint = starterRec and ("퀘스트 #" .. tostring(starterRec.questsCsv or "") .. ((type(starterRec.minLevel) == "number" and starterRec.minLevel > 0) and (" · Lv." .. tostring(starterRec.minLevel) .. "+") or "")) or nil
 
+    local yieldVendorPrice = ns.Bridges and ns.Bridges.BridgeHost
+        and ns.Bridges.BridgeHost:IsFeatureYielded("tooltip_vendor_price") or false
+
     local lines = ns.Domain.TooltipModel.BuildItemLines(itemID, sellPrice, 1, protected, {
         showItemID = true,
-        showVendorPrice = true,
+        showVendorPrice = not yieldVendorPrice,
         itemLevel = itemLevel,
         dropSource = dropSource,
         isBiS = (bisNote ~= nil),

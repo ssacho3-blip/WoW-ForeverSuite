@@ -258,6 +258,9 @@ function Tokens.TrySetAtlas(tex, atlasName, useAtlasSize)
 end
 
 function Tokens.PixelSize(frame, logicalPx)
+    if ns.UI and ns.UI.PixelUtil and type(ns.UI.PixelUtil.Snap) == "function" then
+        return ns.UI.PixelUtil.Snap(frame, logicalPx)
+    end
     local px = logicalPx or 1
     local scale = 1.0
     if frame and type(frame.GetEffectiveScale) == "function" then

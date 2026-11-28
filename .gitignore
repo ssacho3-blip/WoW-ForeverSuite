@@ -1,6 +1,11 @@
 # Build & Release Staging Artifacts
+dist/
 dist/.*
 dist/ForeverSuite_Offline_Installer.exe
+ForeverSuite_Dev/
+v2/ForeverSuite_Dev/
+Private/
+**/Private/
 GodJohnson*.zip
 .upstream_cache/
 .pytest_cache/

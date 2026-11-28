@@ -95,9 +95,10 @@ function SafeAPI.IsQuestInLog(questID)
     return false
 end
 
--- Single global registration entry point for sharded LoadOnDemand data packs (Contract I5).
+-- Single global registration entry point for sharded LoadOnDemand data packs (Contract I5 / D5).
+-- Normalizes schemaVer in {2, 6}, stays idempotent on duplicate shardIdx, and promotes to ACTIVE only when all shards arrive.
 function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalShards, entries)
-    if type(packId) ~= "string" or packId == "" or schemaVer ~= 2 or type(entries) ~= "table" then
+    if type(packId) ~= "string" or packId == "" or (schemaVer ~= 2 and schemaVer ~= 6) or type(entries) ~= "table" then
         return false, "INVALID_SCHEMA"
     end
     if type(shardIdx) ~= "number" or type(totalShards) ~= "number"
@@ -108,14 +109,14 @@ function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalSh
     end
     local idx = shardIdx
     local tot = totalShards
-    _G.ForeverSuiteData = _G.ForeverSuiteData or { version = "3.0.1", packs = {} }
+    _G.ForeverSuiteData = _G.ForeverSuiteData or { version = "6.0.0", epoch = 0, packs = {} }
     _G.ForeverSuiteData.packs = _G.ForeverSuiteData.packs or {}
     local pack = _G.ForeverSuiteData.packs[packId]
-    if type(pack) ~= "table" or pack._schema ~= 2 then
+    if type(pack) ~= "table" or (pack._schema ~= 2 and pack._schema ~= 6) then
         local m = type(meta) == "table" and meta or {}
         pack = {
             id = packId,
-            _schema = 2,
+            _schema = schemaVer,
             title = tostring(m.title or packId),
             category = tostring(m.category or "general"),
             source = tostring(m.source or "ForeverSuite"),
@@ -125,6 +126,7 @@ function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalSh
             _shardCount = 0,
             _totalShards = tot,
             _complete = false,
+            _status = "PENDING",
         }
         _G.ForeverSuiteData.packs[packId] = pack
     elseif pack._totalShards ~= tot then
@@ -139,13 +141,38 @@ function _G.ForeverSuite_RegisterPack(packId, schemaVer, meta, shardIdx, totalSh
         end
     end
     pack._complete = (pack._shardCount == pack._totalShards)
+    pack._status = pack._complete and "ACTIVE" or "PENDING"
+    if pack._complete then
+        _G.ForeverSuiteData.epoch = (tonumber(_G.ForeverSuiteData.epoch) or 0) + 1
+    end
     return true, pack._complete and "COMPLETE" or "PARTIAL"
 end
 
+local CONSOLIDATED_DATA_SUBPACKS = {
+    ForeverSuite_Data_Dungeon = true,
+    ForeverSuite_Data_BiS = true,
+    ForeverSuite_Data_Profession = true,
+    ForeverSuite_Data_Reward = true,
+    ForeverSuite_Data_Pet = true,
+    ForeverSuite_Data_Atlas = true,
+    ForeverSuite_Data_MapPins = true,
+    ForeverSuite_Data_Items = true,
+    ForeverSuite_Data_QuestExtra = true,
+    ForeverSuite_Data_MapExtra = true,
+}
+
 -- Loads an optional LoadOnDemand data pack OOC only; returns (ok, 5-state status).
+-- Supports v6 3-folder consolidation: if a known split subpack addon is absent, falls back to unified ForeverSuite_Data.
 function SafeAPI.LoadDataPack(addonName)
     local target = (type(addonName) == "string" and addonName ~= "") and addonName or "ForeverSuite_Data"
     local presence = SafeAPI.GetAddOnPresenceState(target)
+    if presence == "NOT_INSTALLED" and CONSOLIDATED_DATA_SUBPACKS[target] then
+        local unifiedPresence = SafeAPI.GetAddOnPresenceState("ForeverSuite_Data")
+        if unifiedPresence == "LOADED" or unifiedPresence == "DISABLED" then
+            target = "ForeverSuite_Data"
+            presence = unifiedPresence
+        end
+    end
     if presence == "LOADED" then
         return true, "LOADED"
     end
@@ -211,7 +238,7 @@ function SafeAPI.GetAddonVersion()
             return v
         end
     end
-    return "4.0.0"
+    return "6.0.0"
 end
 
 function SafeAPI.IsAddOnLoadedByName(name)

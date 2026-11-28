@@ -1,11 +1,15 @@
 use crate::manifest::parse_toc;
 use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static INSTALL_SEQ: AtomicU64 = AtomicU64::new(1);
 use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
@@ -237,12 +241,343 @@ fn backup_wtf_dir(wtf_dir: &Path, backup_parent: &Path, ts: u64) -> Result<PathB
     Ok(zip_path)
 }
 
-pub fn run_install(
+fn default_backup_root() -> Result<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.trim().is_empty() {
+            return Ok(PathBuf::from(home).join(".foreversuite").join("backups"));
+        }
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        if !profile.trim().is_empty() {
+            return Ok(PathBuf::from(profile).join(".foreversuite").join("backups"));
+        }
+    }
+    bail!("Cannot resolve default external backup root (~/.foreversuite/backups); pass --backup-dir")
+}
+
+fn resolve_backup_root(explicit: Option<&Path>) -> Result<PathBuf> {
+    match explicit {
+        Some(p) => Ok(p.to_path_buf()),
+        None => default_backup_root(),
+    }
+}
+
+fn move_dir_with_fallback(src: &Path, dst: &Path) -> Result<()> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    if fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    let expected_sha = compute_dir_sha256(src)?;
+    copy_dir_recursive(src, dst)?;
+    let actual_sha = compute_dir_sha256(dst)?;
+    if actual_sha != expected_sha {
+        let _ = fs::remove_dir_all(dst);
+        bail!(
+            "Cross-device move SHA-256 mismatch from {} to {}",
+            src.display(),
+            dst.display()
+        );
+    }
+    fs::remove_dir_all(src)?;
+    Ok(())
+}
+
+fn parse_numeric_suffix_key(name: &str, prefix: &str) -> (u64, u64, String) {
+    let rest = name
+        .strip_prefix(prefix)
+        .unwrap_or(name)
+        .trim_end_matches(".zip");
+    let mut parts = rest.split('_');
+    let ts = parts
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let pid = parts
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    (ts, pid, name.to_string())
+}
+
+fn list_prefixed_entries(dir: &Path, prefix: &str, dirs_only: bool) -> Result<Vec<PathBuf>> {
+    if !dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut items: Vec<((u64, u64, String), PathBuf)> = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let ft = entry.file_type()?;
+        if dirs_only && !ft.is_dir() {
+            continue;
+        }
+        if !dirs_only && !ft.is_file() {
+            continue;
+        }
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with(prefix) {
+                items.push((parse_numeric_suffix_key(name, prefix), entry.path()));
+            }
+        }
+    }
+    // Numeric descending on (timestamp, pid, name) so prev_backup_10 always outranks prev_backup_2
+    items.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(items.into_iter().map(|(_, p)| p).collect())
+}
+
+fn rotate_prefixed_entries(dir: &Path, prefix: &str, keep: usize, dirs_only: bool) -> Result<usize> {
+    let entries = list_prefixed_entries(dir, prefix, dirs_only)?;
+    let mut removed = 0usize;
+    for stale in entries.into_iter().skip(keep) {
+        if dirs_only {
+            fs::remove_dir_all(&stale)?;
+        } else {
+            fs::remove_file(&stale)?;
+        }
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+fn prune_internal_addons_backups(addons_dir: &Path) -> Result<usize> {
+    let stale_dirs = list_prefixed_entries(addons_dir, ".fsx_prev_backup_", true)?;
+    let mut removed = 0usize;
+    for dir in stale_dirs {
+        fs::remove_dir_all(&dir)
+            .with_context(|| format!("Failed to prune internal backup {}", dir.display()))?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BackupManifest {
+    status: String,
+    addons_dir: String,
+    deployed_folders: Vec<String>,
+    backed_up_folders: Vec<String>,
+    #[serde(default)]
+    folder_hashes: BTreeMap<String, String>,
+}
+
+fn write_backup_manifest(backup_dir: &Path, manifest: &BackupManifest) -> Result<()> {
+    let tmp = backup_dir.join(".manifest.json.tmp");
+    let dst = backup_dir.join("manifest.json");
+    fs::write(&tmp, serde_json::to_vec_pretty(manifest)?)?;
+    fs::rename(&tmp, &dst)?;
+    Ok(())
+}
+
+fn read_complete_manifest(backup_dir: &Path) -> Option<BackupManifest> {
+    let raw = fs::read_to_string(backup_dir.join("manifest.json")).ok()?;
+    let m: BackupManifest = serde_json::from_str(&raw).ok()?;
+    if m.status == "COMPLETE" {
+        Some(m)
+    } else {
+        None
+    }
+}
+
+pub fn run_rollback(addons_dir: &Path, backup_dir: Option<&Path>) -> Result<()> {
+    if !addons_dir.is_dir() {
+        bail!("Target AddOns directory does not exist: {}", addons_dir.display());
+    }
+    let canon_addons = fs::canonicalize(addons_dir)
+        .unwrap_or_else(|_| addons_dir.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+    let backup_root = resolve_backup_root(backup_dir)?;
+    let generations = list_prefixed_entries(&backup_root, "prev_backup_", true)?;
+    let (latest, manifest) = generations
+        .into_iter()
+        .find_map(|gen| {
+            let m = read_complete_manifest(&gen)?;
+            if !m.addons_dir.is_empty() && m.addons_dir != canon_addons {
+                return None;
+            }
+            Some((gen, m))
+        })
+        .with_context(|| {
+            format!(
+                "No COMPLETE rollback backup generations matching {} found in {}",
+                canon_addons,
+                backup_root.display()
+            )
+        })?;
+
+    let mut folders = Vec::new();
+    for name in &manifest.backed_up_folders {
+        let p = latest.join(name);
+        if !p.is_dir() {
+            bail!(
+                "Manifest-declared backup folder missing in {}: {}",
+                latest.display(),
+                name
+            );
+        }
+        let sha = compute_dir_sha256(&p)?;
+        if let Some(expected_manifest_sha) = manifest.folder_hashes.get(name) {
+            if &sha != expected_manifest_sha {
+                bail!(
+                    "Backup integrity mismatch for '{name}' in {}: expected={expected_manifest_sha} actual={sha}",
+                    latest.display()
+                );
+            }
+        }
+        folders.push((name.clone(), p, sha));
+    }
+    let newly_added: Vec<String> = manifest
+        .deployed_folders
+        .iter()
+        .filter(|f| !manifest.backed_up_folders.contains(f))
+        .cloned()
+        .collect();
+    if folders.is_empty() && newly_added.is_empty() {
+        bail!("Latest backup generation {} has nothing to restore", latest.display());
+    }
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let pid = std::process::id();
+    let stage_root = addons_dir.join(format!(".fsx_rollback_stage_{ts}_{pid}"));
+    fs::create_dir_all(&stage_root)?;
+
+    let stage_res: Result<()> = (|| {
+        for (name, src, expected_sha) in &folders {
+            let staged = stage_root.join(name);
+            copy_dir_recursive(src, &staged)?;
+            let staged_sha = compute_dir_sha256(&staged)?;
+            if staged_sha != *expected_sha {
+                bail!("Rollback staging SHA-256 mismatch for {name}");
+            }
+        }
+        Ok(())
+    })();
+    if let Err(err) = stage_res {
+        let _ = fs::remove_dir_all(&stage_root);
+        return Err(err);
+    }
+
+    // Preserve current installed folders in a reversible pre_rollback backup before swapping,
+    // and roll back atomically if any folder swap fails mid-way.
+    let pre_rollback_backup = backup_root.join(format!("pre_rollback_{ts}_{pid}"));
+    fs::create_dir_all(&pre_rollback_backup)?;
+
+    let mut swapped: Vec<(String, bool)> = Vec::new();
+    let mut unrecovered_current: Option<String> = None;
+    let swap_res: Result<()> = (|| {
+        for (name, _, expected_sha) in &folders {
+            let target = addons_dir.join(name);
+            let staged = stage_root.join(name);
+            let had_prev = target.exists();
+            if had_prev {
+                if let Err(e) = move_dir_with_fallback(&target, &pre_rollback_backup.join(name)) {
+                    if pre_rollback_backup.join(name).is_dir() {
+                        swapped.push((name.clone(), true));
+                    } else {
+                        unrecovered_current = Some(format!("{name}: {e}"));
+                    }
+                    return Err(e);
+                }
+            }
+            if let Err(e) = fs::rename(&staged, &target) {
+                if had_prev {
+                    if let Err(re) =
+                        move_dir_with_fallback(&pre_rollback_backup.join(name), &target)
+                    {
+                        unrecovered_current = Some(format!("{name}: {re}"));
+                        return Err(e).with_context(|| {
+                            format!(
+                                "CRITICAL: rollback swap failed AND failed to restore '{name}' from {}",
+                                pre_rollback_backup.display()
+                            )
+                        });
+                    }
+                }
+                return Err(e.into());
+            }
+            swapped.push((name.clone(), had_prev));
+            let actual_sha = compute_dir_sha256(&target)?;
+            if actual_sha != *expected_sha {
+                bail!("Post-rollback SHA-256 mismatch for {name}");
+            }
+        }
+        // Remove folders that were newly added by the rolled-back install (preserving them in pre_rollback_backup)
+        for name in &newly_added {
+            let target = addons_dir.join(name);
+            if target.exists() {
+                if let Err(e) = move_dir_with_fallback(&target, &pre_rollback_backup.join(name)) {
+                    if pre_rollback_backup.join(name).is_dir() {
+                        swapped.push((name.clone(), true));
+                    } else {
+                        unrecovered_current = Some(format!("{name}: {e}"));
+                    }
+                    return Err(e);
+                }
+                swapped.push((name.clone(), true));
+            }
+        }
+        Ok(())
+    })();
+
+    if let Err(err) = swap_res {
+        let mut recovery_errs = Vec::new();
+        if let Some(unrec) = unrecovered_current {
+            recovery_errs.push(unrec);
+        }
+        for (name, had_prev) in swapped.into_iter().rev() {
+            let target = addons_dir.join(&name);
+            if target.exists() {
+                if let Err(e) = fs::remove_dir_all(&target) {
+                    recovery_errs.push(format!("remove {name}: {e}"));
+                    continue;
+                }
+            }
+            if had_prev {
+                if let Err(e) = move_dir_with_fallback(&pre_rollback_backup.join(&name), &target) {
+                    recovery_errs.push(format!("restore {name}: {e}"));
+                }
+            }
+        }
+        let _ = fs::remove_dir_all(&stage_root);
+        if !recovery_errs.is_empty() {
+            bail!(
+                "Rollback failed ({err}); incomplete recovery (pre-rollback state in {}): {:?}",
+                pre_rollback_backup.display(),
+                recovery_errs
+            );
+        }
+        return Err(err).with_context(|| {
+            format!(
+                "Rollback failed; cleanly restored pre-rollback state (backup: {})",
+                pre_rollback_backup.display()
+            )
+        });
+    }
+
+    let _ = fs::remove_dir_all(&stage_root);
+    println!(
+        "[OK] fsx rollback complete: restored {} folder(s) from {} (previous state preserved in {})",
+        folders.len(),
+        latest.display(),
+        pre_rollback_backup.display()
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_install_with_options(
     source_root: &Path,
     addons_dir: &Path,
     wtf_dir: Option<&Path>,
     no_wtf_backup: bool,
     prune_legacy: bool,
+    backup_dir: Option<&Path>,
+    keep: usize,
+    prune_internal_backups: bool,
     dry_run: bool,
 ) -> Result<()> {
     run_install_inner(
@@ -251,17 +586,24 @@ pub fn run_install(
         wtf_dir,
         no_wtf_backup,
         prune_legacy,
+        backup_dir,
+        keep,
+        prune_internal_backups,
         dry_run,
         None,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_install_inner(
     source_root: &Path,
     addons_dir: &Path,
     wtf_dir: Option<&Path>,
     no_wtf_backup: bool,
     prune_legacy: bool,
+    backup_dir: Option<&Path>,
+    keep: usize,
+    prune_internal_backups: bool,
     dry_run: bool,
     fail_on_swap_folder: Option<&str>,
 ) -> Result<()> {
@@ -348,10 +690,12 @@ fn run_install_inner(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    let backup_root = resolve_backup_root(backup_dir)?;
+    fs::create_dir_all(&backup_root)?;
 
     if let Some(wtf) = wtf_dir {
-        let backup_root = addons_dir.join(".fsx_wtf_backups");
-        let zip_out = backup_wtf_dir(wtf, &backup_root, ts)?;
+        let wtf_backup_root = backup_root.join("wtf_backups");
+        let zip_out = backup_wtf_dir(wtf, &wtf_backup_root, ts)?;
         println!("[OK] Pre-deploy WTF backup created: {}", zip_out.display());
         let migrated = migrate_saved_variables(wtf)?;
         if migrated > 0 {
@@ -363,8 +707,15 @@ fn run_install_inner(
     }
 
     let pid = std::process::id();
-    let stage_root = addons_dir.join(format!(".fsx_stage_{ts}_{pid}"));
-    let prev_backup = addons_dir.join(format!(".fsx_prev_backup_{ts}_{pid}"));
+    let seq = INSTALL_SEQ.fetch_add(1, Ordering::Relaxed);
+    let stage_root = addons_dir.join(format!(".fsx_stage_{ts}_{pid}_{seq}"));
+    // Stage backup under hidden .incomplete prefix; publish atomically as prev_backup_* ONLY after swap succeeds
+    let prev_backup_staging = backup_root.join(format!(".prev_backup_{ts}_{pid}_{seq}.incomplete"));
+    let prev_backup = backup_root.join(format!("prev_backup_{ts}_{pid}_{seq}"));
+    let canon_addons = fs::canonicalize(addons_dir)
+        .unwrap_or_else(|_| addons_dir.to_path_buf())
+        .to_string_lossy()
+        .to_string();
     fs::create_dir_all(&stage_root)?;
 
     // Stage and pre-verify SHA-256 BEFORE swapping anything
@@ -386,9 +737,10 @@ fn run_install_inner(
         return Err(err);
     }
 
-    // Swap with full verified rollback on any error
-    fs::create_dir_all(&prev_backup)?;
+    // Swap + manifest publication inside one rollback boundary so deployment & backup never diverge
+    fs::create_dir_all(&prev_backup_staging)?;
     let mut swapped: Vec<(String, bool)> = Vec::new();
+    let mut unrecovered_current: Option<String> = None;
     let swap_res: Result<()> = (|| {
         for (name, _, expected_sha) in &folders_to_deploy {
             if fail_on_swap_folder == Some(name.as_str()) {
@@ -398,16 +750,28 @@ fn run_install_inner(
             let staged = stage_root.join(name);
             let had_prev = target.exists();
             if had_prev {
-                fs::rename(&target, prev_backup.join(name))?;
+                if let Err(e) = move_dir_with_fallback(&target, &prev_backup_staging.join(name)) {
+                    if prev_backup_staging.join(name).is_dir() {
+                        swapped.push((name.clone(), true));
+                    } else {
+                        unrecovered_current = Some(format!("{name}: {e}"));
+                    }
+                    return Err(e);
+                }
             }
             if let Err(e) = fs::rename(&staged, &target) {
                 if had_prev {
-                    fs::rename(prev_backup.join(name), &target).with_context(|| {
-                        format!(
-                            "CRITICAL: failed to restore '{name}' from backup {}",
-                            prev_backup.display()
-                        )
-                    })?;
+                    if let Err(re) =
+                        move_dir_with_fallback(&prev_backup_staging.join(name), &target)
+                    {
+                        unrecovered_current = Some(format!("{name}: {re}"));
+                        return Err(e).with_context(|| {
+                            format!(
+                                "CRITICAL: failed to restore '{name}' from backup {}",
+                                prev_backup_staging.display()
+                            )
+                        });
+                    }
                 }
                 return Err(e.into());
             }
@@ -418,11 +782,46 @@ fn run_install_inner(
                 bail!("Post-deploy SHA-256 mismatch for {name}");
             }
         }
+        // Write COMPLETE manifest & atomically publish prev_backup generation inside swap boundary
+        let backed_up_folders: Vec<String> = swapped
+            .iter()
+            .filter(|(_, had_prev)| *had_prev)
+            .map(|(n, _)| n.clone())
+            .collect();
+        let deployed_folders: Vec<String> = folders_to_deploy
+            .iter()
+            .map(|(n, _, _)| n.clone())
+            .collect();
+        // Record backup-time SHA-256 hashes & atomically publish COMPLETE prev_backup generation
+        let mut folder_hashes: BTreeMap<String, String> = BTreeMap::new();
+        for name in &backed_up_folders {
+            let h = compute_dir_sha256(&prev_backup_staging.join(name))?;
+            folder_hashes.insert(name.clone(), h);
+        }
+        write_backup_manifest(
+            &prev_backup_staging,
+            &BackupManifest {
+                status: "COMPLETE".to_string(),
+                addons_dir: canon_addons.clone(),
+                deployed_folders,
+                backed_up_folders,
+                folder_hashes,
+            },
+        )?;
+        fs::rename(&prev_backup_staging, &prev_backup)?;
         Ok(())
     })();
 
     if let Err(err) = swap_res {
+        let active_backup = if prev_backup.exists() {
+            &prev_backup
+        } else {
+            &prev_backup_staging
+        };
         let mut rollback_errors = Vec::new();
+        if let Some(unrec) = unrecovered_current {
+            rollback_errors.push(unrec);
+        }
         for (name, had_prev) in swapped.into_iter().rev() {
             let target = addons_dir.join(&name);
             if target.exists() {
@@ -432,7 +831,7 @@ fn run_install_inner(
                 }
             }
             if had_prev {
-                if let Err(e) = fs::rename(prev_backup.join(&name), &target) {
+                if let Err(e) = move_dir_with_fallback(&active_backup.join(&name), &target) {
                     rollback_errors.push(format!("restore {name}: {e}"));
                 }
             }
@@ -440,16 +839,20 @@ fn run_install_inner(
         let _ = fs::remove_dir_all(&stage_root);
         if !rollback_errors.is_empty() {
             bail!(
-                "Swap failed ({err}); INCOMPLETE rollback (manual recovery from {}): {:?}",
-                prev_backup.display(),
+                "Swap failed ({err}); INCOMPLETE rollback (manual recovery preserved in {}): {:?}",
+                active_backup.display(),
                 rollback_errors
             );
         }
+        // Only clean up staging backup directory if it has no remaining backed-up addon subfolders
+        let has_remaining_dirs = fs::read_dir(active_backup)
+            .map(|rd| rd.flatten().any(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)))
+            .unwrap_or(true);
+        if !has_remaining_dirs {
+            let _ = fs::remove_dir_all(active_backup);
+        }
         return Err(err).with_context(|| {
-            format!(
-                "Swap failed; rolled back all swapped folders cleanly (backup dir: {})",
-                prev_backup.display()
-            )
+            "Swap failed; rolled back all swapped folders cleanly".to_string()
         });
     }
 
@@ -458,7 +861,7 @@ fn run_install_inner(
     if prune_legacy {
         let legacy = find_legacy_folders(addons_dir)?;
         if !legacy.is_empty() {
-            let legacy_backup_dir = addons_dir.join(".fsx_legacy_backups");
+            let legacy_backup_dir = backup_root.join("legacy_backups");
             let archive_path = archive_legacy_folders(addons_dir, &legacy, &legacy_backup_dir, ts)?;
             for name in &legacy {
                 let path = addons_dir.join(name);
@@ -475,8 +878,27 @@ fn run_install_inner(
         }
     }
 
+    if keep > 0 {
+        let rotated_prev = rotate_prefixed_entries(&backup_root, "prev_backup_", keep, true)?;
+        let rotated_wtf = rotate_prefixed_entries(&backup_root.join("wtf_backups"), "WTF_backup_", keep, false)?;
+        if rotated_prev > 0 || rotated_wtf > 0 {
+            println!(
+                "[OK] Rotated stale external backups (keep={keep}): removed {rotated_prev} addon backup(s), {rotated_wtf} WTF backup(s)"
+            );
+        }
+    }
+
+    if prune_internal_backups {
+        let pruned = prune_internal_addons_backups(addons_dir)?;
+        if pruned > 0 {
+            println!(
+                "[OK] Pruned {pruned} legacy internal .fsx_prev_backup_* folder(s) inside AddOns"
+            );
+        }
+    }
+
     println!(
-        "[OK] fsx install atomic swap complete: {} folder(s) verified in {} (backup: {})",
+        "[OK] fsx install atomic swap complete: {} folder(s) verified in {} (external backup: {})",
         folders_to_deploy.len(),
         addons_dir.display(),
         prev_backup.display()
@@ -510,13 +932,14 @@ mod tests {
         let src_v2 = dir.path().join("v2_new");
         let addons = dir.path().join("AddOns");
         let wtf = dir.path().join("WTF");
+        let backups = dir.path().join("ext_backups");
         seed_v2_tree(&src_v2, "v2_new")?;
         seed_v2_tree(&addons, "v1_old")?;
         fs::create_dir_all(wtf.join("Account"))?;
         fs::write(wtf.join("Account/ForeverSuite.lua"), "ForeverSuiteDB = {}\n")?;
 
         // 1. Fail-closed without --wtf-dir or --no-wtf-backup
-        assert!(run_install(&src_v2, &addons, None, false, false, false).is_err());
+        assert!(run_install_with_options(&src_v2, &addons, None, false, false, Some(&backups), 2, false, false).is_err());
 
         // 2. Mid-swap failure injected on folder #2 MUST roll back folder #1 to v1_old!
         let err = run_install_inner(
@@ -524,6 +947,9 @@ mod tests {
             &addons,
             Some(&wtf),
             false,
+            false,
+            Some(&backups),
+            2,
             false,
             false,
             Some("ForeverSuite_Media"),
@@ -535,11 +961,17 @@ mod tests {
             "Folder #1 must be rolled back to v1_old, got: {restored}"
         );
 
-        // 3. Clean install succeeds, writes v2_new, and preserves timestamped backup
-        run_install(&src_v2, &addons, Some(&wtf), false, false, false)?;
+        // 3. Clean install writes v2_new, stores backups OUTSIDE AddOns, and supports fsx rollback!
+        run_install_with_options(&src_v2, &addons, Some(&wtf), false, false, Some(&backups), 2, false, false)?;
         let installed = fs::read_to_string(addons.join("ForeverSuite/Init.lua"))?;
         assert!(installed.contains("v2_new"));
-        assert!(addons.join(".fsx_wtf_backups").is_dir());
+        assert!(backups.join("wtf_backups").is_dir());
+        assert!(!addons.join(".fsx_wtf_backups").exists(), "backups must stay outside AddOns");
+
+        // Rollback restores v1_old cleanly
+        run_rollback(&addons, Some(&backups))?;
+        let rolled = fs::read_to_string(addons.join("ForeverSuite/Init.lua"))?;
+        assert!(rolled.contains("v1_old"), "rollback must restore v1_old, got: {rolled}");
 
         // 4. Symlink inside source folder is rejected fail-closed
         #[cfg(unix)]
@@ -548,8 +980,69 @@ mod tests {
                 src_v2.join("ForeverSuite/Init.lua"),
                 src_v2.join("ForeverSuite/link.lua"),
             )?;
-            assert!(run_install(&src_v2, &addons, None, true, false, false).is_err());
+            assert!(run_install_with_options(&src_v2, &addons, None, true, false, Some(&backups), 2, false, false).is_err());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn install_rotates_external_backups_and_prunes_internal_backups() -> Result<()> {
+        let dir = tempdir()?;
+        let src = dir.path().join("v2_src");
+        let addons = dir.path().join("AddOns");
+        let backups = dir.path().join("ext_backups");
+        seed_v2_tree(&src, "v6_0")?;
+        seed_v2_tree(&addons, "v5_0")?;
+
+        // Seed 3 older external backup generations + 2 legacy internal AddOns/.fsx_prev_backup_* dirs
+        for old in ["prev_backup_1000_1", "prev_backup_1001_1", "prev_backup_1002_1"] {
+            fs::create_dir_all(backups.join(old))?;
+        }
+        for stale in [".fsx_prev_backup_100_1", ".fsx_prev_backup_200_1"] {
+            fs::create_dir_all(addons.join(stale))?;
+        }
+
+        run_install_with_options(&src, &addons, None, true, false, Some(&backups), 2, true, false)?;
+
+        let remaining_ext = list_prefixed_entries(&backups, "prev_backup_", true)?;
+        assert_eq!(remaining_ext.len(), 2, "keep=2 must retain exactly 2 newest external backup generations");
+        let remaining_int = list_prefixed_entries(&addons, ".fsx_prev_backup_", true)?;
+        assert_eq!(remaining_int.len(), 0, "prune_internal_backups must clear legacy AddOns backups");
+
+        // B2 regression: numeric ordering must select COMPLETE prev_backup_10_1 over prev_backup_2_1
+        // and ignore incomplete generations without COMPLETE manifest!
+        let num_dir = tempdir()?;
+        let num_addons = num_dir.path().join("AddOns");
+        let num_backups = num_dir.path().join("backups");
+        seed_v2_tree(&num_addons, "current")?;
+        let canon_num = fs::canonicalize(&num_addons)?.to_string_lossy().to_string();
+        for (gname, marker) in [("prev_backup_2_1", "gen_2"), ("prev_backup_10_1", "gen_10")] {
+            let gd = num_backups.join(gname);
+            seed_v2_tree(&gd, marker)?;
+            let mut hashes = BTreeMap::new();
+            for folder in V2_ADDON_FOLDERS {
+                hashes.insert(folder.to_string(), compute_dir_sha256(&gd.join(folder))?);
+            }
+            write_backup_manifest(
+                &gd,
+                &BackupManifest {
+                    status: "COMPLETE".to_string(),
+                    addons_dir: canon_num.clone(),
+                    deployed_folders: V2_ADDON_FOLDERS.iter().map(|s| s.to_string()).collect(),
+                    backed_up_folders: V2_ADDON_FOLDERS.iter().map(|s| s.to_string()).collect(),
+                    folder_hashes: hashes,
+                },
+            )?;
+        }
+        // Seed an incomplete newer backup (no manifest) — MUST be ignored!
+        seed_v2_tree(&num_backups.join("prev_backup_99_1"), "incomplete_99")?;
+
+        run_rollback(&num_addons, Some(&num_backups))?;
+        let restored = fs::read_to_string(num_addons.join("ForeverSuite/Init.lua"))?;
+        assert!(
+            restored.contains("gen_10"),
+            "numeric sort must restore COMPLETE prev_backup_10_1 (ignoring _2 and incomplete _99), got: {restored}"
+        );
         Ok(())
     }
 
@@ -559,6 +1052,7 @@ mod tests {
         let src = dir.path().join("v2_src");
         let addons = dir.path().join("AddOns");
         let wtf = dir.path().join("WTF");
+        let backups = dir.path().join("ext_backups");
         seed_v2_tree(&src, "v2_0_0")?;
         fs::create_dir_all(&addons)?;
         fs::create_dir_all(wtf.join("Account"))?;
@@ -589,9 +1083,9 @@ mod tests {
         )?;
 
         // Fail-closed: pruning ForeverSuiteV2 without --wtf-dir is rejected
-        assert!(run_install(&src, &addons, None, true, true, false).is_err());
+        assert!(run_install_with_options(&src, &addons, None, true, true, Some(&backups), 2, false, false).is_err());
 
-        run_install(&src, &addons, Some(&wtf), false, true, false)?;
+        run_install_with_options(&src, &addons, Some(&wtf), false, true, Some(&backups), 2, false, false)?;
 
         // Legacy folders archived (and ZIP verified) & removed; unrelated addons untouched; clean 3 folders installed
         for legacy in ["ForeverSuiteV2", "ForeverSuite_GJBridge", "GodJohnsonGoldBorder", "GodJohnsonBiSData"] {
@@ -600,7 +1094,7 @@ mod tests {
         for keep in ["Auctionator", "Baganator", "ForeverSuite", "ForeverSuite_Media", "ForeverSuite_Data"] {
             assert!(addons.join(keep).is_dir(), "expected folder '{keep}' to exist");
         }
-        assert!(addons.join(".fsx_legacy_backups").is_dir());
+        assert!(backups.join("legacy_backups").is_dir());
 
         // Account SavedVariables merged BOTH v1 ForeverSuiteDB and v2 ForeverSuiteV2DB; char copied cleanly
         let merged_acct = fs::read_to_string(acct_sv.join("ForeverSuite.lua"))?;
@@ -610,7 +1104,7 @@ mod tests {
         assert!(merged_char.contains("ForeverSuiteV2CharDB"));
 
         // Second run is strictly idempotent (no duplicate ForeverSuiteV2DB block)
-        run_install(&src, &addons, Some(&wtf), false, true, false)?;
+        run_install_with_options(&src, &addons, Some(&wtf), false, true, Some(&backups), 2, false, false)?;
         let merged_again = fs::read_to_string(acct_sv.join("ForeverSuite.lua"))?;
         assert_eq!(merged_again.matches("ForeverSuiteV2DB").count(), 1);
         Ok(())

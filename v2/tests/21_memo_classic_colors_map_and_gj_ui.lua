@@ -64,7 +64,7 @@ local legacyV4 = {
     },
 }
 local migrated5, _, st5 = ns.Domain.ProfileMigrationModel.Migrate(legacyV4, {})
-assert(st5 == "OK" and migrated5.schemaVersion == 5)
+assert(st5 == "OK" and migrated5.schemaVersion == 6)
 assert(migrated5.v2.settings.quest.defaultTrackerMode == "hide", "schema 4 coexist must auto-upgrade to hide")
 assert(migrated5.v2.settings.ui.navArrowStyle == "gold_classic", "schema 4 classic arrow upgrades to gold_classic")
 

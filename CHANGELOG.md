@@ -1,6 +1,26 @@
 # Changelog
 
-All notable changes to **ForeverSuite** and **ForeverSuite_GJBridge** are documented in this file.
+All notable changes to **ForeverSuite** are documented in this file.
+
+## [6.0.0] - 2026-11-28
+
+### Architecture & Release ("길 C: 단일 연출자 OS 셸 + 외부 전문 앱 편입")
+- **Phase 1 — P0 코어 경화, 1.15GB 디스크 정리, 6대 외부 전문 애드온 브리지 (`Test 23`, 255 assertions)**:
+  - `Secure/CombatQueue.lua`: `Flush()` 항목별 `InCombat()` 재검사, 잔여 테일 보존, `xpcall` 격리 + 고아 복구, `maxRetry=2`, 동일 키 신규 콜백 덮어쓰기 보호.
+  - `Api/EventBus.lua`: `(ownerKey, fn)` 스냅샷 디스패치, `select('#', ...)` 전체 가변인자 전달, O(1) `OffEvent`.
+  - `Api/ProfileStore.lua`: C7 `cvarRestoreJournal` 영속화 및 비전투 안전 복구(`RestoreCvarJournal`).
+  - `Domain/Coexistence.lua` (5상태 × 8이벤트 = 40셀 DDT) + `Api/AddonProbe.lua` + `Bridges/{BridgeHost,Baganator,Syndicator,Auctionator,DialogueUI,Spoken,Platynator}.lua` (실제 설치된 1.60.1 애드온 시그니처 100% 정합).
+  - `tools/fsx`: 7-Layer `Blizzard ⊥ Bridges` 상호 배제 및 `ForeverSuiteDB`/`ForeverSuiteCharDB` 쓰기 금지(`D1`), 외부 백업(`~/.foreversuite/backups`) + SHA-256 매니페스트 + `--keep 2` 회전 + `--prune-internal-backups` + 원자적 `fsx rollback`.
+- **Phase 2 — v5→v6 3-계층 SV 마이그레이션, 3-계층 DataHub, ≤18MB 3-폴더 패키징 & CI (`Test 24`, 65 assertions)**:
+  - `Domain/ProfileMigrationModel.lua` (`schemaVersion = 6`): Expand-Migrate 무손실 마이그레이션, `_backup_v5` + `/fsdb restore v5`, 기기 키(`%dx%d@%.2f:%s`)별 레이아웃 격리, 미래 스키마 `FUTURE_SCHEMA_READONLY` 가드.
+  - `Domain/DataResolver.lua` + `Api/DataHub.lua` + `ForeverSuite_Data/manifest.lua`: `STATIC → LIVE → EMBEDDED(≤60KB)` 3-계층 조회, `ForeverSuite_RegisterPack(2|6)` 에폭 갱신 및 0-Pack 생존 보장.
+  - 무손실 POT `.tga` RLE 압축(`UI` 3.7M→2.7M, `Arrows` 5.0M→1.7M), `fsx package --max-mb 18` 3-폴더 ZIP 빌더 (`16.31 MB raw / 4.47 MB zip`), `.github/workflows/release.yml` & `ci.yml` 100% Rust `fsx` 전환.
+- **Phase 3 — HiDPI 1px, 5-State Director, CharacterDock 3탭, `/fs setup`, `C_DurationUtil`, `@secret` AST 게이트 (`Test 25`, 69 assertions)**:
+  - `UI/PixelUtil.lua`, `Domain/DirectorModel.lua`, `UI/Director.lua` (단일 60Hz `_tweenFrame` · `1.2s` 전투 종료 홀드 · `350ms` 대화 디바운스 · `combatFade` 존중 · 전투 시연 선점).
+  - `Features/CorpseGuideModule.lua` (죽은 척하기 배제 + 시체 도착/부활 시 수동 `/way`·퀘스트 메타데이터 원복), `Features/TrackingSwitcher.lua` (`/fs track`).
+  - `Blizzard/CharacterDockAdapter.lua` + `Features/CharacterDockPanel.lua` (Zero-Taint `HookScript` 우측/좌측 자동 반전 3탭 도킹 패널).
+  - `Features/SetupWizard.lua` (`/fs setup` 3단계 + `ForeverSuite_Media_Assets` LSM 한글 폰트 등록 + `/fs setup undo`), `Domain/AltCooldownModel.lua`, `Api/Adapters/Duration.lua` (`C_DurationUtil` 불투명 바인딩).
+  - `tools/fsx/src/check.rs`: `check_secret_dataflow` I1/AC-6 정적 데이터플로 게이트 (`pcall`·`SetText(tostring)`·정규화 `not IsSecret`·함수 스코프 격리 포함).
 
 ## [0.5.4] - 2026-11-23
 

@@ -1,70 +1,64 @@
-# ForeverSuite v0.5.4 — WoW 포에버 개인용 통합 애드온 (`GodJohnson v5.312` 3-Tier Bridge Edition)
+# ForeverSuite v6.0.0 — WoW 포에버 단일 연출자 OS 셸 & 통합 애드온
 
 - **대상 클라이언트**: `World of Warcraft: Forever` (`_forever_`, 빌드 `1.60.1.71037`, TOC `16001, 120105`)
-- **지원 OS**: **macOS & Windows 양방향 100% 호환** (Windows 원클릭 `.exe` 설치기 포함)
-- **개발 저장소**: macOS `/Users/choyoungseo/workspace/ForeverSuite` · GitHub Private `https://github.com/ssacho3-blip/WoW-ForeverSuite`
-- **설계 원칙 (`Claude Opus 5.5` × `Claude Fable 5.2` 합의 아키텍처)**:
-  - **Tier 1 (Upstream Read-Only Base)**: 유튜버 **갓존슨(GodJohnson) 통합 애드온 `v5.312`** 원본 21개 폴더 무수정(`0 diff`, `.toc` + 전체 파일 트리 `folder_sha256` 해시 고정 [`pinned_upstream.json`](pinned_upstream.json), 14개 `GodJohnsonFontChoice_*` 7비트 레지스터 폴더 100% 보존)
-  - **Tier 2 (`ForeverSuite` v0.5.4, 20개 Lua 모듈)**: 개인용 코어/경제/전투/유틸리티/낚시 HUD 스위트 (`xpcall` 서킷 브레이커, `C_Secrets` 가드, `CombatQueue` 전투 격리, 브리지 인지형 `Economy` 원장 후크, 단일 소유자 자동 양보)
-  - **Tier 3 (`ForeverSuite_GJBridge` v0.5.4)**: Zero-SV-Mutation 비침습 런타임 브리지 (Weak-key 프라이빗 상태 격리, `ProfileShare` 오염 제로, `ApplyAuthorPreset` 스냅샷 보호, `Baganator` 재료·보호 코너 위젯, `Auctionator`/`Platynator`/`Syndicator`/`DialogueUI`/`Spoken` 자동 공존)
+- **아키텍처 철학 (길 C: 단일 연출자 OS 셸 + 외부 전문 앱 편입)**:
+  - **Core 3-폴더 배포 (`≤18 MB`)**: `ForeverSuite` (코어 OS 셸 · 103 Lua) + `ForeverSuite_Data` (LoadOnDemand 도감 · 7 Lua · 0-Pack 생존) + `ForeverSuite_Media` (Burnished Gold 9-Slice & 12-Layer 3D 화살표 · 1 Lua)
+  - **7-Layer 엄격 격리 (`fsx check` AST 강제)**: `Domain(Rank 0)` → `Api(Rank 1)` → `Secure(Rank 2)` → `Blizzard(Rank 3)` ⊥ `Bridges(Rank 3)` → `UI(Rank 4)` → `Features(Rank 5)`
+  - **Zero-Taint · `C_Secrets` 불변식**: `Blizzard/` `SetScript` 전면 금지(`HookScript` 전용), `Secure/` `UIParent` 직계 앵커, `fsx check` `@secret` 데이터플로 AST 게이트 및 `C_DurationUtil` 불투명 바인딩
+  - **100% Rust `fsx` 툴체인** (`tools/fsx`): AST 정적 검증(`fsx check`), 임베디드 Lua 5.1 VM 테스트(`fsx test`), 3-폴더 릴리스 패키징(`fsx package --max-mb 18`), 외부 백업 회전·원자적 롤백 설치(`fsx install` / `fsx rollback`)
 
 ---
 
-## 1. 3-Tier 구조 및 주요 기능 요약
+## 1. v6.0 핵심 기능 요약
 
-| 계층 / 모듈 | 우선순위 | 핵심 역할 | 단일 소유자 중재 (`Single-Owner Arbitration`) |
-|---|:-:|---|---|
-| **`GodJohnson*` (21개 폴더)** | **Base** | 한국어 위상/지도/도감/던전·레이드/할일/거래/미니게임 방대한 DB 및 UI (원본 무수정 보존) | `pinned_upstream.json` `.toc` + `folder_sha256` 해시 고정 |
-| **`ForeverSuite_GJBridge`** | **Bridge** | `GJCompanion.Say` 접두어 개인화(`[포에버]:`), 유튜브 버튼 비활성화, 404 홈 `ChannelLogo`·`setupReminder`·공지 개인화, `QuestAnnounce.Format`·오이쉬 사운드 `dingdong` 무변이 런타임 치환, 거래 귓속말·스타터 전리품 기본 OFF, 런처 아이콘(`134063`) 지연 스킨 | `GJ` 설정 활성 또는 판독 불가 시 `ForeverSuite`가 자동 양보(`Fail-Safe YIELD`) |
-| **Core / Profile / UI** | **P0** | 단일 프레임 `EventBus`, `MoneyLedgerQueue` (`TTL <= 3.0s`), 계층형 프로필(캐릭터>직업>계정, 미래 스키마 Read-Only 가드), 60초 3회 오류 시 `FAULTED` 서킷 브레이커, `/fs` 3탭 통합 제어판(`ESC` 닫기·세부 설정 서랍) | — |
-| **Utility (`repair`, `sell`)** | **P1** | 자동 수리(길드 금고 우선 → 개인 골드 폴백), 회색 잡템 배치 판매(1회 12개 되사기 한도·잔여 수량 안내·`/fs sell` 수동 판매·`/fs protect` 보호목록·`Shift` 정지) | `GJCompanion.ExtraSettings("merchantAutomation")` 활성 시 자동 양보 |
-| **Quest (`questAutoAccept`, `questAutoTurnIn` + 추적창)** | **P1~P2** | **지역별(현재 지역 최상단)·레벨별 온스크린 퀘스트 추적창 HUD**, `Ctrl+클릭` 상세열기, `Alt+클릭` 채팅 링크, 말줄임 목표 전체 툴팁, `[잠금]` 토글, **`UIParent` 직계 `SecureActionButtonTemplate` 퀘스트 특수 아이템 버튼 풀(6개)** | `Questie` 로드 시 전체 양보, `GJCompanion.ExtraSettings("automation")`의 `accept`/`complete` 개별 키 단위 독립 양보 |
-| **Profession (`fishing`, 채집)** | **P1** | 비전투 안전 더블 우클릭 낚시(`CombatQueue` + 시전 직후 & 전투 진입 2중 해제), 크래시 안전 효과음 부스트, `classID==7` 채집물 vs 일반 전리품 분리 집계(비동기 캐시 무손실 보정) | `GJCompanion.FishingSettings()` 활성 시 자동 양보 |
-| **Map (`/way`, 좌표, `/fs layer`)** | **P1** | 월드맵 열림 시 전용 `0.15s` **플레이어 + 마우스 커서 좌표**, `/way <X> <Y> [메모]` → 내장 `C_Map.SetUserWaypoint` + `C_SuperTrack` 연동, `/fs layer` 위상(`ZoneUID`)·인스턴스 진단 | 실제 외부 `/way` 슬래시 명령(`TomTom` 등) 존재 시에만 양보 (`GJ`에는 양보 안 함) |
-| **Inventory / Economy / Combat** | **P1~P2** | 가방 여유 슬롯 HUD·묶음 상점가(`xN`)·보호 배지, `PLAYER_MONEY` 세션 골드 원장, **9클래스 버프·무기 마법부여 체크**, **이름표 가독성·겹침방지 CVar 프리셋(`/fs nameplate`)**, `/fs move` HUD 위치 저장 | `Baganator`, `Bagnon`, `Auctionator`, `Platynator`/`Plater` |
+| 영역 | 주요 기능 |
+|---|---|
+| **공존 중재 & 6대 외부 브리지** | `Domain/Coexistence.lua` (5상태 × 8이벤트 = 40셀 중재) · `Baganator`(5-인자 코너/영역 등록), `Syndicator`(부캐/전투부대 재고), `Auctionator`(경매 시세), `DialogueUI`(한국어 네이티브 퀘스트 감지), `Spoken`(1-인자 음성 덕킹 게이트), `Platynator`/`ForeverTotems`/`RareScanner` 공식 API 공존 |
+| **5-State 연출자 (`Director`)** | `EDIT_OVERRIDE > COMBAT > DEAD(죽은 척하기 제외) > FISHING(탈것 제외) > DIALOGUE > EXPLORATION` 실시간 HUD 알파 연출 · 단일 60Hz `_tweenFrame`(수렴 시 `0.00ms` 유휴) · 전투 종료 `1.2s` 홀드 · 대화 `350ms` 디바운스 |
+| **HiDPI 1px & 캐릭터창 도킹** | `UI/PixelUtil.lua` (`768 / physH / effectiveScale`, `FHD`/`RETINA`/`UHD_4K` 티어) · `CharacterFrame` 우측(자동 좌측 반전) Zero-Taint 3탭 도킹 패널(`[스탯 / 업글 Top3 / 5레벨 스킬]`, 닫힘 시 `0.00ms`) |
+| **3-계층 설정 & 무손실 마이그레이션** | `ForeverSuiteV2DB` `schemaVersion = 6` (`profiles.account` + `devices.<res@scale:os>` 기기별 레이아웃 격리) · v5 자동 백업(`_backup_v5`) 및 `/fsdb restore v5` 1클릭 복원 · 레거시 `ForeverSuiteDB` 읽기 전용 불변식(`D1`) |
+| **3-계층 DataHub & 0-Pack 생존** | `STATIC → LIVE → EMBEDDED(≤60KB)` 폴백 · `ForeverSuite_RegisterPack(2|6)` 에폭 무효화 · `ForeverSuite_Data` 미설치 시에도 크래시 0건 기동 |
+| **초기 마법사 & QoL** | `/fs setup` 3단계 연출 마법사(기본 OFF 외부 프리셋 · `ForeverSuite_Media_Assets` LSM 한글 폰트 자동 등록 · `/fs setup undo` 1클릭 원복), `/fs track` 채집 추적 순환, 죽은 척하기 제외 시체 안내 + 사망 전 `/way`·퀘스트 자동 복원, 부캐 전문기술 쿨다운 모델(48h/72h/96h) |
 
 ---
 
-## 2. 게임 내 명령어
+## 2. 게임 내 주요 명령어
 
-- `/fs` 또는 `/forever` : ForeverSuite 3탭 통합 제어판(`[모듈 · 세부설정]`, `[GJ 브리지 상태]`, `[골드 원장]`) 열기·닫기 (`ESC` 지원)
-- `/fs quest [zone | level | here | lock | toggle | default | reset]` : **온스크린 퀘스트 추적창 지역별/레벨별 전환, 현재 지역 필터, 드래그 잠금(`[잠금]`), 기본 추적기 동시 표시, 위치 초기화** (`[∞ 포에버]` 확장 퀘스트 배지 포함)
-- `/fs nameplate [on | off | status]` : **이름표 가독성·겹침방지(`motion=1`, `41yd`, `1.2x`) CVar 최적화 토글 (`Platynator`/`Plater` 공존 시 자동 양보)**
-- `/fs layer` : **현재 대상/마우스오버 NPC 기준 서버 위상(`ZoneUID`) 및 인스턴스 진단**
-- `/fs fish [list | auto | on | off | reset]` : **현재 지역 낚시 대상어 HUD 고정/자동 전환 및 어군 원클릭 `/way` 핀 연동**
-- `/fs cheap [1~10]` (별칭 `/fs junk`) : **가방 최저가 정리 추천 안내 전용 가이드 (여유 ≤2칸 시 자동 안내)**
-- `/fs xp [reset]` : **세션 시간당 경험치(XP/h) 및 레벨업 예상 소요 시간 조회**
-- `/fs scale [0.64~1.00 | reset]` : **전투 안전 UI 스케일 원커맨드 전환 (MacBook Pro / Mac Studio 전환용)**
-- `/fs protect <아이템링크 | itemID | list>` : 상점 자동 판매 제외 보호 아이템 등록/해제 및 목록 조회 (`Baganator` `보호` 배지 연동)
-- `/fs sell` : 상점 창이 열려 있을 때 회색 잡템 최대 12개 수동 안전 배치 판매
-- `/fs move [reset]` : 가방 HUD, 낚시 대상어 HUD 및 저체력 경고 프레임 드래그 잠금/해제 토글 (`reset` 시 기본 위치 복원)
-- `/fs enable <모듈>` / `/fs disable <모듈>` : 개별 모듈 활성화·비활성화
-- `/fs status` / `/fs perf` / `/fs gold` / `/fs gather` : 모듈 상태, 실시간 메모리·CPU, 세션 골드 원장, 채집 수확량 출력
-- `/fsgj` 또는 `/fsgj status` / `/fsgj sync` : **갓존슨 브리지 오버라이드 및 단일 소유자(`OWNED_BY_FS`/`YIELDED`) 상태 점검·재동기화**
-- `/way 52.4 38.1 광맥 루트` : 현재 맵에 네이티브 3D 화살표 목표 핀 설정 (`/way clear` 해제)
+- `/fs` (또는 `/fs2`) : 통합 Command Hub 열기/닫기 (`ESC` 지원)
+- `/fs setup [undo]` : 3단계 초기 연출 마법사 실행 또는 1클릭 원복
+- `/fs move` : HUD 이동 모드 토글 (`EDIT_OVERRIDE` 즉시 전환 · 기기 키별 좌표 격리 저장)
+- `/fs track` : 비전투 채집 추적(약초 / 광맥·광물 / 보물) 순환
+- `/fs bridges` / `/fs reset [id]` : 외부 애드온 브리지 공존 상태 조회 및 재초기화
+- `/fsdb [restore v5]` : 현재 DB 스키마·기기 키 확인 및 v5 백업 스냅샷 복원
+- `/way <x> <y> [이름]` / `/fs clearway` : 12-Layer 3D 화살표 + 네이티브 웨이포인트 설정/해제
+- `/fs [dungeons|bis|professions|questguide|codex|partyfinder|utilities|ledger|fonts|settings|diagnostics]` : 허브 페이지 바로가기
 
 ---
 
-## 3. 설치 및 테스트 (macOS 즉시 설치 & Windows 원클릭 `.exe`)
+## 3. 빌드 · 검증 · 설치 (`tools/fsx`)
 
 ```bash
-# 1. 자동 검증 스위트 실행 (전체 BDD/DDT 스위트 — 8대 인수조건 AC-1~AC-8, 전투 격리, PE32+ 검증 포함)
-/Users/choyoungseo/LifeOS_System/LifeOS-System/.venv/bin/pytest tests/ -v
+# 1. Rust 단위 테스트 (16/16)
+cd /Users/choyoungseo/workspace/ForeverSuite/tools/fsx && cargo test
 
-# 2. macOS WoW Forever 클라이언트에 전체 23개 폴더(GodJohnson 21 + ForeverSuite + ForeverSuite_GJBridge) 원자적 설치
-chmod +x scripts/deploy_mac.sh
-./scripts/deploy_mac.sh
+# 2. 3개 코어 애드온 AST 정적 게이트 (7-Layer, D1, A0, @secret 데이터플로)
+cargo run --quiet -- check /Users/choyoungseo/workspace/ForeverSuite/v2/ForeverSuite
+cargo run --quiet -- check /Users/choyoungseo/workspace/ForeverSuite/v2/ForeverSuite_Data
+cargo run --quiet -- check /Users/choyoungseo/workspace/ForeverSuite/v2/ForeverSuite_Media
 
-# 3. Windows 원클릭 설치 파일(dist/ForeverSuite_Installer.exe) 및 포터블 ZIP(dist/ForeverSuite-v0.5.4.zip) 빌드
-python3 scripts/package_release.py
+# 3. 임베디드 Lua 5.1 VM 통합 테스트 (25/25)
+cargo run --quiet -- test /Users/choyoungseo/workspace/ForeverSuite/v2
 
-# 4. 갓존슨 업스트림 신규 버전 출시 시 해시 고정 및 호환성 검증
-python3 scripts/sync_upstream.py --verify-dir "/Applications/World of Warcraft/_forever_/Interface/AddOns"
+# 4. 3-폴더 릴리스 ZIP 패키징 (≤18 MB 캡 · SHA-256 검증)
+cargo run --quiet -- package --source /Users/choyoungseo/workspace/ForeverSuite/v2 --out /Users/choyoungseo/workspace/ForeverSuite/dist --max-mb 18
+
+# 5. WoW Forever 클라이언트 원자적 설치 (외부 백업 ~/.foreversuite/backups, --keep 2 회전) & 롤백
+cargo run --quiet -- install /Users/choyoungseo/workspace/ForeverSuite/v2 --keep 2 --prune-internal-backups
+cargo run --quiet -- rollback
 ```
 
 상세 문서:
+- [v6.0 마스터 설계 명세서 (`docs/V6_MASTER_DESIGN_SPEC.md`)](docs/V6_MASTER_DESIGN_SPEC.md)
+- [아키텍처 & 품질 계약서 (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)
 - [버전별 변경 이력 (`CHANGELOG.md`)](CHANGELOG.md)
-- [Claude Opus 5.5 합의 아키텍처 및 브리지 감사 명세서](docs/OPUS_CONSENSUS_AND_AUDIT.md)
-- [Windows 원클릭 `.exe` 설치 및 macOS 듀얼 OS 운영 가이드](docs/WINDOWS_MAC_SYNC.md)
-- [Phase 1 유명 애드온 26종 조사·비교 및 통합 전략](docs/PHASE1_ADDON_SURVEY.md)
-- [통합 아키텍처 및 Taint/Secret/성능 계약서](docs/ARCHITECTURE.md)
+- [macOS / Windows 동기화 가이드 (`docs/WINDOWS_MAC_SYNC.md`)](docs/WINDOWS_MAC_SYNC.md)

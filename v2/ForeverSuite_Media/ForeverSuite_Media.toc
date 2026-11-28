@@ -1,7 +1,7 @@
 ## Interface: 16001, 120105
 ## Title: |cffd4af37Forever|rSuite · Media
-## Notes: ForeverSuite v2 경량 타이포그래피(한글 UI/등폭 2종) 및 Burnished Gold 9-slice 아틀라스 팩
+## Notes: ForeverSuite v6 경량 타이포그래피 · 1px HiDPI · Burnished Gold 9-slice & 12-Layer 3D 화살표 팩
 ## Author: Youngseo Cho
-## Version: 4.0.0
+## Version: 6.0.0
 
 Media.lua

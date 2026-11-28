@@ -45,15 +45,15 @@ local legacyV1 = {
 local migrated, ro, status = ns.Domain.ProfileMigrationModel.Migrate({}, {
     quest = { defaultTrackerMode = "hide" },
 }, legacyV1)
-assert(status == "OK" and ro == false and migrated.schemaVersion == 5)
+assert(status == "OK" and ro == false and migrated.schemaVersion == 6)
 assert(migrated.v2.protectedItems[6948] == true)
 assert(migrated.v2.settings.quest.defaultTrackerMode == "hide")
 assert(migrated.v2.diagnostics.importedV1TaintCounts["ForeverSuite:Test"] == 3)
 
--- Schema 3/4 -> 5 upgrade switches preview-era "coexist" to "hide" to eliminate duplicate quest trackers
+-- Schema 3/4 -> 6 upgrade switches preview-era "coexist" to "hide" to eliminate duplicate quest trackers
 local prevV3 = { schemaVersion = 3, v2 = { settings = { quest = { defaultTrackerMode = "coexist" } } } }
 local upgradedV5 = ns.Domain.ProfileMigrationModel.Migrate(prevV3, { quest = { defaultTrackerMode = "hide" } })
-assert(upgradedV5.schemaVersion == 5 and upgradedV5.v2.settings.quest.defaultTrackerMode == "hide")
+assert(upgradedV5.schemaVersion == 6 and upgradedV5.v2.settings.quest.defaultTrackerMode == "hide")
 
 -- Shape repair on corrupted schema-5 DB + backup/restore
 local broken = { schemaVersion = 5, v2 = "corrupted" }

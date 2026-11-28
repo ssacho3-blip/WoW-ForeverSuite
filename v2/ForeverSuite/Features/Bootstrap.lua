@@ -720,6 +720,71 @@ function Bootstrap:Init()
 
     ns.Api.ProfileStore:RegisterSchema(DEFAULT_SCHEMAS)
     ns.Api.ProfileStore:Init()
+    -- Phase 1 (C7): Recover any crash-interrupted CVar mutations before mounting features
+    ns.Api.ProfileStore:RestoreCvarJournal(function(k, fn)
+        return ns.Secure.CombatQueue:RunOrDefer(k, fn)
+    end)
+
+    -- Phase 4 (Coexistence Resolve — must precede Secure/UI/Feature mount)
+    if ns.Bridges and ns.Bridges.BridgeHost then
+        if ns.Bridges.Baganator then
+            ns.Bridges.Baganator:SetProviders({
+                badge = function(itemID)
+                    if ns.Features.TooltipEnhanceModule then
+                        if ns.Features.TooltipEnhanceModule.bisIndex and ns.Features.TooltipEnhanceModule.bisIndex[itemID] then
+                            return { text = "BiS", r = 0.33, g = 0.83, b = 0.42 }
+                        end
+                        if ns.Features.TooltipEnhanceModule.profMatIndex and ns.Features.TooltipEnhanceModule.profMatIndex[itemID] then
+                            return { text = "재료", r = 0.90, g = 0.76, b = 0.36 }
+                        end
+                    end
+                    return nil
+                end,
+                cheapAction = function()
+                    if ns.Features.MerchantModule then
+                        ns.Features.MerchantModule:PrintCheapestItems()
+                    end
+                end,
+            })
+        end
+        if ns.Bridges.DialogueUI then
+            ns.Bridges.DialogueUI:SetProviders({
+                evaluator = function(itemLink)
+                    local itemID = tonumber(string_match(itemLink or "", "item:(%d+)"))
+                    if itemID and ns.Features.TooltipEnhanceModule and ns.Features.TooltipEnhanceModule.bisIndex then
+                        local bis = ns.Features.TooltipEnhanceModule.bisIndex[itemID]
+                        if bis then
+                            return true, "ForeverSuite BiS: " .. tostring(bis)
+                        end
+                    end
+                    return false, nil
+                end,
+                translator = function(questID)
+                    local packs = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
+                    local qt = packs and packs.quest_tips and packs.quest_tips.entries
+                    if type(qt) == "table" then
+                        for i = 1, #qt do
+                            local rec = qt[i]
+                            if rec and rec.questID == questID and type(rec.title) == "string" and rec.title ~= "" then
+                                return { title = rec.title, description = rec.note }
+                            end
+                        end
+                    end
+                    return nil
+                end,
+            })
+        end
+        if ns.Bridges.Spoken and ns.Api.GameAdapters and type(ns.Api.GameAdapters.SetAudioDuckPredicate) == "function" then
+            ns.Api.GameAdapters.SetAudioDuckPredicate(function(isSurvivalAlert)
+                return ns.Bridges.Spoken:ShouldDuckAudio(isSurvivalAlert)
+            end)
+        end
+        local bridgeOverrides = ns.Api.ProfileStore:GetState("bridgeOverrides")
+        ns.Bridges.BridgeHost:SetScheduler(ns.Api.GameAdapters.RunAfter)
+        ns.Bridges.BridgeHost:ResolveAll(bridgeOverrides, {
+            playerClass = ns.Api.GameAdapters.GetPlayerClass(),
+        })
+    end
 
     if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetTheme) == "function" then
         ns.UI.Tokens.SetTheme(ns.Api.ProfileStore:Get("ui", "uiTheme") or "gold")
@@ -840,9 +905,47 @@ function Bootstrap:Init()
     ns.Features.DungeonBrowserPage:OnInstanceChanged()
     ns.Features.QoLModule:ResetSessionXP()
     ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
+    ns.Features.CharacterDockPanel:Init()
+
+    -- Phase 3: Wire Director 5-State Morphing non-secure HUD channels, scheduler & live signal sync
+    local directorInDialogue = false
+    local function CollectDirectorSignals(combatOverride)
+        local inCombat
+        if combatOverride == nil then
+            inCombat = ns.Api.SafeAPI.InCombat() and true or false
+        else
+            inCombat = combatOverride == true
+        end
+        return {
+            isEditOverride  = (ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked()) and true or false,
+            inCombat        = inCombat,
+            isDeadOrGhost   = ns.Api.GameAdapters.IsPlayerDeadOrGhost() == true,
+            isFeignDeath    = (ns.Api.GameAdapters.IsPlayerFeignDeath and ns.Api.GameAdapters.IsPlayerFeignDeath()) and true or false,
+            hasFishingPole  = (ns.Api.GameAdapters.IsFishingPoleEquipped and ns.Api.GameAdapters.IsFishingPoleEquipped()) and true or false,
+            isMounted       = (ns.Api.GameAdapters.IsPlayerMounted and ns.Api.GameAdapters.IsPlayerMounted()) and true or false,
+            isDialogueShown = directorInDialogue == true,
+        }
+    end
+    local function SyncDirectorState(combatOverride, forceImmediate)
+        if not (ns.UI and ns.UI.Director) then return end
+        ns.UI.Director:ApplySignals(CollectDirectorSignals(combatOverride), forceImmediate)
+    end
+    if ns.UI and ns.UI.Director then
+        ns.UI.Director:SetScheduler(ns.Api.GameAdapters.RunAfter)
+        ns.UI.Director:SetSignalProvider(function() return CollectDirectorSignals(nil) end)
+        if ns.Features.QuestTrackerView.container then ns.UI.Director:RegisterChannel("questTracker", ns.Features.QuestTrackerView.container) end
+        if ns.Features.NavigationHud.card then ns.UI.Director:RegisterChannel("navArrow", ns.Features.NavigationHud.card) end
+        if ns.Features.FishingCardHud.card then ns.UI.Director:RegisterChannel("fishingCard", ns.Features.FishingCardHud.card) end
+        if ns.Features.StatusPillHud.card then ns.UI.Director:RegisterChannel("statusPill", ns.Features.StatusPillHud.card) end
+        if ns.Features.CombatAssistHud.strip then ns.UI.Director:RegisterChannel("combatAssist", ns.Features.CombatAssistHud.strip) end
+        SyncDirectorState(nil, true)
+    end
 
     -- Lifecycle & Feature event wiring
-    ns.Api.EventBus:OnEvent("v2:addonLoaded", "ADDON_LOADED", function()
+    ns.Api.EventBus:OnEvent("v2:addonLoaded", "ADDON_LOADED", function(_, addonName)
+        if ns.Bridges and ns.Bridges.BridgeHost and type(addonName) == "string" then
+            ns.Bridges.BridgeHost:OnAddonLoaded(addonName)
+        end
         ns.Blizzard.WorldMapAdapter:Init()
         ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
     end)
@@ -856,6 +959,8 @@ function Bootstrap:Init()
         ns.Features.CharacterAssistModule:CheckTalents(false)
         ns.Features.UtilitiesPage:RecordCurrentCharacter()
         ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
+        directorInDialogue = false
+        SyncDirectorState(nil, true)
     end)
     ns.Api.EventBus:OnEvent("v2:questWatchChanged", "QUEST_WATCH_LIST_CHANGED", function()
         ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
@@ -918,12 +1023,37 @@ function Bootstrap:Init()
     end)
     ns.Api.EventBus:OnEvent("v2:qDetail", "QUEST_DETAIL", function()
         ns.Features.QuestAutomation:OnQuestDetail()
+        directorInDialogue = true
+        SyncDirectorState(nil, false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:gossipShow", "GOSSIP_SHOW", function()
+        directorInDialogue = true
+        SyncDirectorState(nil, false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:gossipClosed", "GOSSIP_CLOSED", function()
+        directorInDialogue = false
+        SyncDirectorState(nil, false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:qFinished", "QUEST_FINISHED", function()
+        directorInDialogue = false
+        SyncDirectorState(nil, false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:mountChanged", "PLAYER_MOUNT_DISPLAY_CHANGED", function()
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:qProgress", "QUEST_PROGRESS", function()
         ns.Features.QuestAutomation:OnQuestProgress()
+        directorInDialogue = true
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:qComplete", "QUEST_COMPLETE", function()
         ns.Features.QuestAutomation:OnQuestComplete()
+        directorInDialogue = true
+        SyncDirectorState(nil, false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:qGreeting", "QUEST_GREETING", function()
+        directorInDialogue = true
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:qAccepted", "QUEST_ACCEPTED", function(_, a1, a2)
         if ns.Api.SafeAPI.IsSecret(a1) or ns.Api.SafeAPI.IsSecret(a2) then return end
@@ -939,15 +1069,18 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnPlayerDead()
         ns.Features.QoLModule:OnPlayerDead()
         ns.Features.CorpseGuideModule:OnPlayerDead()
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:playerAlive", "PLAYER_ALIVE", function()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
         -- PLAYER_ALIVE also fires when releasing spirit to ghost: Refresh() keeps guiding while ghost and clears when alive
         ns.Features.CorpseGuideModule:Refresh()
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:playerUnghost", "PLAYER_UNGHOST", function()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
         ns.Features.CorpseGuideModule:OnPlayerRevived()
+        SyncDirectorState(nil, false)
     end)
     ns.Api.EventBus:OnEvent("v2:resRequest", "RESURRECT_REQUEST", function(_, casterName)
         ns.Features.QoLModule:OnResurrectRequest(casterName)
@@ -1020,6 +1153,7 @@ function Bootstrap:Init()
         if ns.Api.SafeAPI.IsSecret(unit) then return end
         if unit == "player" then
             ns.Features.FishingCardHud:Refresh()
+            SyncDirectorState(nil, false)
             if ns.Features.BiSBrowserPage and ns.Features.BiSBrowserPage.host
                 and type(ns.Features.BiSBrowserPage.host.IsVisible) == "function"
                 and ns.Features.BiSBrowserPage.host:IsVisible()
@@ -1081,6 +1215,7 @@ function Bootstrap:Init()
         ns.Features.CursorTrailHud:ApplyVisibility(true)
         ns.Features.EncounterTimerHud:OnCombatStart()
         ns.Features.QuestExtraModule:SyncProximityTicker(true)
+        SyncDirectorState(true, true)
     end)
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
         ns.Secure.CombatQueue:Flush()
@@ -1101,6 +1236,7 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnCombatEnd()
         ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
         ns.Features.QuestExtraModule:SyncProximityTicker(false)
+        SyncDirectorState(false, false)
     end)
 
     ns.Api.EventBus:OnEvent("v2:taintBlocked", "ADDON_ACTION_BLOCKED", function(_, addonName, funcName)
@@ -1120,6 +1256,7 @@ function Bootstrap:Init()
                 if reason == "IN_COMBAT" then
                     ns.Api.SafeAPI.Print("전투 중에는 HUD 이동 모드를 켤 수 없습니다.")
                 else
+                    SyncDirectorState(nil, true)
                     ns.Api.SafeAPI.Print(unlocked and "HUD 이동 모드 활성화 (/fs move)" or "HUD 위치 잠금")
                 end
             elseif cmd == "home" or cmd == "codex" or cmd == "ledger" or cmd == "settings" or cmd == "utilities" or cmd == "fonts"
@@ -1205,9 +1342,28 @@ function Bootstrap:Init()
             elseif cmd == "clearway" then
                 ns.Features.NavigationHud:Clear()
                 ns.Api.SafeAPI.Print("웨이포인트를 해제했습니다.")
+            elseif cmd == "bridges" then
+                if ns.Bridges and ns.Bridges.BridgeHost then
+                    local summary = ns.Bridges.BridgeHost:GetSummary()
+                    local parts = {}
+                    for i = 1, #summary do
+                        local s = summary[i]
+                        parts[#parts + 1] = s.target .. "=" .. s.state
+                    end
+                    ns.Api.SafeAPI.Print("외부 브리지 공존 상태: " .. table.concat(parts, " | "))
+                end
+            elseif cmd == "reset" then
+                if ns.Bridges and ns.Bridges.BridgeHost then
+                    ns.Bridges.BridgeHost:Reset(rest ~= "" and rest or nil)
+                    ns.Api.SafeAPI.Print("Coexistence/Bridge 상태를 재초기화했습니다.")
+                end
+            elseif cmd == "setup" then
+                ns.Features.SetupWizard:HandleCommand(string_lower(rest or ""))
+            elseif cmd == "track" then
+                ns.Features.TrackingSwitcher:CycleNext()
             elseif cmd == "help" then
                 ns.Api.SafeAPI.Print("허브 페이지: /fs [dungeons|bis|professions|questguide|codex|partyfinder|utilities|ledger|fonts|settings|move]")
-                ns.Api.SafeAPI.Print("기능 커맨드: /fs [gdkp|kw|train|farm|fav|profile|protect|cheap|layer|xp|pull|timer|clearway] · /way <x> <y> [이름]")
+                ns.Api.SafeAPI.Print("기능 커맨드: /fs [setup|track|bridges|reset|gdkp|kw|train|farm|fav|profile|protect|cheap|layer|xp|pull|timer|clearway] · /fsdb · /way <x> <y> [이름]")
             else
                 ns.UI.CommandHub:Toggle()
             end
@@ -1225,6 +1381,27 @@ function Bootstrap:Init()
         _G.SLASH_FOREVERSUITEWAY2 = "/way2"
         _G.SlashCmdList["FOREVERSUITEWAY"] = HandleWaySlash
         _G.SlashCmdList["FOREVERSUITEWAYV2"] = HandleWaySlash
+
+        local function HandleDbSlash(raw)
+            local trimmed = string_match(tostring(raw or ""), "^%s*(.-)%s*$") or ""
+            local sub, arg = string_match(trimmed, "^(%S+)%s*(.*)$")
+            sub = sub and string_lower(sub) or ""
+            arg = arg and string_lower(arg) or ""
+            if sub == "restore" and arg == "v5" then
+                local ok, reason = ns.Api.ProfileStore:RestoreV5()
+                if ok then
+                    ns.Api.SafeAPI.Print("v5 백업 스냅샷으로 복원했습니다. /reload 로 반영하세요.")
+                else
+                    ns.Api.SafeAPI.Print("복원 가능한 v5 백업이 없습니다 (" .. tostring(reason) .. ").")
+                end
+            else
+                local ver = ns.Api.ProfileStore.db and ns.Api.ProfileStore.db.schemaVersion or "?"
+                local dev = ns.Api.ProfileStore:GetDeviceKey()
+                ns.Api.SafeAPI.Print("ForeverSuite DB 스키마 v" .. tostring(ver) .. " · 기기키=" .. tostring(dev) .. " · 복원: /fsdb restore v5")
+            end
+        end
+        _G.SLASH_FOREVERSUITEDB1 = "/fsdb"
+        _G.SlashCmdList["FOREVERSUITEDB"] = HandleDbSlash
     end
 
     self.initialized = true

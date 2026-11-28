@@ -5,10 +5,22 @@ local _, ns = ...
 
 local BASE_FONT = "Fonts\\2002.TTF"
 local MONO_FONT = "Fonts\\ARIALN.TTF"
-local UI_ROOT = "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\"
+
+local function ResolveMediaRoot()
+    if _G.C_AddOns and type(_G.C_AddOns.DoesAddOnExist) == "function" then
+        local ok, exists = pcall(_G.C_AddOns.DoesAddOnExist, "ForeverSuite_Media_Assets")
+        if ok and exists == false then
+            return "Interface\\AddOns\\ForeverSuite_Media\\"
+        end
+    end
+    return "Interface\\AddOns\\ForeverSuite_Media_Assets\\"
+end
+
+local MEDIA_ROOT = ResolveMediaRoot()
+local UI_ROOT = MEDIA_ROOT .. "UI\\"
 
 local Media = {
-    version = "5.0.0",
+    version = "6.0.0",
     fonts = {
         bodyPath = BASE_FONT,
         monoPath = MONO_FONT,

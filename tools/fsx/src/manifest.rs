@@ -27,6 +27,7 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_CVar.GetCVar",
             "C_CVar.SetCVar",
             "C_DeathInfo.GetCorpseMapPosition",
+            "C_DurationUtil.CreateDurationTextBinding",
             "C_EditMode.ConvertLayoutInfoToString",
             "C_EditMode.ConvertStringToLayoutInfo",
             "C_EditMode.GetLayouts",
@@ -52,6 +53,7 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_MapExplorationInfo.GetExploredMapTextures",
             "C_Minimap.GetNumTrackingTypes",
             "C_Minimap.GetTrackingInfo",
+            "C_Minimap.SetTracking",
             "C_QuestLog.AddQuestWatch",
             "C_QuestLog.GetDistanceSqToQuest",
             "C_QuestLog.GetHeaderIndexForQuest",
@@ -77,6 +79,7 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_QuestLog.RemoveQuestWatch",
             "C_QuestLog.SetSelectedQuest",
             "C_Spell.GetSpellCooldown",
+            "C_Spell.GetSpellCooldownDuration",
             "C_Spell.GetSpellInfo",
             "C_Spell.IsSpellInRange",
             "C_Spell.IsSpellKnown",
@@ -86,7 +89,9 @@ pub fn verified_c_apis() -> &'static HashSet<&'static str> {
             "C_SuperTrack.SetSuperTrackedUserWaypoint",
             "C_Timer.After",
             "C_Timer.NewTicker",
+            "C_UnitAuras.GetAuraApplicationDisplayCount",
             "C_UnitAuras.GetAuraDataByIndex",
+            "C_UnitAuras.GetAuraDuration",
             "C_UnitAuras.GetPlayerAuraBySpellID",
         ])
     })
@@ -127,6 +132,7 @@ pub fn forbidden_combat_apis() -> &'static [&'static str] {
 #[derive(Debug)]
 pub struct TocManifest {
     pub addon_name: String,
+    pub version: Option<String>,
     pub interfaces: Vec<String>,
     pub load_on_demand: bool,
     pub files: Vec<PathBuf>,
@@ -145,6 +151,7 @@ pub fn parse_toc(addon_dir: &Path) -> Result<TocManifest> {
     let content = fs::read_to_string(&toc_path)
         .with_context(|| format!("Failed to read TOC: {}", toc_path.display()))?;
 
+    let mut version: Option<String> = None;
     let mut interfaces = Vec::new();
     let mut load_on_demand = false;
     let mut files = Vec::new();
@@ -162,6 +169,11 @@ pub fn parse_toc(addon_dir: &Path) -> Result<TocManifest> {
                     if !t.is_empty() {
                         interfaces.push(t.to_string());
                     }
+                }
+            } else if let Some(val) = header.strip_prefix("Version:") {
+                let v = val.trim();
+                if !v.is_empty() {
+                    version = Some(v.to_string());
                 }
             } else if let Some(val) = header.strip_prefix("LoadOnDemand:") {
                 load_on_demand = val.trim() == "1";
@@ -186,6 +198,7 @@ pub fn parse_toc(addon_dir: &Path) -> Result<TocManifest> {
 
     Ok(TocManifest {
         addon_name,
+        version,
         interfaces,
         load_on_demand,
         files,
