@@ -18,6 +18,51 @@ local math_floor = math.floor
 
 local MAX_FISH_ROWS = 3
 
+-- Classic / Forever key profitable fish item IDs (prefix-matched when entry.itemID is absent)
+local FISH_ITEM_IDS = {
+    { prefix = "빛깔좋은 망둥어", itemID = 6291 },
+    { prefix = "비단잉어", itemID = 6303 },
+    { prefix = "돌연변이 물고기", itemID = 6522 },
+    { prefix = "긴주둥이 진흙퉁돔", itemID = 6289 },
+    { prefix = "무지개날개 다랑어", itemID = 6308 },
+    { prefix = "기름기 많은 아귀", itemID = 6358 },
+    { prefix = "검은아귀", itemID = 6358 },
+    { prefix = "민물 표범송어", itemID = 6361 },
+    { prefix = "불지느러미 통돔", itemID = 6359 },
+    { prefix = "돌비늘 뱀장어", itemID = 13422 },
+    { prefix = "밤비늘 통돔", itemID = 13759 },
+    { prefix = "겨울 오징어", itemID = 13755 },
+    { prefix = "여름 농어", itemID = 13756 },
+    { prefix = "붉은 아가미", itemID = 13758 },
+    { prefix = "광택나는 작은물고기", itemID = 13754 },
+    { prefix = "해비늘 연어", itemID = 13760 },
+    { prefix = "흰비늘 연어", itemID = 13889 },
+    { prefix = "거대 조개", itemID = 7973 },
+}
+
+local function ResolveFishItemID(entry)
+    if type(entry) ~= "table" then return nil end
+    if type(entry.itemID) == "number" and entry.itemID > 0 then
+        return entry.itemID
+    end
+    local title = entry.title
+    if type(title) ~= "string" or title == "" then return nil end
+    for i = 1, #FISH_ITEM_IDS do
+        if string_find(title, FISH_ITEM_IDS[i].prefix, 1, true) then
+            return FISH_ITEM_IDS[i].itemID
+        end
+    end
+    return nil
+end
+
+local function LookupFishAuctionPrice(entry)
+    local auc = ns.Bridges and ns.Bridges.Auctionator
+    if not (auc and type(auc.GetAuctionPrice) == "function") then return nil end
+    local itemID = ResolveFishItemID(entry)
+    if not itemID then return nil end
+    return auc:GetAuctionPrice(itemID)
+end
+
 local FishingCardHud = {
     card = nil,
     headerBar = nil,
@@ -38,6 +83,7 @@ local FishingCardHud = {
     soundBoost = false,
     oneKeyInteract = false,
     sessionCatches = 0,
+    sessionLootValueCopper = 0,
 }
 ns.Features.FishingCardHud = FishingCardHud
 
@@ -303,6 +349,23 @@ function FishingCardHud:OnLootMessage(msg)
         return false
     end
     -- Filter strictly to player self-loot so party/raid loot never inflates fishing catch count
+    local itemID, count
+    if ns.Domain and ns.Domain.PowerQoLModel and type(ns.Domain.PowerQoLModel.ParseSelfLootItem) == "function" then
+        itemID, count = ns.Domain.PowerQoLModel.ParseSelfLootItem(msg)
+    end
+    if itemID then
+        local qty = (type(count) == "number" and count > 0) and count or 1
+        self.sessionCatches = (self.sessionCatches or 0) + qty
+        local auc = ns.Bridges and ns.Bridges.Auctionator
+        if auc and type(auc.GetAuctionPrice) == "function" then
+            local unitPrice = auc:GetAuctionPrice(itemID)
+            if type(unitPrice) == "number" and unitPrice > 0 then
+                self.sessionLootValueCopper = (self.sessionLootValueCopper or 0) + (unitPrice * qty)
+            end
+        end
+        self:Refresh()
+        return true
+    end
     local isSelfLoot = (string_find(msg, "획득했습니다", 1, true) ~= nil and string_find(msg, "님이", 1, true) == nil)
         or string_find(msg, "You receive loot", 1, true) == 1
     if isSelfLoot and string_find(msg, "|Hitem:", 1, true) then
@@ -385,8 +448,12 @@ function FishingCardHud:Refresh()
         lureTxt = "[!] 미끼 없음"
         self.metaLbl:SetTextColor(T.SEMANTIC.WARN[1], T.SEMANTIC.WARN[2], T.SEMANTIC.WARN[3], 1)
     end
+    local catchValTxt = ""
+    if type(self.sessionLootValueCopper) == "number" and self.sessionLootValueCopper > 0 and ns.Domain and ns.Domain.LedgerModel then
+        catchValTxt = " (" .. ns.Domain.LedgerModel.FormatCopper(self.sessionLootValueCopper) .. ")"
+    end
     self.titleLbl:SetText("★ 낚시 도우미" .. (zone ~= "" and (" · " .. zone) or ""))
-    self.metaLbl:SetText(skillTxt .. " | " .. lureTxt .. " | 어획 " .. tostring(self.sessionCatches or 0))
+    self.metaLbl:SetText(skillTxt .. " | " .. lureTxt .. " | 어획 " .. tostring(self.sessionCatches or 0) .. catchValTxt)
 
     if self.pinBtn and self.pinBtn._label then
         self.pinBtn._label:SetText(self.pinned and "고정*" or "고정")
@@ -420,10 +487,13 @@ function FishingCardHud:Refresh()
             local row = self.fishRows[i]
             local e = matches[i]
             if e then
-                summary[#summary + 1] = tostring(e.title) .. " (숙련 " .. tostring(e.minSkill or "?") .. ")"
+                local ahPrice = LookupFishAuctionPrice(e)
+                local priceSuffix = (type(ahPrice) == "number" and ahPrice > 0 and ns.Domain and ns.Domain.LedgerModel)
+                    and (" · " .. ns.Domain.LedgerModel.FormatCopper(ahPrice)) or ""
+                summary[#summary + 1] = tostring(e.title) .. " (숙련 " .. tostring(e.minSkill or "?") .. priceSuffix .. ")"
                 row._fishEntry = e
                 row._left:SetText("· " .. tostring(e.title))
-                row._right:SetText("숙련 " .. tostring(e.minSkill or "?"))
+                row._right:SetText("숙련 " .. tostring(e.minSkill or "?") .. priceSuffix)
                 row:Show()
             else
                 row._fishEntry = nil

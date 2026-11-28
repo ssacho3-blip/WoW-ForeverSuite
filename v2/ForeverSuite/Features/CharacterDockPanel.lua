@@ -348,6 +348,14 @@ function CharacterDockPanel:Render(tabId)
     local deficitStr = (type(money) == "number")
         and ns.Domain.LedgerModel.FormatCopper(split.deficit)
         or "집계 없음"
+    local syn = ns.Bridges and ns.Bridges.Syndicator
+    if syn and type(syn.GetTotalAccountMoney) == "function" then
+        local acctCopper, countedChars, acctStatus, totalChars = syn:GetTotalAccountMoney()
+        if acctStatus == "OK" and type(acctCopper) == "number" then
+            local lbl = (type(totalChars) == "number" and countedChars == totalChars) and "계정 " or "계정 일부 "
+            deficitStr = deficitStr .. " (" .. lbl .. ns.Domain.LedgerModel.FormatCopper(acctCopper) .. ")"
+        end
+    end
     self.skillRows[1]._val:SetText(tostring(#split.learnableNow) .. "개")
     self.skillRows[2]._val:SetText(tostring(#split.upcoming5) .. "개")
     self.skillRows[3]._val:SetText(ns.Domain.LedgerModel.FormatCopper(split.totalCost))

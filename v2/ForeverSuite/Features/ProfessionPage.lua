@@ -28,6 +28,10 @@ local ProfessionPage = {
     leftRows = {},
     rightRows = {},
     rightScrollBar = nil,
+    shopListBtn = nil,
+    lastFilteredMaterials = {},
+    lastCooldownSyncAt = 0,
+    announcedReadyAlts = false,
 }
 ns.Features.ProfessionPage = ProfessionPage
 
@@ -52,8 +56,47 @@ function ProfessionPage:RecordBagBankMaterials(includeBank)
 end
 
 function ProfessionPage:GetOwnedCountSummary(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then return 0, "" end
+    -- Prefer official Syndicator cross-alt inventory when ready (zero duplicate scan!)
+    local syn = ns.Bridges and ns.Bridges.Syndicator
+    if syn and type(syn.GetItemInventory) == "function" then
+        local info, status = syn:GetItemInventory(itemID)
+        if status == "OK" and type(info) == "table" then
+            local total = 0
+            local parts = {}
+            if type(info.characters) == "table" then
+                for i = 1, #info.characters do
+                    local c = info.characters[i]
+                    if type(c) == "table" then
+                        local q = (c.bags or 0) + (c.bank or 0) + (c.mail or 0) + (c.equipped or 0)
+                        if q > 0 then
+                            total = total + q
+                            local cname = (type(c.character) == "string" and c.character ~= "") and c.character or ("캐릭" .. tostring(i))
+                            parts[#parts + 1] = cname .. ":" .. tostring(q)
+                        end
+                    end
+                end
+            end
+            if type(info.warband) == "number" and info.warband > 0 then
+                total = total + info.warband
+                parts[#parts + 1] = "전투부대:" .. tostring(info.warband)
+            elseif type(info.warband) == "table" then
+                local wb = 0
+                for i = 1, #info.warband do
+                    local w = info.warband[i]
+                    if type(w) == "number" then wb = wb + w
+                    elseif type(w) == "table" then wb = wb + (w.bank or 0) end
+                end
+                if wb > 0 then
+                    total = total + wb
+                    parts[#parts + 1] = "전투부대:" .. tostring(wb)
+                end
+            end
+            return total, table.concat(parts, ", "), "SYNDICATOR"
+        end
+    end
     local store = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("altMaterials")
-    if type(store) ~= "table" or type(itemID) ~= "number" or itemID <= 0 then return 0, "" end
+    if type(store) ~= "table" then return 0, "", "LOCAL" end
     local total = 0
     local parts = {}
     for charName, bagMap in pairs(store) do
@@ -62,7 +105,163 @@ function ProfessionPage:GetOwnedCountSummary(itemID)
             parts[#parts + 1] = tostring(charName) .. ":" .. tostring(bagMap[itemID])
         end
     end
-    return total, table.concat(parts, ", ")
+    return total, table.concat(parts, ", "), "LOCAL"
+end
+
+function ProfessionPage:CreateMissingShoppingList()
+    if ns.Api.SafeAPI.InCombat() then
+        ns.Api.SafeAPI.Print("전투 중에는 경매장 쇼핑리스트를 생성할 수 없습니다.")
+        return false, "IN_COMBAT"
+    end
+    local auc = ns.Bridges and ns.Bridges.Auctionator
+    if not (auc and type(auc.CreateShoppingList) == "function") then
+        ns.Api.SafeAPI.Print("Auctionator 브리지가 비활성 상태입니다.")
+        return false, "API_UNAVAILABLE"
+    end
+    local rows = self.lastFilteredMaterials
+    if type(rows) ~= "table" or #rows == 0 then
+        local packs = (_G.ForeverSuiteData and _G.ForeverSuiteData.packs) or {}
+        rows = packs.prof_materials and packs.prof_materials.entries or {}
+    end
+    local built = ns.Domain.ProfessionBrowserModel.BuildShoppingEntries(
+        rows,
+        function(iid)
+            local owned = ProfessionPage:GetOwnedCountSummary(iid)
+            return owned
+        end,
+        function(iid)
+            return type(auc.GetAuctionPrice) == "function" and auc:GetAuctionPrice(iid) or nil
+        end,
+        function(iid)
+            return ns.Api.GameAdapters.GetItemNameSafe and ns.Api.GameAdapters.GetItemNameSafe(iid) or nil
+        end,
+        40
+    )
+    if type(built) ~= "table" or type(built.searchStrings) ~= "table" or #built.searchStrings == 0 then
+        ns.Api.SafeAPI.Print("부족한 재료 항목이 없거나 아이템 이름이 아직 캐시되지 않았습니다.")
+        return false, "EMPTY"
+    end
+    local rawTitle = self.selectedProf and self.selectedProf.title
+    local profLabel = (type(rawTitle) == "string" and rawTitle ~= "") and rawTitle or "전문기술"
+    local listName = "ForeverSuite: " .. profLabel
+    local ok, err = auc:CreateShoppingList(listName, built.searchStrings)
+    if not ok then
+        ns.Api.SafeAPI.Print("Auctionator 쇼핑리스트 생성 실패 (" .. tostring(err or "UNAVAILABLE") .. "). Auctionator 설치 여부를 확인하세요.")
+        return false, err
+    end
+    local estTxt = (type(built.pricedCount) == "number" and built.pricedCount > 0
+        and type(built.estimatedCopper) == "number" and built.estimatedCopper > 0
+        and ns.Domain and ns.Domain.LedgerModel)
+        and (" · 예상 경매가 " .. ns.Domain.LedgerModel.FormatCopper(built.estimatedCopper))
+        or ""
+    ns.Api.SafeAPI.Print("Auctionator 쇼핑리스트 생성 완료: [" .. listName .. "] (" .. tostring(#built.searchStrings) .. "종" .. estTxt .. ")")
+    return true, built
+end
+
+-- Auto-record multi-day crafting cooldowns (Transmute 48h, Salt Shaker 72h, Mooncloth 96h).
+-- Fail-closed: never overwrites existing timestamps on nil/secret/NaN/mono-unavailable reads.
+-- Debounced (5s) & OOC-gated on spell/bag cooldown bursts; force-bypassed on PEW (announceReady=true) & PLAYER_LOGOUT (forceFlush=true).
+function ProfessionPage:SyncAltCooldowns(announceReady, forceFlush)
+    if not (ns.Api.ProfileStore and ns.Api.ProfileStore:CanWrite()) then
+        return false, "READ_ONLY"
+    end
+    if (not announceReady) and (not forceFlush) and ns.Api.SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    local cdModel = ns.Domain and ns.Domain.AltCooldownModel
+    if not cdModel then return false, "NO_MODEL" end
+    local ga = ns.Api.GameAdapters
+    local mono = ga.GetMonotonicTime and ga.GetMonotonicTime() or nil
+    if type(mono) ~= "number" or mono ~= mono then
+        return false, "UNAVAILABLE"
+    end
+    if (not announceReady) and (not forceFlush) and (mono - (self.lastCooldownSyncAt or 0)) < 5.0 then
+        return false, "THROTTLED"
+    end
+    local nowUnix = ga.GetServerTimeSafe and ga.GetServerTimeSafe() or nil
+    local charKey = ga.GetPlayerCharKeySafe and ga.GetPlayerCharKeySafe() or nil
+    if not (nowUnix and charKey) then
+        return false, "UNAVAILABLE"
+    end
+    self.lastCooldownSyncAt = mono
+
+    local store = ns.Api.ProfileStore:GetState("altCooldowns")
+    if type(store) ~= "table" then store = {} end
+    local updated = false
+
+    -- 1. Check known Transmute & Mooncloth spells (fail-closed: skip on nil/secret/disabled read)
+    local spellIds = {}
+    for sid in pairs(cdModel.SPELL_RECIPE_MAP or {}) do
+        spellIds[#spellIds + 1] = sid
+    end
+    local known = ga.GetKnownSpellSet and ga.GetKnownSpellSet(spellIds) or {}
+    local recipeRemaining = {}
+    for sid, recipeId in pairs(cdModel.SPELL_RECIPE_MAP or {}) do
+        if known[sid] then
+            local st, dur, en
+            if ga.GetSpellCooldownSafe then
+                st, dur, en = ga.GetSpellCooldownSafe(sid)
+            end
+            local readOk = (type(st) == "number" and st == st and type(dur) == "number" and dur == dur)
+            if readOk and en ~= false then
+                local rem = 0
+                if dur > 60 then
+                    local r = (st + dur) - mono
+                    if r == r and r > 0 then rem = r end
+                end
+                if recipeRemaining[recipeId] == nil or rem > recipeRemaining[recipeId] then
+                    recipeRemaining[recipeId] = rem
+                end
+            end
+        end
+    end
+    for recipeId, rem in pairs(recipeRemaining) do
+        if cdModel.RecordRemaining(store, charKey, recipeId, rem, nowUnix) then
+            updated = true
+        end
+    end
+
+    -- 2. Check Salt Shaker (itemID 15846) if carried in bags (fail-closed: skip on nil/secret/disabled read)
+    local shakerID = cdModel.SALT_SHAKER_ITEM_ID
+    if type(shakerID) == "number" and ga.HasItemInBagsSafe and ga.HasItemInBagsSafe(shakerID) then
+        local st, dur, en
+        if ga.GetItemCooldownSafe then
+            st, dur, en = ga.GetItemCooldownSafe(shakerID)
+        end
+        local readOk = (type(st) == "number" and st == st and type(dur) == "number" and dur == dur)
+        if readOk and en ~= false then
+            local rem = 0
+            if dur > 60 then
+                local r = (st + dur) - mono
+                if r == r and r > 0 then rem = r end
+            end
+            if cdModel.RecordRemaining(store, charKey, "salt_shaker", rem, nowUnix) then
+                updated = true
+            end
+        end
+    end
+
+    if updated then
+        ns.Api.ProfileStore:SetState("altCooldowns", store)
+    end
+
+    -- 3. Notify once per session if any OTHER alt has a multi-day crafting cooldown ready
+    if announceReady and not self.announcedReadyAlts then
+        local _, _, readyList = cdModel.CountReady(store, nowUnix)
+        local otherReady = {}
+        for i = 1, #(readyList or {}) do
+            local r = readyList[i]
+            if r.charKey ~= charKey then
+                otherReady[#otherReady + 1] = tostring(r.charKey) .. "(" .. tostring(r.label) .. ")"
+            end
+        end
+        if #otherReady > 0 then
+            self.announcedReadyAlts = true
+            ns.Api.SafeAPI.Print("[부캐 전문기술 쿨다운 완료] " .. table.concat(otherReady, ", "))
+        end
+    end
+
+    return updated, store
 end
 
 local function ResolveProfIcon(title)
@@ -78,6 +277,9 @@ function ProfessionPage:RenderRight()
         if self.rightRows[i] then self.rightRows[i]:Hide() end
     end
     self.guideBody:Hide()
+    if self.shopListBtn then
+        if self.activeTab == "materials" then self.shopListBtn:Show() else self.shopListBtn:Hide() end
+    end
     if self.rightScrollBar then self.rightScrollBar:SetMetrics(0, RIGHT_ROWS, 0) end
 
     local p = self.selectedProf
@@ -130,23 +332,31 @@ function ProfessionPage:RenderRight()
     elseif self.activeTab == "materials" then
         local mats = packs.prof_materials and packs.prof_materials.entries or {}
         local q = string.lower(tostring(self.lastQuery or ""))
+        local auc = ns.Bridges and ns.Bridges.Auctionator
+        local filteredMats = {}
         for _, m in ipairs(mats) do
             if type(m.itemID) == "number" and m.itemID > 0 then
-                local totalOwned, whoStr = self:GetOwnedCountSummary(m.itemID)
+                local totalOwned, whoStr, srcTag = self:GetOwnedCountSummary(m.itemID)
                 local link = ns.Api.GameAdapters.GetItemLinkSafe(m.itemID)
                 local label = (type(link) == "string" and link ~= "") and link or ("재료 #" .. tostring(m.itemID))
                 local hay = string.lower(label .. " " .. tostring(m.kind or "") .. " " .. tostring(m.itemID))
                 if q == "" or string.find(hay, q, 1, true) then
+                    filteredMats[#filteredMats + 1] = m
+                    local ahPrice = (auc and type(auc.GetAuctionPrice) == "function") and auc:GetAuctionPrice(m.itemID) or nil
+                    local priceTxt = (type(ahPrice) == "number" and ahPrice > 0 and ns.Domain and ns.Domain.LedgerModel)
+                        and (" · 경매 " .. ns.Domain.LedgerModel.FormatCopper(ahPrice)) or ""
+                    local srcNote = (srcTag == "SYNDICATOR") and "Syndicator 부캐 합산" or "가방·은행·부캐"
                     items[#items + 1] = {
                         title = label,
-                        subtitle = (whoStr ~= "" and ("보유 내역(가방·은행·부캐): " .. whoStr)) or ("분류: " .. tostring(m.kind or "재료")),
-                        right = (totalOwned > 0) and ("보유 " .. tostring(totalOwned) .. "개") or "미보유",
+                        subtitle = (whoStr ~= "" and ("보유 내역(" .. srcNote .. "): " .. whoStr)) or ("분류: " .. tostring(m.kind or "재료")),
+                        right = ((totalOwned > 0) and ("보유 " .. tostring(totalOwned) .. "개") or "미보유") .. priceTxt,
                         icon = ns.Api.GameAdapters.GetItemIconSafe(m.itemID) or ResolveProfIcon(p.title),
                         itemID = m.itemID,
                     }
                 end
             end
         end
+        self.lastFilteredMaterials = filteredMats
     elseif self.activeTab == "picks" then
         local picks = packs.prof_recommendations and packs.prof_recommendations.entries or {}
         local q = string.lower(tostring(self.lastQuery or ""))
@@ -277,9 +487,16 @@ function ProfessionPage:Build(parent)
         end)
     end
 
+    local shopListBtn = W.Button(rightPane, "부족 재료 쇼핑리스트", 136, 22, function()
+        ProfessionPage:CreateMissingShoppingList()
+    end, true)
+    shopListBtn:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", -10, -7)
+    shopListBtn:Hide()
+    self.shopListBtn = shopListBtn
+
     self.rightTitle = W.Label(rightPane, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     self.rightTitle:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 12, -10)
-    self.rightTitle:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", -12, -10)
+    self.rightTitle:SetPoint("TOPRIGHT", shopListBtn, "TOPLEFT", -8, -3)
 
     self.guideBody = W.ScrollText(rightPane, 520, 420, { lineHeight = 18 })
     self.guideBody:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 10, -36)

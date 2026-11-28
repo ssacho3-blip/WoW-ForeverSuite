@@ -108,6 +108,36 @@ function SyndicatorBridge:GetAllCharacters()
     return chars, "OK"
 end
 
+function SyndicatorBridge:GetTotalAccountMoney()
+    local chars, status = self:GetAllCharacters()
+    if not chars then
+        return nil, 0, status
+    end
+    local api = GetAPI()
+    if not api or type(api.GetCharacter) ~= "function" then
+        return nil, 0, "UNAVAILABLE"
+    end
+    local total = 0
+    local counted = 0
+    for i = 1, #chars do
+        local key = chars[i]
+        if type(key) == "string" and key ~= "" then
+            local ok, info = pcall(api.GetCharacter, key)
+            if ok and type(info) == "table" then
+                local m = (type(info.details) == "table" and info.details.money) or info.money
+                if not ns.Api.SafeAPI.IsSecret(m) and type(m) == "number" and m >= 0 then
+                    total = total + m
+                    counted = counted + 1
+                end
+            end
+        end
+    end
+    if counted == 0 then
+        return nil, 0, "NO_DATA", #chars
+    end
+    return total, counted, "OK", #chars
+end
+
 function SyndicatorBridge:GetCurrencyInfo(currencyID)
     if ns.Api.SafeAPI.IsSecret(currencyID) or type(currencyID) ~= "number" or currencyID <= 0 then
         return nil, "INVALID_CURRENCY"

@@ -554,6 +554,24 @@ local DEFAULT_SCHEMAS = {
         combatSafe = false,
     },
     {
+        section = "profession",
+        key = "gatheringTrackAlert",
+        type = "boolean",
+        default = true,
+        label = "채집 추적(약초·광맥·보물) 꺼짐 알림",
+        desc = "채집 기술을 배웠는데 미니맵 추적이 꺼져 있으면 비전투 시 알림 표시",
+        combatSafe = true,
+    },
+    {
+        section = "profession",
+        key = "autoCycleTracking",
+        type = "boolean",
+        default = false,
+        label = "채광·약초 비전투 자동 교대 (/fs track auto)",
+        desc = "채집 추적 2종 이상 보유 시 비전투 4초 간격 자동 교대 (전투 시 0ms 즉시 중지)",
+        combatSafe = false,
+    },
+    {
         section = "quest",
         key = "collectionAlerts",
         type = "boolean",
@@ -963,6 +981,10 @@ function Bootstrap:Init()
             ns.Features.CombatAssistHud:Refresh()
         elseif sec == "profession" and (key == "showFishingCard" or key == "fishingDoubleClick") then
             ns.Features.FishingCardHud:Refresh()
+        elseif sec == "profession" and key == "gatheringTrackAlert" then
+            ns.Features.TrackingSwitcher:CheckMissingTrackingAlert(false)
+        elseif sec == "profession" and key == "autoCycleTracking" then
+            ns.Features.TrackingSwitcher:SyncAutoCycle()
         elseif sec == "qol" and key == "captureLuaErrors" then
             ns.Features.DiagnosticsPage:InstallErrorCaptureIfEnabled()
         elseif sec == "qol" and key == "corpseGuide" then
@@ -1073,6 +1095,9 @@ function Bootstrap:Init()
         ns.Features.AutoGreetingModule:SyncInitialRoster()
         ns.Features.CharacterAssistModule:CheckTalents(false)
         ns.Features.UtilitiesPage:RecordCurrentCharacter()
+        ns.Features.ProfessionPage:SyncAltCooldowns(true)
+        ns.Features.TrackingSwitcher:CheckMissingTrackingAlert(false)
+        ns.Features.TrackingSwitcher:SyncAutoCycle()
         ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
         directorInDialogue = false
         SyncDirectorState(nil, true)
@@ -1119,11 +1144,17 @@ function Bootstrap:Init()
     end)
     ns.Api.EventBus:OnEvent("v6:fishLoot", "CHAT_MSG_LOOT", function(_, msg)
         if ns.Api.SafeAPI.IsSecret(msg) then return end
+        if ns.Features.TradeLogModule and type(ns.Features.TradeLogModule.OnLootMessage) == "function" then
+            ns.Features.TradeLogModule:OnLootMessage(msg)
+        end
         if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
             ns.Features.FishingCardHud:OnLootMessage(msg)
         end
     end)
     ns.Api.EventBus:OnEvent("v6:logoutCleanup", "PLAYER_LOGOUT", function()
+        if ns.Features.ProfessionPage and type(ns.Features.ProfessionPage.SyncAltCooldowns) == "function" then
+            pcall(ns.Features.ProfessionPage.SyncAltCooldowns, ns.Features.ProfessionPage, false, true)
+        end
         if ns.Features.FishingCardHud then
             if ns.Features.FishingCardHud.soundBoost then
                 ns.Features.FishingCardHud:ToggleSoundBoost(false)
@@ -1141,6 +1172,10 @@ function Bootstrap:Init()
     end)
     ns.Api.EventBus:OnEvent("v4:spellCd", "SPELL_UPDATE_COOLDOWN", function()
         ns.Features.ProcCooldownHud:RefreshCooldowns()
+        ns.Features.ProfessionPage:SyncAltCooldowns(false)
+    end)
+    ns.Api.EventBus:OnEvent("v6:bagCd", "BAG_UPDATE_COOLDOWN", function()
+        ns.Features.ProfessionPage:SyncAltCooldowns(false)
     end)
     ns.Api.EventBus:OnEvent("v2:durability", "UPDATE_INVENTORY_DURABILITY", function()
         ns.Features.StatusPillHud:RefreshLive()
@@ -1341,6 +1376,7 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
         ns.Features.QuestExtraModule:CheckProximityAlerts()
         ns.Features.QuestExtraModule:SyncProximityTicker()
+        ns.Features.TrackingSwitcher:CheckMissingTrackingAlert(false)
         RefreshHomeIfVisible()
     end)
     ns.Api.EventBus:OnEvent("v2:zoneSub", "ZONE_CHANGED", function()
@@ -1369,6 +1405,7 @@ function Bootstrap:Init()
         ns.Features.CursorTrailHud:ApplyVisibility(true)
         ns.Features.EncounterTimerHud:OnCombatStart()
         ns.Features.QuestExtraModule:SyncProximityTicker(true)
+        ns.Features.TrackingSwitcher:StopAutoCycle()
         SyncDirectorState(true, true)
     end)
     ns.Api.EventBus:OnEvent("v2:combatEnd", "PLAYER_REGEN_ENABLED", function()
@@ -1390,6 +1427,7 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnCombatEnd()
         ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
         ns.Features.QuestExtraModule:SyncProximityTicker(false)
+        ns.Features.TrackingSwitcher:SyncAutoCycle()
         if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
             ns.Features.FishingCardHud:Refresh()
         end
@@ -1517,7 +1555,7 @@ function Bootstrap:Init()
             elseif cmd == "setup" then
                 ns.Features.SetupWizard:HandleCommand(string_lower(rest or ""))
             elseif cmd == "track" then
-                ns.Features.TrackingSwitcher:CycleNext()
+                ns.Features.TrackingSwitcher:HandleCommand(rest)
             elseif cmd == "fish" then
                 ns.Features.FishingCardHud:HandleCommand(rest)
             elseif cmd == "dock" then

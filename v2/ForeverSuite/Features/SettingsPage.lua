@@ -50,6 +50,7 @@ local PRESETS = {
             { "combat", "buffReminder", true },
             { "combat", "lowHealthAlert", true },
             { "profession", "showFishingCard", true },
+            { "profession", "gatheringTrackAlert", true },
             { "qol", "fastLoot", true },
             { "social", "autoGreetJoin", false },
             { "social", "autoGreetWelcome", false },

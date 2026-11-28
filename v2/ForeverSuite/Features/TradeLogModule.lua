@@ -12,6 +12,8 @@ local TradeLogModule = {
     recordedCurrent = false,
     farmStartTime = nil,
     farmStartMoney = nil,
+    farmLootCount = 0,
+    farmLootValueCopper = 0,
 }
 ns.Features.TradeLogModule = TradeLogModule
 
@@ -144,6 +146,32 @@ end
 function TradeLogModule:ResetFarm()
     self.farmStartTime = ns.Api.GameAdapters.GetMonotonicTime()
     self.farmStartMoney = ns.Api.SafeAPI.GetPlayerMoney()
+    self.farmLootCount = 0
+    self.farmLootValueCopper = 0
+end
+
+function TradeLogModule:OnLootMessage(msg)
+    if ns.Api.SafeAPI.IsSecret(msg) or type(msg) ~= "string" or msg == "" then
+        return false
+    end
+    local itemID, count = ns.Domain.PowerQoLModel.ParseSelfLootItem(msg)
+    if not itemID then
+        return false
+    end
+    if not self.farmStartTime then
+        self:ResetFarm()
+    end
+    local qty = (type(count) == "number" and count > 0) and count or 1
+    self.farmLootCount = (self.farmLootCount or 0) + qty
+    local auc = ns.Bridges and ns.Bridges.Auctionator
+    if auc and type(auc.GetAuctionPrice) == "function" then
+        local unitPrice = auc:GetAuctionPrice(itemID)
+        if type(unitPrice) == "number" and unitPrice > 0 then
+            self.farmLootValueCopper = (self.farmLootValueCopper or 0) + (unitPrice * qty)
+            return true, unitPrice * qty
+        end
+    end
+    return true, 0
 end
 
 function TradeLogModule:GetFarmSummary()
@@ -154,14 +182,25 @@ function TradeLogModule:GetFarmSummary()
     end
     local elapsed = now - self.farmStartTime
     local delta = cur - self.farmStartMoney
+    local lootVal = (type(self.farmLootValueCopper) == "number" and self.farmLootValueCopper > 0) and self.farmLootValueCopper or 0
     local gph = ns.Domain.PowerQoLModel.ComputeFarmGph(delta, elapsed)
-    return { elapsed = elapsed, delta = delta, gph = gph }
+    local combined = ns.Domain.PowerQoLModel.ComputeCombinedFarmGph(delta, lootVal, elapsed)
+    return {
+        elapsed = elapsed,
+        delta = delta,
+        gph = gph,
+        lootCount = self.farmLootCount or 0,
+        lootValueCopper = lootVal,
+        totalDelta = combined and combined.totalDelta or delta,
+        totalGph = combined and combined.totalGph or gph,
+        lootGph = combined and combined.lootGph or nil,
+    }
 end
 
 function TradeLogModule:HandleFarmCommand(rest)
     if rest == "reset" then
         self:ResetFarm()
-        ns.Api.SafeAPI.Print("골드 파밍 GPH 세션을 초기화했습니다.")
+        ns.Api.SafeAPI.Print("골드·채집 파밍 GPH 세션을 초기화했습니다.")
         return true
     end
     local s = self:GetFarmSummary()
@@ -169,9 +208,13 @@ function TradeLogModule:HandleFarmCommand(rest)
         ns.Api.SafeAPI.Print("골드 파밍 기록이 아직 충분하지 않습니다 (최소 1초 경과 필요 · /fs farm reset).")
         return false
     end
+    local lootPart = (s.lootValueCopper and s.lootValueCopper > 0)
+        and (" · 경매품 " .. ns.Domain.LedgerModel.FormatCopper(s.lootValueCopper)
+            .. " (합산 " .. ns.Domain.LedgerModel.FormatCopper(s.totalGph or s.gph) .. "/h)")
+        or ""
     ns.Api.SafeAPI.Print(
         "골드 파밍: 변화 " .. ns.Domain.LedgerModel.FormatCopper(s.delta)
-        .. " · 시간당 " .. ns.Domain.LedgerModel.FormatCopper(s.gph) .. "/h"
+        .. " · 시간당 " .. ns.Domain.LedgerModel.FormatCopper(s.gph) .. "/h" .. lootPart
     )
     return true
 end

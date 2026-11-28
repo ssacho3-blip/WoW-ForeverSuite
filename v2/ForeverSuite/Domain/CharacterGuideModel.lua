@@ -99,8 +99,14 @@ function CharacterGuideModel.SplitUpcomingSpells(trainingEntries, playerClass, p
         end
     end
 
-    table_sort(learnableNow, function(a, b) return a.level ~= b.level and a.level < b.level or a.spellID < b.spellID end)
-    table_sort(upcoming5, function(a, b) return a.level ~= b.level and a.level < b.level or a.spellID < b.spellID end)
+    local function cmpSpell(a, b)
+        if a.level ~= b.level then
+            return a.level < b.level
+        end
+        return a.spellID < b.spellID
+    end
+    table_sort(learnableNow, cmpSpell)
+    table_sort(upcoming5, cmpSpell)
 
     local money = (type(playerMoneyCopper) == "number" and playerMoneyCopper >= 0) and math_floor(playerMoneyCopper) or 0
     local deficit = totalCost - money

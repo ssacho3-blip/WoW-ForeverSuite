@@ -2085,7 +2085,11 @@ function GameAdapters.GetSpellCooldownSafe(spellID)
             and (not SafeAPI.IsSecret(cd.startTime)) and (not SafeAPI.IsSecret(cd.duration))
             and type(cd.startTime) == "number" and type(cd.duration) == "number"
         then
-            return cd.startTime, cd.duration, (not SafeAPI.IsSecret(cd.isEnabled)) and IsTruthy(cd.isEnabled) or true
+            local isEnabled = nil
+            if not SafeAPI.IsSecret(cd.isEnabled) then
+                isEnabled = IsTruthy(cd.isEnabled)
+            end
+            return cd.startTime, cd.duration, isEnabled
         end
     end
     return nil
@@ -2496,4 +2500,75 @@ function GameAdapters.SetTrackingSafe(trackingIndex, active)
         return pcall(C_Minimap.SetTracking, trackingIndex, active == true) and true or false
     end
     return false
+end
+
+function GameAdapters.GetServerTimeSafe()
+    if type(_G.GetServerTime) == "function" then
+        local t = SafeAPI.SafeRead(_G.GetServerTime)
+        if t ~= UNAVAILABLE and type(t) == "number" and t > 0 then
+            return math.floor(t)
+        end
+    end
+    if type(_G.time) == "function" then
+        local t = SafeAPI.SafeRead(_G.time)
+        if t ~= UNAVAILABLE and type(t) == "number" and t > 0 then
+            return math.floor(t)
+        end
+    end
+    return nil
+end
+
+function GameAdapters.GetItemCooldownSafe(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then return nil end
+    if type(_G.GetItemCooldown) ~= "function" then return nil end
+    local ok, startTime, duration, enabled = pcall(_G.GetItemCooldown, itemID)
+    if ok and (not SafeAPI.IsSecret(startTime)) and (not SafeAPI.IsSecret(duration))
+        and type(startTime) == "number" and type(duration) == "number"
+    then
+        local isEnabled = nil
+        if not SafeAPI.IsSecret(enabled) then
+            isEnabled = IsTruthy(enabled)
+        end
+        return startTime, duration, isEnabled
+    end
+    return nil
+end
+
+function GameAdapters.HasItemInBagsSafe(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then return false end
+    local fn = (C_Item and type(C_Item.GetItemCount) == "function" and C_Item.GetItemCount)
+        or (type(_G.GetItemCount) == "function" and _G.GetItemCount)
+        or nil
+    if not fn then return false end
+    local ok, cnt = pcall(fn, itemID, false, false, false)
+    return ok and (not SafeAPI.IsSecret(cnt)) and type(cnt) == "number" and cnt > 0
+end
+
+function GameAdapters.GetPlayerCharKeySafe()
+    local name = GameAdapters.GetPlayerName()
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+    local realm = SafeAPI.GetCanonicalRealm()
+    if realm == nil or realm == UNAVAILABLE or type(realm) ~= "string" or realm == "" then
+        return nil
+    end
+    return name .. "-" .. realm
+end
+
+function GameAdapters.GetItemNameSafe(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then return nil end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, name = pcall(C_Item.GetItemInfo, itemID)
+        if ok and (not SafeAPI.IsSecret(name)) and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+    if type(_G.GetItemInfo) == "function" then
+        local ok, name = pcall(_G.GetItemInfo, itemID)
+        if ok and (not SafeAPI.IsSecret(name)) and type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+    return nil
 end

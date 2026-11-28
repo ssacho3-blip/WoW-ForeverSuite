@@ -84,6 +84,44 @@ function PowerQoLModel.ComputeFarmGph(deltaCopper, elapsedSec)
     return math_floor((deltaCopper / elapsedSec) * 3600)
 end
 
+-- Parse self-loot chat line (koKR / enUS), strictly rejecting other players' loot ("님이").
+function PowerQoLModel.ParseSelfLootItem(msg)
+    if type(msg) ~= "string" or msg == "" then
+        return nil
+    end
+    local isKo = (string_match(msg, "획득했습니다") ~= nil) and (string_match(msg, "님이") == nil)
+    local isEn = (string_match(msg, "^You receive loot:") ~= nil)
+    if not (isKo or isEn) then
+        return nil
+    end
+    local idStr, itemName = string_match(msg, "|Hitem:(%d+):[^|]*|h%[([^%]]+)%]|h")
+    local itemID = tonumber(idStr)
+    if not itemID or itemID <= 0 then
+        return nil
+    end
+    local countStr = string_match(msg, "|h|r%s*x(%d+)") or string_match(msg, "|h%s*x(%d+)")
+    local count = tonumber(countStr) or 1
+    if count < 1 then
+        count = 1
+    end
+    return itemID, count, itemName
+end
+
+function PowerQoLModel.ComputeCombinedFarmGph(goldDeltaCopper, lootValueCopper, elapsedSec)
+    if type(elapsedSec) ~= "number" or elapsedSec ~= elapsedSec or elapsedSec < 1 then
+        return nil
+    end
+    local g = (type(goldDeltaCopper) == "number" and goldDeltaCopper == goldDeltaCopper) and goldDeltaCopper or 0
+    local l = (type(lootValueCopper) == "number" and lootValueCopper == lootValueCopper and lootValueCopper > 0) and lootValueCopper or 0
+    local total = g + l
+    return {
+        totalDelta = total,
+        totalGph = math_floor((total / elapsedSec) * 3600),
+        goldGph = math_floor((g / elapsedSec) * 3600),
+        lootGph = math_floor((l / elapsedSec) * 3600),
+    }
+end
+
 function PowerQoLModel.AddBookmark(list, label, mapID, x, y)
     if type(list) ~= "table" then return false, "INVALID_LIST" end
     if type(label) ~= "string" or label == "" then return false, "INVALID_LABEL" end

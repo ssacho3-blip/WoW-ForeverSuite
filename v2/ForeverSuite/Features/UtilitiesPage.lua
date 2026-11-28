@@ -775,6 +775,9 @@ function UtilitiesPage:Render(query)
         end
         local farm = ns.Features.TradeLogModule and ns.Features.TradeLogModule:GetFarmSummary()
         local gphTxt = (farm and farm.gph) and (ns.Domain.LedgerModel.FormatCopper(farm.gph) .. "/h") or "측정 대기"
+        if farm and farm.lootValueCopper and farm.lootValueCopper > 0 and farm.totalGph then
+            gphTxt = ns.Domain.LedgerModel.FormatCopper(farm.totalGph) .. "/h (순골드 " .. ns.Domain.LedgerModel.FormatCopper(farm.gph or 0) .. "/h · 경매품 " .. ns.Domain.LedgerModel.FormatCopper(farm.lootValueCopper) .. ")"
+        end
         summary = "거래 기록 " .. tostring(#tlog) .. "/50건 · 현재 파밍 시급(GPH): " .. gphTxt
         emptyTitle = "완료된 거래 기록이 없습니다"
         emptyDesc = "플레이어와 거래를 완료하면 상대방·아이템·골드가 자동으로 여기에 기록됩니다."
