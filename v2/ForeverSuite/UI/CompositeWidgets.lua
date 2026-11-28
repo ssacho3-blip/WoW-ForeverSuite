@@ -623,13 +623,13 @@ function W.StatCard(parent, width, height, opts)
 
     local icon = W.IconFrame(card, T.ICON.MD)
     icon:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -10)
-    icon:SetIcon(opts.icon, opts.iconBorderCol or T.BORDER.GOLD_SOFT, opts.glyph or "✦")
+    icon:SetIcon(opts.icon, opts.iconBorderCol or T.BORDER.GOLD_SOFT, opts.glyph or "★")
 
     local cap = W.Label(card, opts.caption or "", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
     cap:SetPoint("TOPLEFT", card, "TOPLEFT", 10 + T.ICON.MD + 8, -9)
     cap:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -9)
 
-    local val = W.Label(card, opts.value or "—", "heading", opts.valueCol or T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local val = W.Label(card, opts.value or "-", "heading", opts.valueCol or T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     val:SetPoint("TOPLEFT", card, "TOPLEFT", 10 + T.ICON.MD + 8, -25)
     val:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -25)
 
@@ -674,7 +674,7 @@ function W.EmptyState(parent, opts)
 
     local icon = W.IconFrame(f, T.ICON.LG)
     icon:SetPoint("CENTER", f, "CENTER", 0, 32)
-    icon:SetIcon(opts.icon, T.BORDER.GOLD_SOFT, opts.glyph or "✦")
+    icon:SetIcon(opts.icon, T.BORDER.GOLD_SOFT, opts.glyph or "★")
 
     local title = W.Label(f, opts.title or "표시할 항목이 없습니다", "heading", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false })
     title:SetPoint("TOP", icon, "BOTTOM", 0, -10)
@@ -824,7 +824,7 @@ function W.DetailPanel(parent, width, height, opts)
     function panel:SetHeader(titleText, subText, iconTex, borderCol, fallbackGlyph)
         self._title:SetText(tostring(titleText or ""))
         self._sub:SetText(tostring(subText or ""))
-        self._icon:SetIcon(iconTex, borderCol or T.BORDER.GOLD_SOFT, fallbackGlyph or "✦")
+        self._icon:SetIcon(iconTex, borderCol or T.BORDER.GOLD_SOFT, fallbackGlyph or "★")
     end
 
     function panel:SetBodyText(text)
@@ -1021,7 +1021,7 @@ function W.CopyPasteModal()
         return sharedCopyModal
     end
 
-    local modal = W.Window("ForeverSuiteV3CopyPasteModal", 520, 232, "✦ 복사 · 붙여넣기")
+    local modal = W.Window("ForeverSuiteV3CopyPasteModal", 520, 232, "★ 복사 · 붙여넣기")
     modal:SetFrameStrata(T.ELEVATION.L3_OVERLAY)
     modal:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
 
@@ -1096,7 +1096,7 @@ function W.CopyPasteModal()
     function modal:OpenExport(titleText, subtitleText, text)
         self._mode = "export"
         self._onSubmit = nil
-        self._title:SetText("✦ " .. tostring(titleText or "복사"))
+        self._title:SetText("★ " .. tostring(titleText or "복사"))
         self._sub:SetText(tostring(subtitleText or "아래 텍스트를 선택한 뒤 Ctrl+C (Cmd+C) 로 복사하세요."))
         self._box:SetText(tostring(text or ""))
         self._status:SetText("Ctrl+C (또는 Cmd+C) 로 복사 후 닫기를 누르세요.")
@@ -1110,7 +1110,7 @@ function W.CopyPasteModal()
     function modal:OpenImport(titleText, subtitleText, onImport, initialText)
         self._mode = "import"
         self._onSubmit = onImport
-        self._title:SetText("✦ " .. tostring(titleText or "프로필 가져오기"))
+        self._title:SetText("★ " .. tostring(titleText or "프로필 가져오기"))
         self._sub:SetText(tostring(subtitleText or "FS2: 로 시작하는 프로필 문자열을 붙여넣고 [가져오기 적용]을 누르세요."))
         self._box:SetText(tostring(initialText or ""))
         self._status:SetText("")

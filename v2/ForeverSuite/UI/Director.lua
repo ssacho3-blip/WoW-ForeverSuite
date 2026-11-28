@@ -1,7 +1,7 @@
 -- Module: UI/Director.lua
 -- Responsibility: Non-secure 5-State (+EDIT_OVERRIDE) Director orchestration engine with single 60Hz _tweenFrame
 --                 (0.00ms idle when converged), 1.2s post-combat hold, 350ms dialogue debounce, and /fs setup live preview.
--- Layer: UI (Rank 4: operates strictly on non-secure UIParent HUD SetAlpha — never touches Secure frames).
+-- Layer: UI (Rank 4: operates strictly on non-secure UIParent HUD SetAlpha - never touches Secure frames).
 local _, ns = ...
 ns.UI = ns.UI or {}
 

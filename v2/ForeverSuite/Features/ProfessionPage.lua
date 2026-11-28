@@ -85,7 +85,7 @@ function ProfessionPage:RenderRight()
         self.rightTitle:SetText("좌측에서 전문기술을 선택하세요")
         return
     end
-    self.rightTitle:SetText("✦ " .. tostring(p.title) .. " (제조법 " .. tostring(p.recipeCount or 0) .. " · 교관 " .. tostring(p.npcCount or 0) .. ")")
+    self.rightTitle:SetText("★ " .. tostring(p.title) .. " (제조법 " .. tostring(p.recipeCount or 0) .. " · 교관 " .. tostring(p.npcCount or 0) .. ")")
 
     if self.activeTab == "guide" then
         local parts = {}
@@ -109,7 +109,7 @@ function ProfessionPage:RenderRight()
             items[#items + 1] = {
                 title = tostring(r.title),
                 subtitle = (r.note and r.note ~= "") and r.note or nil,
-                right = (type(r.skill) == "number" and r.skill > 0) and ("숙련 " .. tostring(r.skill)) or "—",
+                right = (type(r.skill) == "number" and r.skill > 0) and ("숙련 " .. tostring(r.skill)) or "-",
                 icon = (type(r.itemID) == "number") and ns.Api.GameAdapters.GetItemIconSafe(r.itemID) or ResolveProfIcon(p.title),
                 itemID = r.itemID,
             }
@@ -292,7 +292,7 @@ function ProfessionPage:Build(parent)
                 if ns.Features.NavigationHud then
                     ns.Features.NavigationHud:SetTarget(e.mapID, e.x, e.y, e.title)
                 end
-                ns.Api.SafeAPI.Print("교관 위치 안내: " .. tostring(e.title) .. (e.note and e.note ~= "" and (" — " .. e.note) or ""))
+                ns.Api.SafeAPI.Print("교관 위치 안내: " .. tostring(e.title) .. (e.note and e.note ~= "" and (" - " .. e.note) or ""))
                 return
             end
             if type(btn._itemID) == "number" and ns.Api.GameAdapters.IsShiftDown() then

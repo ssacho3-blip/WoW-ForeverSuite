@@ -28,7 +28,7 @@ ns.Domain.QuestTrackerModel = QuestTrackerModel
 QuestTrackerModel.CLASSIC_DIFFICULTY_COLORS = {
     red    = { 1.00, 0.10, 0.10, 1.00 }, -- 매우 어려움 (delta >= +5)
     orange = { 1.00, 0.50, 0.25, 1.00 }, -- 어려움 (delta >= +3)
-    yellow = { 1.00, 1.00, 0.00, 1.00 }, -- 적정 — 현 레벨 (delta -2 .. +2)
+    yellow = { 1.00, 1.00, 0.00, 1.00 }, -- 적정 - 현 레벨 (delta -2 .. +2)
     green  = { 0.25, 0.75, 0.25, 1.00 }, -- 쉬움 (delta > -greenRange)
     gray   = { 0.55, 0.55, 0.55, 1.00 }, -- 회색/낮음 (delta <= -greenRange)
 }
@@ -213,7 +213,7 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
     local rows = {}
     if not minimized then
         for _, grp in ipairs(groups) do
-            local marker = grp.isCollapsed and "▸ " or "▾ "
+            local marker = grp.isCollapsed and "▶ " or "▼ "
             table_insert(rows, {
                 kind = "header",
                 groupKey = grp.key,

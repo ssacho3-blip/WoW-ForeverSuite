@@ -302,7 +302,7 @@ function UtilitiesPage:OnIncomingChatBid(cleanMsg, cleanSender)
     local ok, st = ns.Domain.GdkpModel.SubmitBid(self.activeAuction, cleanSender, copper, now)
     if ok then
         ns.Api.SafeAPI.Print(
-            "[골팟 최고가] " .. tostring(self.activeAuction.item) .. " — "
+            "[골팟 최고가] " .. tostring(self.activeAuction.item) .. " - "
             .. cleanSender .. " " .. ns.Domain.LedgerModel.FormatCopper(copper)
         )
         if self.host and self.host:IsShown() and self.activeSub == "gdkp" then
@@ -644,9 +644,9 @@ function UtilitiesPage:Render(query)
         local store = ns.Api.ProfileStore:GetState("altLedger") or {}
         local sum = ns.Domain.AltInventoryModel.Summarize(store, q)
         for _, r in ipairs(sum.rows) do
-            local lvTxt = (type(r.level) == "number") and ("Lv." .. tostring(r.level)) or "Lv.—"
-            local clsTxt = (type(r.class) == "string" and r.class ~= "") and r.class or "—"
-            local goldTxt = (type(r.gold) == "number") and ns.Domain.LedgerModel.FormatCopper(r.gold) or "—"
+            local lvTxt = (type(r.level) == "number") and ("Lv." .. tostring(r.level)) or "Lv.-"
+            local clsTxt = (type(r.class) == "string" and r.class ~= "") and r.class or "-"
+            local goldTxt = (type(r.gold) == "number") and ns.Domain.LedgerModel.FormatCopper(r.gold) or "-"
             local hay = string.lower(tostring(r.name or "") .. " " .. clsTxt .. " " .. tostring(r.zone or ""))
             if q == "" or string.find(hay, q, 1, true) then
                 lines[#lines + 1] = {
@@ -672,7 +672,7 @@ function UtilitiesPage:Render(query)
             if q == "" or string.find(hay, q, 1, true) then
                 local capturedSale = s
                 lines[#lines + 1] = {
-                    title = (s.paid and "[✓입금] " or "[미수] ") .. tostring(s.item or ""),
+                    title = (s.paid and "[V입금] " or "[미수] ") .. tostring(s.item or ""),
                     subtitle = "낙찰자: " .. tostring(s.buyer or "미상") .. " (클릭하여 입금 토글 · 거래 시 자동 체크)",
                     right = ns.Domain.LedgerModel.FormatCopper(s.copper),
                     color = s.paid and T.SEMANTIC.SUCCESS or T.TEXT.GOLD,
@@ -692,12 +692,12 @@ function UtilitiesPage:Render(query)
             if type(pRec) == "table" and pRec.paid then
                 paidMemCount = paidMemCount + 1
                 lines[#lines + 1] = {
-                    title = "[✓분배] " .. tostring(mName),
+                    title = "[V분배] " .. tostring(mName),
                     subtitle = "분배금 지급 완료",
                     right = ns.Domain.LedgerModel.FormatCopper(pRec.copper or 0),
                     color = T.SEMANTIC.SUCCESS,
                     rightCol = T.SEMANTIC.SUCCESS,
-                    glyph = "✓",
+                    glyph = "V",
                 }
             end
         end
@@ -1070,7 +1070,7 @@ function UtilitiesPage:Build(parent)
         UtilitiesPage:HandleGdkpCommand("cancel")
     end, "경매 취소/유찰")
     cancelAucBtn:SetPoint("RIGHT", banner, "RIGHT", -8, 0)
-    local closeAucBtn = W.Button(banner, "✓ 낙찰 마감", 88, 20, function()
+    local closeAucBtn = W.Button(banner, "V 낙찰 마감", 88, 20, function()
         UtilitiesPage:HandleGdkpCommand("close")
     end, true)
     closeAucBtn:SetPoint("RIGHT", cancelAucBtn, "LEFT", -6, 0)

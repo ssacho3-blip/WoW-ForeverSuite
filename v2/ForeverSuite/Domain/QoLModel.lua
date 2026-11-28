@@ -197,7 +197,7 @@ end
 
 function QoLModel.FormatDuration(sec)
     if type(sec) ~= "number" or sec < 0 then
-        return "—"
+        return "-"
     end
     local total = math_floor(sec + 0.5)
     local h = math_floor(total / 3600)

@@ -43,15 +43,15 @@ function QuestGuidePage:RenderDetail()
     if self.activeTab == "leveling" then
         local lvl = ns.Api.GameAdapters.GetPlayerLevel()
         local fac = ns.Api.GameAdapters.GetPlayerFaction()
-        local lvlTxt = (type(lvl) == "number" and lvl >= 1) and ("Lv." .. tostring(lvl)) or "Lv.—"
+        local lvlTxt = (type(lvl) == "number" and lvl >= 1) and ("Lv." .. tostring(lvl)) or "Lv.-"
         local facTxt = (type(fac) == "string" and fac ~= "") and fac or "확인 불가"
         self.detailPanel:SetHeader("내 레벨·진영 맞춤 육성 가이드", "현재 캐릭터: " .. lvlTxt .. " (" .. facTxt .. ")", clsIcon, clsCol)
         self.detailPanel:SetBodyText(
             "좌측 목록에서 금색(★)으로 강조된 지역이 현재 레벨에 가장 적합한 육성 구간입니다.\n\n"
             .. "■ 사용 방법\n"
-            .. "• 지역을 클릭하면 바로 /way 화살표 내비게이션이 연결됩니다.\n"
-            .. "• 상단 '직업 퀘스트 공략' 탭에서 내 직업 전용 퀘스트의 전체 단계별 한글 공략과 완료 여부를 확인할 수 있습니다.\n"
-            .. "• '특수·도서관' 탭에서는 아제로스 특수 퀘스트 및 도서관 서적 위치를 즉시 검색할 수 있습니다."
+            .. "· 지역을 클릭하면 바로 /way 화살표 내비게이션이 연결됩니다.\n"
+            .. "· 상단 '직업 퀘스트 공략' 탭에서 내 직업 전용 퀘스트의 전체 단계별 한글 공략과 완료 여부를 확인할 수 있습니다.\n"
+            .. "· '특수·도서관' 탭에서는 아제로스 특수 퀘스트 및 도서관 서적 위치를 즉시 검색할 수 있습니다."
         )
         self.navBtn:Hide()
         return
@@ -111,8 +111,8 @@ function QuestGuidePage:RenderDetail()
 
     local comp = ns.Api.GameAdapters.IsQuestCompleted(q.questID)
     local compTag = (comp == true) and "[완료]" or ((comp == false) and "[미완료]" or "[확인 불가]")
-    local qLvlTxt = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.—"
-    local minLvlTxt = (type(q.minLevel) == "number" and q.minLevel > 0) and tostring(q.minLevel) or "—"
+    local qLvlTxt = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.-"
+    local minLvlTxt = (type(q.minLevel) == "number" and q.minLevel > 0) and tostring(q.minLevel) or "-"
     self.detailPanel:SetHeader(
         compTag .. " " .. tostring(q.title),
         "퀘스트 #" .. tostring(q.questID) .. " · " .. qLvlTxt .. " (최소 Lv." .. minLvlTxt .. ")",
@@ -162,7 +162,7 @@ function QuestGuidePage:Render(query)
                     if ns.Features.NavigationHud then
                         ns.Features.NavigationHud:SetTarget(z.mapID, z.x, z.y, z.zone)
                     end
-                    ns.Api.SafeAPI.Print("육성 지역 안내: " .. z.zone .. " — " .. z.tip)
+                    ns.Api.SafeAPI.Print("육성 지역 안내: " .. z.zone .. " - " .. z.tip)
                 end,
             }
         end
@@ -182,7 +182,7 @@ function QuestGuidePage:Render(query)
             local sel = (self.selectedSpecial and self.selectedSpecial.title == sp.title)
             local comp = (type(sp.questID) == "number" and sp.questID > 0) and ns.Api.GameAdapters.IsQuestCompleted(sp.questID) or nil
             items[#items + 1] = {
-                title = ((comp == true) and "✓ " or "") .. tostring(sp.title),
+                title = ((comp == true) and "V " or "") .. tostring(sp.title),
                 subtitle = tostring(sp.zone or ""),
                 right = (sp.kind == "special") and "특수" or "도서관",
                 color = (comp == true) and T.SEMANTIC.SUCCESS or (sel and T.TEXT.GOLD or T.TEXT.PRIMARY),
@@ -259,9 +259,9 @@ function QuestGuidePage:Render(query)
             local comp = ns.Api.GameAdapters.IsQuestCompleted(q.questID)
             local qIcon = (q.class and T.ICON.CLASS_TEX[q.class]) or (playerCls and T.ICON.CLASS_TEX[playerCls]) or "Interface\\Icons\\INV_Misc_Book_09"
             items[#items + 1] = {
-                title = ((comp == true) and "✓ " or "") .. tostring(q.title),
+                title = ((comp == true) and "V " or "") .. tostring(q.title),
                 subtitle = (q.walkthrough and q.walkthrough ~= "") and "한글 상세 공략 수록" or "좌표 안내",
-                right = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.—",
+                right = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.-",
                 color = (comp == true) and T.SEMANTIC.SUCCESS or (sel and T.TEXT.GOLD or T.TEXT.PRIMARY),
                 icon = qIcon,
                 borderCol = (comp == true) and T.SEMANTIC.SUCCESS or (sel and T.BORDER.GOLD or T.BORDER.HAIRLINE),

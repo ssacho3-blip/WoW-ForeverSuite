@@ -41,7 +41,7 @@ function MinimapButton:Init()
             if type(gt) == "table" and type(gt.SetOwner) == "function" then
                 local ok = pcall(gt.SetOwner, gt, selfBtn, "ANCHOR_LEFT")
                 if ok then
-                    ns.Blizzard.TooltipAdapter.AddLine(gt, "✦ ForeverSuite", ns.Api.SafeAPI.GetCanonicalRealm(), T.TEXT.GOLD)
+                    ns.Blizzard.TooltipAdapter.AddLine(gt, "★ ForeverSuite", ns.Api.SafeAPI.GetCanonicalRealm(), T.TEXT.GOLD)
                     local free = ns.Api.SafeAPI.GetBagFreeSlots()
                     local freeTxt = (type(free) == "number") and (tostring(free) .. "칸") or "집계 없음"
                     ns.Blizzard.TooltipAdapter.AddLine(gt, "빈 가방 슬롯", freeTxt, T.TEXT.PRIMARY)

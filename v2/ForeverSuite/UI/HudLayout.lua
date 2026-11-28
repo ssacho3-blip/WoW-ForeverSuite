@@ -252,7 +252,7 @@ local function UpdateOverlayStyle(rec)
         rec.overlay._bg:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
     end
     if rec.overlay._lbl then
-        rec.overlay._lbl:SetText((isOver and "⚠ 겹침: " or (isSel and "★ " or "이동: ")) .. rec.label)
+        rec.overlay._lbl:SetText((isOver and "[!] 겹침: " or (isSel and "★ " or "이동: ")) .. rec.label)
         rec.overlay._lbl:SetTextColor(tc[1], tc[2], tc[3], 1)
     end
 end
@@ -277,10 +277,10 @@ function HudLayout:RefreshEditUI()
         bar._scaleLbl:SetText("100%")
     end
     if #overlaps > 0 then
-        bar._label:SetText("⚠ HUD 겹침 " .. tostring(#overlaps) .. "건 감지 · 드래그 또는 [겹침 자동정렬]")
+        bar._label:SetText("[!] HUD 겹침 " .. tostring(#overlaps) .. "건 감지 · 드래그 또는 [겹침 자동정렬]")
         bar._label:SetTextColor(T.SEMANTIC.DANGER[1], T.SEMANTIC.DANGER[2], T.SEMANTIC.DANGER[3], 1)
     else
-        bar._label:SetText("✦ HUD 배치 편집 모드 · 겹침 0건 · 드래그 4px 스냅")
+        bar._label:SetText("★ HUD 배치 편집 모드 · 겹침 0건 · 드래그 4px 스냅")
         bar._label:SetTextColor(T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], 1)
     end
 end
@@ -308,11 +308,11 @@ local function EnsureControlBar()
     end
 
     -- Row 1: status + Auto-Separate + Reset All + Save & Lock
-    local lbl = W.Label(bar, "✦ HUD 배치 편집 모드 · 겹침 0건 · 드래그 4px 스냅", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local lbl = W.Label(bar, "★ HUD 배치 편집 모드 · 겹침 0건 · 드래그 4px 스냅", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     lbl:SetPoint("TOPLEFT", bar, "TOPLEFT", 12, -10)
     lbl:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -294, -10)
 
-    local doneBtn = W.Button(bar, "✓ 저장 및 잠금", 96, 22, function()
+    local doneBtn = W.Button(bar, "V 저장 및 잠금", 96, 22, function()
         HudLayout:SetUnlocked(false)
         ns.Api.SafeAPI.Print("HUD 위치와 크기를 저장하고 잠갔습니다.")
     end, true)
@@ -365,7 +365,7 @@ local function EnsureControlBar()
     end, "클릭하여 선택 HUD 크기 100% 초기화")
     scaleLbl:SetPoint("RIGHT", scalePlusBtn, "LEFT", -2, 0)
 
-    local scaleMinusBtn = W.MiniButton(bar, "−", 22, 20, function()
+    local scaleMinusBtn = W.MiniButton(bar, "-", 22, 20, function()
         if HudLayout.selectedId then
             local a = HudLayout:GetEffectiveAnchor(HudLayout.selectedId)
             HudLayout:SetScale(HudLayout.selectedId, (a and a.scale or 1.0) - 0.10)

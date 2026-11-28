@@ -69,7 +69,7 @@ function HomeDashboardModel.BuildOverview(ctx)
     local name = (type(ctx.name) == "string" and ctx.name ~= "") and ctx.name or "모험가"
     local classEng = (type(ctx.classEng) == "string" and ctx.classEng ~= "") and ctx.classEng or nil
     local classKr = (classEng and CLASS_LABELS_KR[classEng]) or (type(ctx.classLoc) == "string" and ctx.classLoc) or "직업 미집계"
-    local levelText = (type(ctx.level) == "number" and ctx.level >= 1) and ("Lv." .. tostring(math_floor(ctx.level))) or "Lv.—"
+    local levelText = (type(ctx.level) == "number" and ctx.level >= 1) and ("Lv." .. tostring(math_floor(ctx.level))) or "Lv.-"
     local zoneText = (type(ctx.zone) == "string" and ctx.zone ~= "") and ctx.zone or "지역 집계 없음"
     local realmText = (type(ctx.realm) == "string" and ctx.realm ~= "") and ctx.realm or "렐름 미집계"
 

@@ -152,7 +152,7 @@ assert(st.attackPower == 500 and st.spellPower == 310 and st.armor == 2850 and s
 local stLines = ns.Domain.PowerQoLModel.FormatExtendedStatsLines(st)
 assert(#stLines == 4 and string.find(stLines[1].right, "AP 500", 1, true) ~= nil)
 local nilStLines = ns.Domain.PowerQoLModel.FormatExtendedStatsLines({})
-assert(string.find(nilStLines[4].right, "—%", 1, true) == nil, "Nil moveSpeedPct must never render '—%'")
+assert(string.find(nilStLines[4].right, "-%", 1, true) == nil, "Nil moveSpeedPct must never render '-%'")
 
 -- B1/B2/B3 + PLAYER_ALIVE ghost retention regression guards
 assert(ns.Domain.CombatHudModel.ClassifyTargetRange(true, false, nil, nil, nil) == nil, "B1: Never fabricate >28m when 28m checks are nil")

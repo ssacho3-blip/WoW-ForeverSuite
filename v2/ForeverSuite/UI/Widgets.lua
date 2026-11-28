@@ -1394,7 +1394,7 @@ function Widgets.MinimapButton(name, initialAngle, onClick, onTooltip, onAngleCh
     end
     btn._fsRing = ring
 
-    local glyph = Widgets.Label(btn, "✦", "heading", T.TEXT.GOLD, { outline = "OUTLINE" })
+    local glyph = Widgets.Label(btn, "★", "heading", T.TEXT.GOLD, { outline = "OUTLINE" })
     glyph:SetPoint("CENTER", btn, "CENTER", 0, 1)
     btn._glyph = glyph
     btn._angle = ns.Domain.MinimapModel.NormalizeAngle(initialAngle)

@@ -47,7 +47,7 @@ function ThreatMeterHud:Init()
     if not (T.TrySetAtlas and T.TrySetAtlas(hdrBar, "ui-damagemeters-header-bar", false)) then
         hdrBar:SetColorTexture(0.11, 0.09, 0.07, 0.72)
     end
-    local hdr = W.Label(card, "✦ 위협 수준 (Threat)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    local hdr = W.Label(card, "★ 위협 수준 (Threat)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
     hdr:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -6)
     hdr:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -6)
     local hdrRule = card:CreateTexture(nil, "ARTWORK")
@@ -120,13 +120,13 @@ function ThreatMeterHud:Refresh()
     end
 
     if snap.mode == "SECRET_LOCKED" then
-        self.headerLbl:SetText("✦ 위협 수준 · 집계 불가")
+        self.headerLbl:SetText("★ 위협 수준 · 집계 불가")
         W.SetBorderColor(self.card, T.BORDER.HAIRLINE)
     elseif snap.warning then
-        self.headerLbl:SetText("✦ 위협 수준 · 어그로 주의!")
+        self.headerLbl:SetText("★ 위협 수준 · 어그로 주의!")
         W.SetBorderColor(self.card, T.SEMANTIC.DANGER)
     else
-        self.headerLbl:SetText("✦ 위협 수준 (Threat)")
+        self.headerLbl:SetText("★ 위협 수준 (Threat)")
         W.SetBorderColor(self.card, T.BORDER.GOLD_SOFT)
     end
 

@@ -1,5 +1,5 @@
 -- Module: Features/FishingCardHud.lua
--- Responsibility: F2 Enhanced L1 Fishing Helper Card — skill tracker, lure countdown/reminder, zone fish list,
+-- Responsibility: F2 Enhanced L1 Fishing Helper Card - skill tracker, lure countdown/reminder, zone fish list,
 --                 and safe OOC double-right-click cast toggle (delegated to Secure/FishingCastButton).
 -- Layer: Features (uses UI/Widgets + Api/GameAdapters + Secure/FishingCastButton).
 local _, ns = ...
@@ -93,7 +93,7 @@ function FishingCardHud:Refresh()
     local pack = _G.ForeverSuiteData and _G.ForeverSuiteData.packs and _G.ForeverSuiteData.packs.fishing
     local zone = ns.Api.GameAdapters.GetPlayerZoneText()
     local fStat = ns.Api.GameAdapters.GetFishingStatusSafe()
-    local skillTxt = (fStat and fStat.skill) and ("숙련 " .. tostring(fStat.skill) .. "/" .. tostring(fStat.maxSkill or 300)) or "숙련 —"
+    local skillTxt = (fStat and fStat.skill) and ("숙련 " .. tostring(fStat.skill) .. "/" .. tostring(fStat.maxSkill or 300)) or "숙련 -"
     local lureTxt
     if fStat and fStat.hasLure and fStat.lureSec > 0 then
         local m = math_floor(fStat.lureSec / 60)
@@ -101,7 +101,7 @@ function FishingCardHud:Refresh()
         lureTxt = string_format("미끼 %02d:%02d", m, s)
         self.metaLbl:SetTextColor(T.SEMANTIC.SUCCESS[1], T.SEMANTIC.SUCCESS[2], T.SEMANTIC.SUCCESS[3], 1)
     else
-        lureTxt = "⚠ 미끼 없음"
+        lureTxt = "[!] 미끼 없음"
         self.metaLbl:SetTextColor(T.SEMANTIC.WARN[1], T.SEMANTIC.WARN[2], T.SEMANTIC.WARN[3], 1)
     end
     self.titleLbl:SetText("낚시 가이드" .. (zone ~= "" and (" · " .. zone) or ""))

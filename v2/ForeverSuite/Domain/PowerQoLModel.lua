@@ -29,12 +29,12 @@ local PowerQoLModel = {
 ns.Domain.PowerQoLModel = PowerQoLModel
 
 local function FmtNum(v, suffix)
-    if type(v) ~= "number" or v ~= v then return "—" end
+    if type(v) ~= "number" or v ~= v then return "-" end
     return string_format("%.1f%s", v, suffix or "")
 end
 
 local function FmtInt(v)
-    if type(v) ~= "number" or v ~= v then return "—" end
+    if type(v) ~= "number" or v ~= v then return "-" end
     return tostring(math_floor(v))
 end
 
@@ -42,7 +42,7 @@ function PowerQoLModel.FormatExtendedStatsLines(st)
     if type(st) ~= "table" then return {} end
     local spdTxt = (type(st.moveSpeedPct) == "number" and st.moveSpeedPct == st.moveSpeedPct)
         and (tostring(math_floor(st.moveSpeedPct)) .. "%")
-        or "—"
+        or "-"
     return {
         { left = "전투력 / 주문력", right = "AP " .. FmtInt(st.attackPower) .. " · SP " .. FmtInt(st.spellPower) },
         { left = "치명타 / 주문 극대화", right = FmtNum(st.meleeCrit, "%") .. " / " .. FmtNum(st.spellCrit, "%") },

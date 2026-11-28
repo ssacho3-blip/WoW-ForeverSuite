@@ -188,7 +188,7 @@ function QuestTrackerView:ShowDetailCard(item)
         if type(body.SetJustifyV) == "function" then body:SetJustifyV("TOP") end
         body:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -54)
         body:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -12, 38)
-        local trackBtn = W.Button(card, "✦ 길안내·포커스", 132, 24, function()
+        local trackBtn = W.Button(card, "★ 길안내·포커스", 132, 24, function()
             local qid = card._questID
             if type(qid) == "number" and qid > 0 then
                 local cur = ns.Api.SafeAPI.GetSuperTrackedQuestID()
@@ -240,7 +240,7 @@ function QuestTrackerView:ShowDetailCard(item)
     )
     local lines = {}
     for _, obj in ipairs(item.objectives or {}) do
-        local mark = obj.finished and "[✓] " or "[ ] "
+        local mark = obj.finished and "[V] " or "[ ] "
         lines[#lines + 1] = mark .. tostring(obj.text or "")
     end
     if #lines == 0 then
@@ -291,7 +291,7 @@ function QuestTrackerView:SyncToolbarLabels()
         local hudEdit = ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked()
         self.container:SetMovable(hudEdit or (not lk))
     end
-    self.btnMinimize:SetLabel(mn and "+" or "−")
+    self.btnMinimize:SetLabel(mn and "+" or "-")
     self.btnMinimize:SetActive(mn)
     if self.btnMinimize._atlasTex then
         local atlas = mn and "ui-questtrackerbutton-expand-all" or "ui-questtrackerbutton-collapse-all"
@@ -396,10 +396,10 @@ function QuestTrackerView:Init()
         end
     end)
 
-    local title = W.Label(hdr, "✦ 퀘스트 (0)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    local title = W.Label(hdr, "★ 퀘스트 (0)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
     title:SetPoint("LEFT", hdr, "LEFT", 8, 0)
 
-    local btnMin = W.MiniButton(hdr, "−", 22, 20, function()
+    local btnMin = W.MiniButton(hdr, "-", 22, 20, function()
         QuestTrackerView:ToggleMinimized()
     end, "퀘스트 추적기 접기 / 펼치기", { ghost = true })
     btnMin:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
@@ -535,7 +535,7 @@ function QuestTrackerView:OnRowClick(rowBtn, mouseBtn)
     if ns.Features.NavigationHud and type(ns.Features.NavigationHud.TrackQuest) == "function" then
         local navOk, navStatus = ns.Features.NavigationHud:TrackQuest(nextQID, item.rawTitle or item.title, { allowLoadPacks = true, explicit = true })
         if nextQID > 0 and (not navOk) and navStatus == "NO_COORDS" then
-            ns.Api.SafeAPI.Print("퀘스트 포커스 설정됨 (좌표 미등록 — 월드맵에서 Alt+좌클릭으로 /way 직접 지정 가능)")
+            ns.Api.SafeAPI.Print("퀘스트 포커스 설정됨 (좌표 미등록 - 월드맵에서 Alt+좌클릭으로 /way 직접 지정 가능)")
         end
     end
 end
@@ -560,7 +560,7 @@ local function ShowRowTooltip(rowBtn)
         _G.GameTooltip:AddLine(sub, T.TEXT.SECONDARY[1], T.TEXT.SECONDARY[2], T.TEXT.SECONDARY[3])
         for _, obj in ipairs(item.objectives or {}) do
             local c = obj.finished and T.SEMANTIC.SUCCESS or T.TEXT.PRIMARY
-            _G.GameTooltip:AddLine((obj.finished and "✓ " or "• ") .. tostring(obj.text or ""), c[1], c[2], c[3])
+            _G.GameTooltip:AddLine((obj.finished and "V " or "· ") .. tostring(obj.text or ""), c[1], c[2], c[3])
         end
         if ns.Features.QuestExtraModule and type(item.questID) == "number" then
             local partyTxt = ns.Features.QuestExtraModule:GetPartySummaryForQuest(item.questID)
@@ -694,7 +694,7 @@ function QuestTrackerView:Render(quests, opts)
         if snap.hiddenCount > 0 then
             countTxt = countTxt .. "/" .. tostring(snap.totalQuestCount)
         end
-        self.titleLbl:SetText("✦ 퀘스트 (" .. countTxt .. ")")
+        self.titleLbl:SetText("★ 퀘스트 (" .. countTxt .. ")")
     end
 
     -- Fixed B6: Compute scrollbar visibility BEFORE anchoring rows so right inset clears the 10px scrollbar!
@@ -728,7 +728,7 @@ function QuestTrackerView:Render(quests, opts)
                 title = (liveSlot and ("[" .. tostring(liveSlot) .. "] ") or "") ..
                     tostring(item.title):gsub("^%[%d+%] ", "")
             end
-            local marker = item.isSuperTracked and "★ " or (item.isComplete and "✓ " or "")
+            local marker = item.isSuperTracked and "★ " or (item.isComplete and "V " or "")
             local diffCol = (type(item.difficultyColor) == "table") and item.difficultyColor or nil
             -- Classic Original Quest Difficulty Colors for title & level badge; preserve accent/badge cues for super/complete/failed
             local titleCol = item.isFailed and T.SEMANTIC.DANGER or (diffCol or theme.tc)
@@ -742,7 +742,7 @@ function QuestTrackerView:Render(quests, opts)
             row._right:SetText(item.rightText or "")
             row._right:SetTextColor(rightCol[1], rightCol[2], rightCol[3], 1)
         elseif item.kind == "objective" then
-            local prefix = item.finished and "✓ " or "• "
+            local prefix = item.finished and "V " or "· "
             row._left:SetText(prefix .. item.text)
             row._left:SetTextColor(theme.tc[1], theme.tc[2], theme.tc[3], 1)
             row._right:SetText("")
@@ -770,7 +770,7 @@ function QuestTrackerView:Render(quests, opts)
         if showFooter then
             local fromN = snap.scrollOffset + 1
             local toN = snap.scrollOffset + shown
-            self.scrollHint:SetText("휠 스크롤 " .. tostring(fromN) .. "–" .. tostring(toN) .. " / " .. tostring(snap.totalRows) .. "행")
+            self.scrollHint:SetText("휠 스크롤 " .. tostring(fromN) .. "-" .. tostring(toN) .. " / " .. tostring(snap.totalRows) .. "행")
             self.scrollHint:Show()
         else
             self.scrollHint:Hide()

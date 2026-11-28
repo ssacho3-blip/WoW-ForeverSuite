@@ -58,7 +58,7 @@ function HomePage:Build(parent)
     heroIcon:SetPoint("LEFT", hero, "LEFT", 14, 0)
     self.heroIcon = heroIcon
 
-    local heroTitle = W.Label(hero, "✦ ForeverSuite " .. tostring(ns.Api.SafeAPI.GetAddonVersion() or "6.0.0"), "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local heroTitle = W.Label(hero, "★ ForeverSuite " .. tostring(ns.Api.SafeAPI.GetAddonVersion() or "6.0.0"), "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     heroTitle:SetPoint("TOPLEFT", hero, "TOPLEFT", 14 + T.ICON.LG + 12, -11)
     heroTitle:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -148, -11)
     self.heroTitle = heroTitle
@@ -240,7 +240,7 @@ function HomePage:OnShow()
 
     local clsTex = (ov.classEng and T.ICON.CLASS_TEX[ov.classEng]) or T.ICON.FALLBACK
     local clsCol = (ov.classEng and T.CLASS_COLORS[ov.classEng]) or T.BORDER.GOLD
-    self.heroIcon:SetIcon(clsTex, clsCol, "✦")
+    self.heroIcon:SetIcon(clsTex, clsCol, "★")
     self.heroTitle:SetText(ov.heroTitle)
     self.heroTitle:SetTextColor(clsCol[1], clsCol[2], clsCol[3], 1)
     self.heroSub:SetText(ov.heroSub)

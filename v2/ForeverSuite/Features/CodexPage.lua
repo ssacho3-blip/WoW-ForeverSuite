@@ -175,7 +175,7 @@ function CodexPage:EnsureRow(idx)
                 ns.Api.SafeAPI.Print("내비게이션 연결에 실패했습니다: " .. title .. " (" .. tostring(status or "ERROR") .. ")")
             end
         elseif type(entry.note) == "string" and entry.note ~= "" then
-            ns.Api.SafeAPI.Print(tostring(entry.title or "도감") .. " — " .. entry.note)
+            ns.Api.SafeAPI.Print(tostring(entry.title or "도감") .. " - " .. entry.note)
         end
     end)
     row:SetTooltipHandler(ShowCodexTooltip, HideCodexTooltip)
@@ -326,7 +326,7 @@ function CodexPage:RenderPack(query)
             local tag = (comp == true) and "[완료] " or ((comp == false) and "[미완료] " or "[확인 불가] ")
             title = tag .. title
         elseif type(entry.mapID) == "number" and type(entry.x) == "number" then
-            title = "▸ " .. title
+            title = "▶ " .. title
         end
 
         local qCol = QualityColor(entry.quality)

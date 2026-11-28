@@ -63,7 +63,7 @@ local nx, ny = ns.Domain.WorldMapModel.ComputeCursorCoords(500, 400, 1.0, 100, 1
 assert(math.abs(nx - 0.5) < 0.001 and math.abs(ny - 0.5) < 0.001)
 local ox, oy = ns.Domain.WorldMapModel.ComputeCursorCoords(50, 400, 1.0, 100, 100, 800, 600)
 assert(ox == nil and oy == nil, "cursor outside canvas must return nil")
-assert(ns.Domain.WorldMapModel.FormatCoordPair(nil, nil) == "—")
+assert(ns.Domain.WorldMapModel.FormatCoordPair(nil, nil) == "-")
 assert(ns.Domain.WorldMapModel.FormatCoordPair(0.425, 0.661) == "42.5, 66.1")
 
 -- 3. Live QuestTrackerView UI: crisp shadows, clipped ListRow, Ctrl detail card, combat fade (zero Dock mutation in combat)

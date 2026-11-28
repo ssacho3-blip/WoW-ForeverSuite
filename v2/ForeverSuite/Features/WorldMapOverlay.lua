@@ -74,20 +74,20 @@ function WorldMapOverlay:EnsureCard()
     local card = W.PopupCard(_G.UIParent, OVERLAY_WIDTH, 240, "ForeverSuiteWorldMapOverlay", T.ELEVATION.L3_OVERLAY)
     W.MakeDraggable(card, "worldMapOverlay", { point = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 24, y = 24 })
 
-    local hdr = W.Label(card, "✦ 월드맵 좌표 · 안개 · 히트맵 (Alt+좌클릭 /way)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local hdr = W.Label(card, "★ 월드맵 좌표 · 안개 · 히트맵 (Alt+좌클릭 /way)", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     hdr:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -8)
     hdr:SetPoint("TOPRIGHT", card, "TOPRIGHT", -34, -8)
 
-    local collapseBtn = W.MiniButton(card, "−", 22, 18, function()
+    local collapseBtn = W.MiniButton(card, "-", 22, 18, function()
         WorldMapOverlay:SetCollapsed(not WorldMapOverlay.collapsed)
     end, "좌표 바만 남기고 접기 / 펼치기")
     collapseBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -6)
 
-    local coord = W.Label(card, "내 위치: —  |  커서: —", "mono", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
+    local coord = W.Label(card, "내 위치: -  |  커서: -", "mono", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
     coord:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -28)
     coord:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -28)
 
-    local zone = W.Label(card, "지도: —", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
+    local zone = W.Label(card, "지도: -", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
     zone:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -46)
     zone:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -46)
 
@@ -178,7 +178,7 @@ function WorldMapOverlay:SetCollapsed(flag)
     self.collapsed = flag and true or false
     if not self.card then return end
     if self.collapseBtn then
-        self.collapseBtn:SetLabel(self.collapsed and "+" or "−")
+        self.collapseBtn:SetLabel(self.collapsed and "+" or "-")
         self.collapseBtn:SetActive(self.collapsed)
     end
     if self.collapsed then
@@ -302,7 +302,7 @@ function WorldMapOverlay:HideCanvasPins()
     end
 end
 
--- E6: Quick map gesture (Alt+RightClick / Ctrl+LeftClick on WorldMap canvas) — set /way to clicked map coords
+-- E6: Quick map gesture (Alt+RightClick / Ctrl+LeftClick on WorldMap canvas) - set /way to clicked map coords
 function WorldMapOverlay:PinCurrentCursorLocation(explicitMapID, explicitNx, explicitNy)
     local mapID = explicitMapID or ns.Blizzard.WorldMapAdapter:GetViewingMapID()
     local nx, ny = explicitNx, explicitNy
@@ -505,7 +505,7 @@ function WorldMapOverlay:BuildPinListForMap(mapID)
                 icon = PIN_ICON_BY_KIND.quest,
                 borderCol = diffCol or T.BORDER.GOLD,
                 active = true,
-                label = "퀘스트 #" .. tostring(qp.questID) .. " (" .. tostring(qp.npc or "") .. " · " .. ((type(qp.level) == "number" and qp.level > 0) and ("Lv." .. tostring(qp.level)) or "Lv.—") .. ")",
+                label = "퀘스트 #" .. tostring(qp.questID) .. " (" .. tostring(qp.npc or "") .. " · " .. ((type(qp.level) == "number" and qp.level > 0) and ("Lv." .. tostring(qp.level)) or "Lv.-") .. ")",
             }
         end
     end
@@ -584,12 +584,12 @@ function WorldMapOverlay:Tick()
     self:EnsureCard()
 
     local pos = ns.Api.GameAdapters.GetPlayerPosition()
-    local playerTxt = pos and ns.Domain.WorldMapModel.FormatCoordPair(pos.x, pos.y) or "—"
+    local playerTxt = pos and ns.Domain.WorldMapModel.FormatCoordPair(pos.x, pos.y) or "-"
 
     local metrics = ns.Blizzard.WorldMapAdapter:GetCanvasMetrics()
     self:SyncMapStrata(metrics)
 
-    local cursorTxt = "—"
+    local cursorTxt = "-"
     local nx, ny = ns.Blizzard.WorldMapAdapter:GetNormalizedCursorPosition()
     if not (nx and ny) and metrics then
         local cx, cy = ns.Api.GameAdapters.GetCursorScreenPosition()
@@ -620,7 +620,7 @@ function WorldMapOverlay:Tick()
         self.lastPinsEnabled = pinsEnabled
         if mapChanged then
             local mName = mapID and ns.Api.GameAdapters.GetMapName(mapID) or nil
-            self.zoneLabel:SetText("지도: " .. (mName or (mapID and ("#" .. tostring(mapID)) or "—")))
+            self.zoneLabel:SetText("지도: " .. (mName or (mapID and ("#" .. tostring(mapID)) or "-")))
             self:RefreshPOIs(mapID)
         end
         self:RenderCanvasPins(mapID, metrics)

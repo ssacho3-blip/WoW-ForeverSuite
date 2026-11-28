@@ -85,7 +85,7 @@ function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper, durPct)
     local lowDur = (type(durPct) == "number" and durPct < 30)
     local durTxt = (type(durPct) == "number")
         and (lowDur and ("|cfff87171내구 " .. tostring(durPct) .. "%|r") or ("내구 " .. tostring(durPct) .. "%"))
-        or "내구 —"
+        or "내구 -"
     local moneyTxt = (type(sessionDeltaCopper) == "number") and ns.Domain.LedgerModel.FormatCopper(sessionDeltaCopper) or "골드 집계 없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     self.label:SetText(bagTxt .. " · " .. durTxt .. " · " .. moneyTxt .. " · " .. realm)

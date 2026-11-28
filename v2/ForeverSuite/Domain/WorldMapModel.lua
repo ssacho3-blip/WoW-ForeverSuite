@@ -1,5 +1,5 @@
 -- Module: Domain/WorldMapModel.lua
--- Responsibility: Pure WorldMap cursor/player coordinate math, formatter (zero-fabrication "—"), and Service NPC/Entrance POI filter.
+-- Responsibility: Pure WorldMap cursor/player coordinate math, formatter (zero-fabrication "-"), and Service NPC/Entrance POI filter.
 -- Layer: Domain (100% pure Lua 5.1; zero WoW API, zero _G).
 local _, ns = ...
 ns.Domain = ns.Domain or {}
@@ -65,10 +65,10 @@ end
 -- Formats normalized (0..1) coords as "42.5, 66.1". Never fabricates 0.0 on nil/invalid input.
 function WorldMapModel.FormatCoordPair(x, y)
     if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then
-        return "—"
+        return "-"
     end
     if x < 0 or x > 1 or y < 0 or y > 1 then
-        return "—"
+        return "-"
     end
     return string_format("%.1f, %.1f", x * 100, y * 100)
 end

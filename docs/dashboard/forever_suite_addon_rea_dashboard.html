@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="gold">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ForeverSuite v6.1 — WoW Forever 통합 애드온 전수 분석 & 실코드 UI REA 대시보드</title>
+<style>
+  :root {
+    --ink-bright: 0.72;
+    --gold-bright: 0.90;
+    --bg0: #0c0b0e;
+    --bg1: #131116;
+    --bg2: #1a171d;
+    --bg3: #242028;
+    --border-subtle: rgba(218, 177, 65, 0.22);
+    --border-strong: rgba(218, 177, 65, 0.56);
+    --gold: #e6c36a;
+    --gold-dim: #b49448;
+    --text-primary: #f1eada;
+    --text-secondary: #b4ac9c;
+    --text-muted: #7c766b;
+    --hover: rgba(255, 255, 255, 0.06);
+    --selected: rgba(230, 195, 106, 0.14);
+    --success: #4ade80;
+    --info: #60a5fa;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --radius-lg: 10px;
+    --radius-md: 6px;
+    --radius-sm: 4px;
+    --grain-opacity: 0.045;
+  }
+
+  [data-theme="dark"] {
+    --bg0: #0b0d10;
+    --bg1: #11151b;
+    --bg2: #171c24;
+    --bg3: #202733;
+    --border-subtle: rgba(148, 163, 184, 0.18);
+    --border-strong: rgba(138, 166, 255, 0.52);
+    --gold: #9db6ff;
+    --gold-dim: #6f86cc;
+    --text-primary: #ecf0f7;
+    --text-secondary: #aab4c4;
+    --text-muted: #757e8e;
+    --hover: rgba(255, 255, 255, 0.06);
+    --selected: rgba(138, 166, 255, 0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg0);
+    color: var(--text-primary);
+    font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.55;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Subtle continuous charcoal grain inspired by GodJohnson InkUV */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: var(--grain-opacity);
+    background-image:
+      radial-gradient(rgba(255,255,255,0.22) 1px, transparent 0),
+      radial-gradient(rgba(0,0,0,0.4) 1px, transparent 0);
+    background-size: 18px 18px;
+    background-position: 0 0, 9px 9px;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1420px;
+    margin: 0 auto;
+    padding: 20px 24px 48px;
+  }
+
+  /* Top Header Bar */
+  .topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: var(--bg1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: linear-gradient(145deg, rgba(230,195,106,0.22), rgba(20,18,22,0.9));
+    display: grid;
+    place-items: center;
+    color: var(--gold);
+    font-weight: 800;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .brand h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: -0.01em;
+  }
+  .brand p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+  }
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .slider-group input[type="range"] {
+    width: 78px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .slider-group .val {
+    font-variant-numeric: tabular-nums;
+    color: var(--gold);
+    min-width: 32px;
+    text-align: right;
+    font-weight: 600;
+  }
+
+  .theme-toggle {
+    display: flex;
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 3px;
+  }
+  .theme-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 5px 11px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 150ms cubic-bezier(0.22, 1, 0.36, 1), color 150ms;
+  }
+  .theme-btn.active {
+    background: var(--selected);
+    color: var(--gold);
+    box-shadow: inset 2px 0 0 var(--gold);
+  }
+
+  /* Nav Tabs */
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 10px;
+  }
+  .nav-btn {
+    position: relative;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg1);
+    color: var(--text-secondary);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .nav-btn:hover {
+    background: var(--bg2);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+  .nav-btn.active {
+    background: var(--selected);
+    color: var(--gold);
+    border-color: var(--border-strong);
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+
+  .view { display: none; animation: fadeIn 150ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .view.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* KPI Grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .kpi {
+    background: var(--bg1);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--gold);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+  .kpi .k-label { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
+  .kpi .k-val { font-size: 24px; font-weight: 800; color: var(--gold); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .kpi .k-sub { font-size: 12px; color: var(--text-secondary); }
+
+  /* Cards & Layout */
+  .grid-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  @media (max-width: 960px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--bg1);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .card-hdr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .card-hdr h2 { font-size: 15px; font-weight: 700; color: var(--gold); }
+  .card-hdr .meta { font-size: 12px; color: var(--text-muted); }
+
+  /* Filter Pills */
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    border: 1px solid var(--border-subtle);
+    background: var(--bg2);
+    color: var(--text-secondary);
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 140ms;
+  }
+  .pill:hover { border-color: var(--border-strong); color: var(--text-primary); }
+  .pill.active { background: var(--selected); color: var(--gold); border-color: var(--border-strong); }
+
+  /* Search Input */
+  .search-input {
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 7px 12px;
+    font-size: 12.5px;
+    min-width: 240px;
+    outline: none;
+  }
+  .search-input:focus { border-color: var(--gold); }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: top;
+  }
+  th {
+    color: var(--gold);
+    font-weight: 700;
+    background: var(--bg2);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+  }
+  tr:hover td { background: var(--hover); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .b-core { background: rgba(74, 222, 128, 0.14); color: var(--success); border: 1px solid rgba(74, 222, 128, 0.35); }
+  .b-bridge { background: rgba(96, 165, 250, 0.14); color: var(--info); border: 1px solid rgba(96, 165, 250, 0.35); }
+  .b-coexist { background: rgba(251, 191, 36, 0.14); color: var(--warn); border: 1px solid rgba(251, 191, 36, 0.35); }
+  .b-drop { background: rgba(248, 113, 113, 0.14); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.35); }
+  .b-gold { background: var(--selected); color: var(--gold); border: 1px solid var(--border-strong); }
+
+  /* Bar Chart */
+  .bar-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 64px;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+  .bar-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+  .bar-name.is-fs { color: var(--gold); }
+  .bar-track {
+    height: 16px;
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .bar-fill.is-fs { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+  .bar-fill.is-gj { background: linear-gradient(90deg, #b45309, #f59e0b); }
+  .bar-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text-primary); font-size: 12.5px; }
+
+  /* Heatmap cell */
+  .hm-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    border-radius: 3px;
+  }
+
+  /* Addon detail cards */
+  .addon-card {
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 140ms;
+  }
+  .addon-card:hover { border-color: var(--border-strong); }
+  .addon-card.highlight { border-left: 3px solid var(--gold); }
+  .addon-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .addon-title { font-size: 14px; font-weight: 700; color: var(--gold); }
+  .addon-meta { font-size: 11.5px; color: var(--text-muted); }
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; }
+  .box-pro { background: rgba(74, 222, 128, 0.06); border: 1px solid rgba(74, 222, 128, 0.22); border-radius: 5px; padding: 8px; }
+  .box-con { background: rgba(248, 113, 113, 0.06); border: 1px solid rgba(248, 113, 113, 0.22); border-radius: 5px; padding: 8px; }
+  .box-pro strong { color: var(--success); display: block; margin-bottom: 3px; font-size: 11.5px; }
+  .box-con strong { color: var(--danger); display: block; margin-bottom: 3px; font-size: 11.5px; }
+
+  /* Model Debate Cards */
+  .model-card {
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-top: 3px solid var(--gold);
+    border-radius: var(--radius-md);
+    padding: 14px;
+  }
+  .model-card h3 { font-size: 14px; color: var(--gold); margin-bottom: 3px; }
+  .model-card .role { font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px; }
+  .model-card ul { padding-left: 16px; font-size: 12.3px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 5px; }
+  .model-card li strong { color: var(--text-primary); }
+
+  /* Roadmap wave cards */
+  .wave {
+    background: var(--bg2);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--gold);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .wave h3 { font-size: 14px; color: var(--gold); margin-bottom: 6px; }
+  .wave ul { padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+
+  .code-pill {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--gold);
+  }
+  .footnote {
+    margin-top: 24px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">FS</div>
+      <div>
+        <h1>ForeverSuite v6.1 · 통합 애드온 전수 분석 &amp; 실코드 UI REA 대시보드</h1>
+        <p>WoW Forever 1.60.1.71037 (TOC 16001) · 통합 UI 8종 + 실설치 벤치마크 8종 실코드 REA + 생태계 26종 + 5사 대표 모델 설계 토론</p>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="slider-group" title="GodJohnson Theme401 방식 표면 밝기 실시간 시뮬레이션">
+        <span>표면 밝기</span>
+        <input id="inkSlider" type="range" min="0.45" max="1.00" step="0.01" value="0.75" />
+        <span class="val" id="inkVal">0.75</span>
+      </div>
+      <div class="slider-group" title="GodJohnson Theme401 방식 골드/포인트 밝기 실시간 시뮬레이션">
+        <span>골드 밝기</span>
+        <input id="goldSlider" type="range" min="0.50" max="1.00" step="0.01" value="0.90" />
+        <span class="val" id="goldVal">0.90</span>
+      </div>
+      <div class="theme-toggle">
+        <button class="theme-btn active" data-set-theme="gold">Forever Gold</button>
+        <button class="theme-btn" data-set-theme="dark">Midnight Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAVIGATION -->
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn active" data-view="overview">1. 개요 · 핵심 격차</button>
+    <button class="nav-btn" data-view="aio">2. 통합 UI 애드온 비교 (8종)</button>
+    <button class="nav-btn" data-view="rea">3. 실코드 UI REA 히트맵 (8+1종)</button>
+    <button class="nav-btn" data-view="eco">4. 생태계 26종 통합 전략</button>
+    <button class="nav-btn" data-view="debate">5. 5사 모델 토론 · v6.1 로드맵</button>
+  </nav>
+
+  <!-- VIEW 1: OVERVIEW -->
+  <section class="view active" id="view-overview">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="k-label">실코드 역공학(REA) 분석 규모</div>
+        <div class="k-val">8 + 1종</div>
+        <div class="k-sub">총 1,447 Lua · 1,111 Art 실측 완료</div>
+      </div>
+      <div class="kpi">
+        <div class="k-label">ForeverSuite v6.0 UI 핵심 공백</div>
+        <div class="k-val">0 / 0 / 0</div>
+        <div class="k-sub">SetSpacing 0 · Easing 0 · ScrollBox 0</div>
+      </div>
+      <div class="kpi">
+        <div class="k-label">GodJohnson v5.312 1위 지표</div>
+        <div class="k-val">68 · 56 · 24</div>
+        <div class="k-sub">행간 68 · 그라데이션 56 · 마스크 24</div>
+      </div>
+      <div class="kpi">
+        <div class="k-label">통합 아키텍처 메모리 절감</div>
+        <div class="k-val">&lt; 2 MB</div>
+        <div class="k-sub">기존 15개 조합(95~180 MB) 대비 ~98%↓</div>
+      </div>
+      <div class="kpi">
+        <div class="k-label">5사 대표 모델 최종 합의</div>
+        <div class="k-val">v6.1 Gold</div>
+        <div class="k-sub">InkUV + Round.tga + 150ms 모션 + Zero-Taint</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-hdr">
+          <h2>실코드 UI 프리미티브 격차: 최고봉 1위 vs ForeverSuite v6.0</h2>
+          <span class="meta">실제 설치본 소스코드 직접 계측</span>
+        </div>
+        <div id="overviewGapBars"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <h2>핵심 전략 결론 — 왜 "길 C + v6.1 UI 오버홀"인가?</h2>
+          <span class="meta">5사 만장일치 결론</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:12.8px;color:var(--text-secondary);">
+          <div class="addon-card highlight">
+            <div class="addon-title">1. v6.0은 "엔진·공존 OS" 완성, v6.1은 "시각·촉감 완성"</div>
+            <div>v6.0에서 7계층 격리·6대 공식 브리지·3계층 SV·5-State Director·@secret 게이트는 완성했으나, 기존 창/HUD 외형은 v5.0 그대로(행간 0 · 90° 박스 · 모션 0)였음.</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-title">2. 영어권 최고봉 7종 + 한국 최고봉 갓존슨의 완벽한 상호보완</div>
+            <div><strong style="color:var(--text-primary)">갓존슨</strong>의 한국어 가독성(<span class="code-pill">InkUV</span>·밝기 슬라이더·<span class="code-pill">SurfaceRim</span>·<span class="code-pill">Basalt 3px 바</span>·<span class="code-pill">SetSpacing</span>) + <strong style="color:var(--text-primary)">WhatTheWhisper</strong>의 경량 공학(<span class="code-pill">Round.tga</span> 1장·<span class="code-pill">0.00ms</span> 숨김 Tween) + <strong style="color:var(--text-primary)">DialogueUI/Baganator</strong>의 대비·가상 스크롤 결합.</div>
+          </div>
+          <div class="addon-card">
+            <div class="addon-title">3. 1.60.1 블러 미지원 제약 극복</div>
+            <div>WoW 1.60.1 클라이언트는 실시간 가우시안 블러가 없으므로, <strong style="color:var(--text-primary)">불투명 연속 입자(InkUV) + 밝기 조절 2종</strong>이 가짜 유리(Glass)보다 설원/사막 배경 가독성과 프레임 모두 우위.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEW 2: ALL-IN-ONE INTEGRATED ADDONS -->
+  <section class="view" id="view-aio">
+    <div class="card">
+      <div class="card-hdr">
+        <h2>전체 통합 UI 애드온 8종 비교 분석</h2>
+        <div class="pills" id="aioFilterPills">
+          <button class="pill active" data-cat="all">전체 (8)</button>
+          <button class="pill" data-cat="korean">한국 특화</button>
+          <button class="pill" data-cat="global">글로벌 모던</button>
+          <button class="pill" data-cat="rpg">RPG 감성</button>
+          <button class="pill" data-cat="native">엔진 내장/OS 셸</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table id="aioTable">
+          <thead>
+            <tr>
+              <th>애드온명</th>
+              <th>아키텍처 철학</th>
+              <th>1.60.1 / C_Secrets</th>
+              <th>한국어 UX</th>
+              <th>메모리 · 부하</th>
+              <th>시각 정체성</th>
+              <th>ForeverSuite 전략</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="grid-3" id="aioCards"></div>
+    </div>
+  </section>
+
+  <!-- VIEW 3: CODE-LEVEL UI REA HEATMAP -->
+  <section class="view" id="view-rea">
+    <div class="card">
+      <div class="card-hdr">
+        <h2>8+1종 실코드 UI 프리미티브 인터랙티브 차트</h2>
+        <div class="pills" id="metricPills"></div>
+      </div>
+      <div id="metricBars"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <h2>9종 전체 UI 프리미티브 히트맵 매트릭스</h2>
+        <span class="meta">실제 설치본 `.lua` 및 아트 파일 전수 스캔</span>
+      </div>
+      <div class="table-wrap">
+        <table id="reaHeatmapTable"></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <h2>애드온별 실코드 포렌식 카드 (장점 vs 단점 · 채택 기법)</h2>
+        <span class="meta">핵심 소스 파일 경로 근거 포함</span>
+      </div>
+      <div class="grid-3" id="reaForensicCards"></div>
+    </div>
+  </section>
+
+  <!-- VIEW 4: 26 ADDON ECOSYSTEM MATRIX -->
+  <section class="view" id="view-eco">
+    <div class="card">
+      <div class="card-hdr">
+        <h2>WoW Forever 유명 애드온 26종 통합 전략 매트릭스</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <input id="ecoSearch" class="search-input" type="search" placeholder="애드온명·영역·API 키워드 검색..." />
+          <div class="pills" id="ecoFilterPills">
+            <button class="pill active" data-strat="all">전체 (26)</button>
+            <button class="pill" data-strat="NATIVE_CORE">NATIVE_CORE</button>
+            <button class="pill" data-strat="ENGINE_BRIDGE">ENGINE_BRIDGE</button>
+            <button class="pill" data-strat="COEXIST_EXT">COEXIST_EXT</button>
+            <button class="pill" data-strat="DROP_REDUNDANT">DROP_REDUNDANT</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="ecoTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>영역</th>
+              <th>애드온명</th>
+              <th>핵심 강점 / 참고 포인트</th>
+              <th>1.60.1 호환·성능 리스크</th>
+              <th>판정 전략</th>
+              <th>우선순위</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIEW 5: 5-COMPANY DEBATE & V6.1 ROADMAP -->
+  <section class="view" id="view-debate">
+    <div class="card">
+      <div class="card-hdr">
+        <h2>5사 대표 모델 UI 설계 토론 — 모델별 핵심 입장 &amp; 장단점</h2>
+        <span class="meta">Anthropic · OpenAI · Zhipu AI · DeepSeek · Google</span>
+      </div>
+      <div class="grid-3" id="modelCards"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-hdr">
+          <h2>모델 간 4대 핵심 충돌 &amp; 최종 중재 결정</h2>
+          <span class="meta">v6.1 설계 불변식</span>
+        </div>
+        <div class="table-wrap">
+          <table id="conflictTable">
+            <thead>
+              <tr><th>충돌 쟁점</th><th>찬성 측</th><th>신중/반대 측</th><th>v6.1 최종 중재안</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <h2>갓존슨 v5.312: 계승할 5가지 vs 절대 배제할 4가지</h2>
+          <span class="meta">5사 전원 합의</span>
+        </div>
+        <div class="pros-cons" style="grid-template-columns:1fr;gap:10px;">
+          <div class="box-pro">
+            <strong>반드시 계승 (ForeverSuite v6.1 패턴 자체 재구현)</strong>
+            <ul style="padding-left:16px;margin-top:4px;display:flex;flex-direction:column;gap:4px;">
+              <li><b>InkUV 연속 질감 시트</b>: 512px 경량 공용 타일로 인접 카드 이음새 제거 (블러 없는 1.60.1에서 Glass 대비 우위)</li>
+              <li><b>밝기 슬라이더 2종</b>: <span class="code-pill">textureBrightness</span>(0.35~1.0) · <span class="code-pill">goldBrightness</span>(0.40~1.0)로 모니터 취향 흡수</li>
+              <li><b>SurfaceRim 오버레이 테두리</b>: 바깥 형제 <span class="code-pill">EnableMouse(false)</span> 림으로 콘텐츠 테두리 침범 원천 차단</li>
+              <li><b>한글 대형 폰트 보호</b>: 명시적 <span class="code-pill">SetTextFit()</span> + <span class="code-pill">SetSpacing(3)</span> + 넘침 시 자동 스크롤</li>
+              <li><b>Basalt 3px 좌측 골드 바 &amp; 처음이라면·도움말</b>: Toggle(체크+채움) vs Priority(골드 3px 바) 형태 분리 + 복잡 페이지 우상단 도움말 1개</li>
+            </ul>
+          </div>
+          <div class="box-con">
+            <strong>절대 배제 (성능 · 유지보수 · UX 저해)</strong>
+            <ul style="padding-left:16px;margin-top:4px;display:flex;flex-direction:column;gap:4px;">
+              <li><b>4096×2048 대형 아틀라스 (장당 32 MiB VRAM)</b> 및 아트 395개 비대화</li>
+              <li><b>모든 Label에 거는 hooksecurefunc</b> + 3회 재측정 루프 및 <span class="code-pill">coroutine.yield</span> 트리 순회</li>
+              <li><b>버전 번호 패치 누적 (5010..5098 · 346 Lua)</b> 및 <span class="code-pill">SetBackdrop</span> 131건 난립</li>
+              <li><b>1280×878 화면 과점유</b> + 홈 21버튼 동시 노출(인지 부하) · 넥슨 폰트 등 라이선스 불명확 에셋 재배포</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <h2>ForeverSuite v6.1 UI 비주얼 오버홀 3-Wave 실행 로드맵</h2>
+        <span class="meta">Zero-Taint · 0.00ms 유휴 · ≤18MB 패키지 불변식 유지</span>
+      </div>
+      <div class="wave">
+        <h3>Wave 1 — 체감 시각 임팩트 최상 · 저위험 기반 교체</h3>
+        <ul>
+          <li><span class="code-pill">UI/Draw.lua</span> 신설: 1장짜리 <span class="code-pill">Round.tga</span> 7-텍스처 라운드 사각형 + <span class="code-pill">512px InkUV</span> 연속 질감 + 단일 1px <span class="code-pill">__fsHairline</span> + 바깥 형제 <span class="code-pill">SurfaceRim</span></li>
+          <li><span class="code-pill">UI/Motion.lua</span> 신설: 정형 페이드(150ms C++ <span class="code-pill">AnimationGroup</span>) + 동적 호버/탭 바(숨김 <span class="code-pill">0.00ms</span> <span class="code-pill">outCubic</span> Tween) + <span class="code-pill">Reduced Motion</span> 스위치</li>
+          <li><span class="code-pill">UI/Tokens.lua</span> &amp; <span class="code-pill">Widgets.lua</span>: 전 멀티라인 <span class="code-pill">SetSpacing(3)</span>, 4px 격자, white-alpha 오버레이(6%/12%/18%), <span class="code-pill">textureBrightness</span>/<span class="code-pill">goldBrightness</span> 슬라이더, Basalt 3px 좌측 바</li>
+          <li><b>CharacterDockPanel &amp; SetupWizard 전면 리치화</b>: <span class="code-pill">\n</span> 텍스트 덤프 폐기 → 2열 아이콘 스탯 그리드 + 적중 캡 게이지바 + 3스텝 스테퍼 카드</li>
+        </ul>
+      </div>
+      <div class="wave">
+        <h3>Wave 2 — 상시 HUD &amp; CommandHub 정보 계층 재정비</h3>
+        <ul>
+          <li>L0 상시 HUD: <span class="code-pill">StatusPillHud</span> 라운드 캡슐화, <span class="code-pill">QuestTrackerView</span> 슬림 헤더·진행 바·접기 애니메이션, <span class="code-pill">NavigationHud</span> 정돈</li>
+          <li><span class="code-pill">CommandHub</span> (960×640, 가변 상한 1040×680): 부드러운 탭 인디케이터 슬라이드 + 복잡 페이지 우상단 <span class="code-pill">처음이라면 · 도움말</span> 1개 고정</li>
+          <li><span class="code-pill">HomePage</span> 재계층화: 상단 슬림 KPI 리본 + <b>v6 부캐 전문기술 쿨다운 &amp; 외부 6대 브리지 상태 카드</b> 신설</li>
+        </ul>
+      </div>
+      <div class="wave">
+        <h3>Wave 3 — 긴 목록 네이티브 ScrollBox 파일럿 &amp; 1.60.1 실기 검증</h3>
+        <ul>
+          <li><span class="code-pill">BiSBrowserPage</span> / <span class="code-pill">CodexPage</span> 100+행 목록에 1.60.1 네이티브 <span class="code-pill">ScrollBox</span> 파일럿 도입 및 스크롤 CPU 피크 측정</li>
+          <li>실기 1.60.1 AC-10 검증: <span class="code-pill">taint.log</span> FS 귀속 0건 · 유휴 <span class="code-pill">0.00ms</span> · 전투 중 <span class="code-pill">≤1.0ms</span> · FHD/Retina/4K 3기기 확인</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footnote">
+    ForeverSuite v6.1 UI REA Dashboard · Generated from verified local source code of 8 benchmark addons + ForeverSuite v6.0 · Zero external CDN dependencies
+  </footer>
+</div>
+
+<script>
+const AIO_ADDONS = [
+  {
+    name: "GodJohnsonGoldBorder v5.312",
+    cat: ["korean", "rpg"],
+    arch: "단일 모놀리식 통합 (346 Lua · 21 폴더)",
+    compat: "1.60.1 네이티브 지원 (한국 포에버 특화)",
+    krUx: "최상 (Paperlogy/한글 확대 Fit·자동 스크롤·도움말)",
+    mem: "무거움 (395 아트 · 4096×2048 32MiB/장 · SetBackdrop 131)",
+    visual: "차콜+골드 림 · InkUV 연속 질감 · 6팔레트+밝기 2종",
+    strat: "COEXIST_EXT",
+    stratLabel: "패턴 계승 · 코어 독립",
+    pros: "한국 WoW 유저 인체공학 1위(SetSpacing 68, 밝기 슬라이더, SurfaceRim, 처음이라면 도움말, Toggle/Priority 분리)",
+    cons: "346 Lua 스파게티(5010..5098), 1280×878 과점유, 홈 21버튼 인지부하, hooksecurefunc/coroutine 과비용, 모션 전무"
+  },
+  {
+    name: "ElvUI (+ ToxiUI / AtrocityUI)",
+    cat: ["global"],
+    arch: "전체 Blizzard UI 전면 교체 프레임워크",
+    compat: "1.60.1/12.0 C_Secrets 전환기 잦은 패치·대규모 오버라이드",
+    krUx: "중 (한글 폰트 수동 설정 필요, 정보 밀도 높음)",
+    mem: "높음 (30~60 MB · 풀 스킨·유닛프레임 교체)",
+    visual: "플랫 다크 1px 픽셀 완벽 정렬 · ToxiUI 그라데이션 모던",
+    strat: "DROP_REDUNDANT",
+    stratLabel: "전면 교체 비채택 · 1px 문법 참고",
+    pros: "업계 표준 픽셀 퍼펙트 1px 보더, 일관된 스킨 생태계, 극한의 커스터마이징",
+    cons: "블리자드 기본 프레임 전면 교체로 패치마다 Taint/호환 리스크 큼, 초기 학습곡선 가파름, ForeverSuite '길 C' 철학과 상충"
+  },
+  {
+    name: "NDui",
+    cat: ["global"],
+    arch: "초경량 모던 통합 UI (중국/아시아권 인기)",
+    compat: "1.60.1 대응 빠름 (단, 전투 프레임 커스텀 영역 제약)",
+    krUx: "중하 (중문/영문 중심, 한국어 번역 부분적)",
+    mem: "경량 (5~12 MB · 깔끔한 플랫 텍스처)",
+    visual: "미니멀 다크 플랫 · 1px 샤프 보더 · 직업색 포인트",
+    strat: "DROP_REDUNDANT",
+    stratLabel: "경량 슬림 레이아웃 참고",
+    pros: "ElvUI 대비 훨씬 가볍고 즉각적인 기본 세팅 완성도, 깔끔한 미니멀 비율",
+    cons: "한국 포에버 전용 도감/퀘스트/길안내 부재, RPG 감성 약함"
+  },
+  {
+    name: "GW2 UI",
+    cat: ["rpg"],
+    arch: "Guild Wars 2 스타일 몰입형 풀 RPG 오버홀",
+    compat: "1.60.1/전투 보안 패치 시 커스텀 유닛프레임 충돌 빈번",
+    krUx: "중 (영문 서체 중심, 장문 한글 레이아웃 어긋남 발생)",
+    mem: "높음 (대형 커스텀 아트워크·애니메이션 다수)",
+    visual: "페인터리 양피지/회화풍 RPG · 중앙 원형 체력구",
+    strat: "DROP_REDUNDANT",
+    stratLabel: "몰입 연출 참고 · 구조 비채택",
+    pros: "압도적인 RPG 몰입감과 독창적 아트 디렉션, 퀘스트/캐릭터창 시각 완성도",
+    cons: "높은 리소스·Taint 리스크, 다른 전문 애드온(Baganator/Platynator 등)과 시각 조화 난이도 높음"
+  },
+  {
+    name: "Tukui",
+    cat: ["global"],
+    arch: "초미니멀 코어 프레임워크 (ElvUI 모체)",
+    compat: "경량 구조로 대응 양호하나 기능 폭 좁음",
+    krUx: "하 (영문 중심, 폰트·한국어 QoL 수동 보완 필요)",
+    mem: "매우 경량 (3~7 MB)",
+    visual: "극단적 미니멀 블랙 박스 + 1px 라인",
+    strat: "DROP_REDUNDANT",
+    stratLabel: "경량성 철학만 참고",
+    pros: "군더더기 없는 가벼움과 안정성",
+    cons: "초보 친화성 낮음, 도감·내비·경제·QoL 통합 기능 전무"
+  },
+  {
+    name: "KkthnxUI",
+    cat: ["global", "rpg"],
+    arch: "블리자드 감성 유지형 경량 통합 UI",
+    compat: "비교적 안정적이나 클래식 포에버 특화 기능 부재",
+    krUx: "하 (영문 위주)",
+    mem: "경량~중간 (8~15 MB)",
+    visual: "다크 라운드+소프트 테두리 · 블리자드 친화 톤",
+    strat: "DROP_REDUNDANT",
+    stratLabel: "블리자드 친화 톤 참고",
+    pros: "기본 WoW UI의 정체성을 해치지 않으면서 깔끔하게 정돈",
+    cons: "한국 포에버 콘텐츠(도감·BiS·퀘스트·공존 브리지) 미지원"
+  },
+  {
+    name: "Blizzard 1.60.1 내장 엔진 (EditMode)",
+    cat: ["native"],
+    arch: "C++ 네이티브 엔진 (C_EditMode · C_DamageMeter · C_CooldownViewer)",
+    compat: "100% 공식 C++ · C_Secrets 완전 네이티브",
+    krUx: "상 (공식 한글화 + 2002.TTF 완벽 지원)",
+    mem: "0 MB 추가 메모리 · 0 Taint",
+    visual: "현대화된 블리자드 기본 프레임 (다소 투박한 정보 밀도)",
+    strat: "ENGINE_BRIDGE",
+    stratLabel: "기반 엔진으로 직결 활용",
+    pros: "전투 미터기·쿨다운 뷰어·액션바 배치·웨이포인트가 0 Taint로 기본 내장",
+    cons: "세부 QoL(자동 수리/잡템, 부캐 쿨다운, BiS 비교, 5-State HUD 연출, 외부 공존 중재) 부재"
+  },
+  {
+    name: "ForeverSuite v6.0 → v6.1 (목표)",
+    cat: ["korean", "rpg", "native"],
+    arch: "길 C: 단일 연출자 OS 셸 + 외부 6대 전문 앱 공식 브리지 (7계층 AST)",
+    compat: "100% 1.60.1 검증 (Zero-Taint · @secret AST · C_DurationUtil)",
+    krUx: "최상 목표 (2002.TTF + KS X 1001 게이트 + v6.1 SetSpacing 3 / SetTextFit)",
+    mem: "초경량 (< 2 MB 코어 · 0.00ms 유휴 · ≤18 MB 3폴더 ZIP)",
+    visual: "v6.1: Forever Gold (512px InkUV + Round.tga + 밝기 2종 + 150ms 모션)",
+    strat: "NATIVE_CORE",
+    stratLabel: "최종 통합 OS 셸",
+    pros: "외부 최고봉(Baganator/DialogueUI/Platynator/Auctionator/Spoken)과 무충돌 공존 + 5-State Director + Rust fsx 검증·원자적 롤백",
+    cons: "현재 v6.0 UI 외형이 v5.0 정체 상태 → v6.1 Wave 1~3 시각 오버홀로 완전 해소 예정"
+  }
+];
+
+const REA_DATA = [
+  { name: "GodJohnson v5.312", lua: 346, art: 395, slice: 0, anim: 2, easing: 0, spacing: 68, mask: 24, scrollbox: 7, gradient: 56, backdrop: 131, sound: 4, isGJ: true,
+    files: "Theme401.lua · MainShell5010.lua · GrowthTheme5042.lua · Home472.lua",
+    pros: "SetSpacing(68)·SetGradient(56)·Mask(24) 전 항목 1위. InkUV 연속 질감, 밝기 슬라이더 2종, SurfaceRim 오버레이, 한글 축소 맞춤/자동 스크롤, 처음이라면 도움말",
+    cons: "4096×2048 32MiB 아틀라스, 346 Lua 패치 누적, 모든 Label hooksecurefunc, coroutine 트리 순회, 모션 거의 없음" },
+  { name: "DialogueUI", lua: 106, art: 258, slice: 21, anim: 6, easing: 40, spacing: 25, mask: 4, scrollbox: 0, gradient: 2, backdrop: 0, sound: 25,
+    files: "TextureSlice.lua · ThemeUtil.lua · FontUtil.lua · ActionButton.lua",
+    pros: "최고급 RPG 타이포그래피(SetSpacing 25, 5단 스케일), 40 Easing + 25 PlaySound, AdjustTextColor 자동 가독성 보정, 한국어 숫자 2002.TTF",
+    cons: "아트 258개 의존, 대시보드·대량 데이터 표에는 여백 과다" },
+  { name: "WhatTheWhisper", lua: 90, art: 5, slice: 0, anim: 7, easing: 1, spacing: 7, mask: 2, scrollbox: 0, gradient: 22, backdrop: 0, sound: 9,
+    files: "UI/Draw.lua · UI/Anim.lua · Skins/Glass.lua · Skins/Midnight.lua",
+    pros: "아트 5장으로 7-tex Round.tga 임의 반경 라운드 구현, Hairline 이중테두리 감사, C++ AnimationGroup + 0.00ms 숨김 Tween, white-alpha 7스킨",
+    cons: "다수 패널 시 7-tex 드로우콜 관리 필요, 1.60.1 블러 미지원으로 Glass 스킨 밝은 배경 취약" },
+  { name: "Baganator", lua: 122, art: 22, slice: 1, anim: 3, easing: 0, spacing: 9, mask: 1, scrollbox: 101, gradient: 0, backdrop: 23, sound: 10,
+    files: "Skins/Dark.lua · API/Skins.lua · CategoryViews/Components.lua",
+    pros: "ScrollBox 101회 고속 가상화, HSL Lighten() 알고리즘 버튼 상태 머신, 0.08~0.92 아이콘 줌 크롭 + 1px 품질 테두리",
+    cons: "순수 HSL은 골드 계열 명도 조절 시 탁해질 수 있음" },
+  { name: "Platynator", lua: 90, art: 290, slice: 17, anim: 5, easing: 0, spacing: 1, mask: 10, scrollbox: 45, gradient: 0, backdrop: 0, sound: 4,
+    files: "CustomiseDialog/Components.lua · CustomiseDialog/Main.lua",
+    pros: "1.60.1 네이티브 템플릿·ScrollBox 45·Slice 17·Mask 10, Skins.AddFrame 중앙 스킨 훅, 실시간 프리뷰 디자이너",
+    cons: "WowStyle1Dropdown은 공유 Menu 매니저 경유로 전투/스킨 Taint 검증 범위 확대" },
+  { name: "Auctionator", lua: 344, art: 24, slice: 0, anim: 0, easing: 0, spacing: 0, mask: 0, scrollbox: 102, gradient: 0, backdrop: 0, sound: 6,
+    files: "Imports_ModernAH/TableBuilder.lua · Source/Components/Mixins/*",
+    pros: "ScrollBox 102회 최강 표/거래 가상화, 깔끔한 2-Pane 탐색·상세 워크스페이스",
+    cons: "모션·타이포 장식 전무, 순수 실무 도구형 외형" },
+  { name: "Spoken", lua: 57, art: 118, slice: 0, anim: 2, easing: 0, spacing: 2, mask: 9, scrollbox: 1, gradient: 12, backdrop: 34, sound: 18,
+    files: "UI/DialogueUITransitions.lua · UI/DialogueUITheme.lua · UI/MinimalPlayer.lua",
+    pros: "PlaceShadow 소프트 그림자, 베지어/스프링 시네마틱 전환, 12 SetGradient · 9 MaskTexture",
+    cons: "OS 셸에서 반복 열람 시 바운스/베지어 모션은 피로도 유발, 오버드로우 주의" },
+  { name: "RareScanner", lua: 189, art: 119, slice: 0, anim: 3, easing: 0, spacing: 0, mask: 0, scrollbox: 6, gradient: 0, backdrop: 70, sound: 52,
+    files: "Core/Service/RSButtonHandler.lua · MapPlugin/SearchBar/RSSearchMixin.lua",
+    pros: "즉각 시선 포착 액션 토스트(52 PlaySound) + 월드맵 오버레이 검색",
+    cons: "AceGUI/Backdrop(70) 기반 구형 시각 톤, 모던 스킨 일체감 부족" },
+  { name: "ForeverSuite v6.0 (현재)", lua: 103, art: 31, slice: 0, anim: 0, easing: 0, spacing: 0, mask: 2, scrollbox: 0, gradient: 3, backdrop: 2, sound: 10, isFS: true,
+    files: "UI/Tokens.lua · UI/NineSlice.lua · UI/Widgets.lua · UI/CommandHub.lua",
+    pros: "Zero-Taint 7계층, 0.00ms 유휴, 16.3MB 초경량, 6대 브리지·5-State Director·@secret AST 게이트 완비",
+    cons: "SetSpacing 0 · AnimationGroup 0 · ScrollBox 0 · 전면 90° 박스 · 859KB TGA · Dock/SetupWizard '\\n' 텍스트 덤프 → v6.1에서 전면 해소" }
+];
+
+const ECO_26 = [
+  [1,"퀘스트","Questie","클래식 퀘스트 시작·목표 방대 DB, 맵 핀","25~45MB 메모리, wowf 신규 ID 미등록 가능","COEXIST_EXT","P1"],
+  [2,"퀘스트","AutoTurnIn / SpeedyAutoLoot","반복 퀘스트 수락·완료, Shift 일시정지","구형 GetQuestLogTitle 1.60.1 에러","NATIVE_CORE","P1"],
+  [3,"퀘스트","ClassicQuestLog / Kaliel's Tracker","퀘스트 레벨·최근접 목표 자동 추적","ObjectiveTracker 교체 시 Taint 위험","ENGINE_BRIDGE","P1"],
+  [4,"지도","Leatrix Maps","미탐험 지역 밝히기, 좌표, 크기 조절","포그 테이블 하드코딩 용량 큼","COEXIST_EXT","P1"],
+  [5,"지도","TomTom","/way x y 명령어 및 3D 방향 화살표","HereBeDragons 상시 OnUpdate CPU 소모","ENGINE_BRIDGE","P1"],
+  [6,"지도","HandyNotes","희귀몹·보물·전문기술 정적 핀","플러그인 다중 시 맵 오픈 프레임 드랍","COEXIST_EXT","P3"],
+  [7,"지도","SexyMap / MinimapButtonBag","미니맵 버튼 정리 및 외형 변경","1.60.1 공식 Addon Compartment 기본 지원","DROP_REDUNDANT","P0"],
+  [8,"가방","Baganator","C_Container 고속 통합 가방·카테고리·은행","완성도 최상, 공식 브리지 연동","COEXIST_EXT","P1"],
+  [9,"가방","Bagnon","전통적 통합 가방 UI","ContainerFrame 교체로 전투 중 차단 빈발","DROP_REDUNDANT","—"],
+  [10,"가방","Scrap / Peddler","회색 잡템 자동 판매 및 보호 지정","20개+ 일괄 판매 시 되사기 불가/끊김","NATIVE_CORE","P1"],
+  [11,"가방","SimpleItemLevel / VendorPrice","툴팁/슬롯 iLvl·상점가 표시","구형 OnTooltipSetItem 불일치","NATIVE_CORE","P1"],
+  [12,"편의","Leatrix Plus","자동 수리·고속 루팅·최대 시야·대화 스킵","수백 잡기능 거대 테이블 결합","NATIVE_CORE","P1"],
+  [13,"편의","Postal","우편함 전체 열기·일괄 수령","기본 우편함 [모두 열기] 내장","DROP_REDUNDANT","—"],
+  [14,"전문기술","FishingBuddy","더블우클릭 낚시·사운드 부스트","전투 진입 바인딩 미해제 시 Taint","NATIVE_CORE","P1"],
+  [15,"전문기술","GatherMate2","채광·약초 과거 노드 기록","수만 노드 누적 시 메모리 급증","COEXIST_EXT","P1"],
+  [16,"전문기술","CraftSim / ProfessionFilter","제작 수량·부족 재료 표시","CraftSim 레이드 경제용 30MB+ 과중","NATIVE_CORE","P1"],
+  [17,"경매장","Auctionator","C_AuctionHouse 시세 스캔·간편 탭","공식 API 브리지 연동 최적","COEXIST_EXT","P2"],
+  [18,"경매장","TradeSkillMaster (TSM)","전문 골드 파밍·회계 자동화","데스크톱 앱 의존 · 80~150MB 과중","DROP_REDUNDANT","—"],
+  [19,"경매장","Accountant Classic","세션/일일 골드 수입·지출 원장","구형 이벤트 훅 오류 빈발","NATIVE_CORE","P2"],
+  [20,"스킬바","Bartender4 / Dominos","액션바 자유 배치·단축키","Secure 래핑 패치마다 Taint 리스크","ENGINE_BRIDGE","P2"],
+  [21,"스킬바","OmniCC","스킬 쿨다운 숫자 표시","기본 countdownForCooldowns CVar 내장","ENGINE_BRIDGE","P1"],
+  [22,"전투","Details! Damage Meter","정밀 DPS/HPS/죽음 로그","20~50MB + 전투 중 고부하 CLEU 파싱","ENGINE_BRIDGE","P2"],
+  [23,"전투","DBM / LittleWigs","던전·레이드 보스 타이머·경보","C_Secrets 이후 구형 전투로그 제약","ENGINE_BRIDGE","P3"],
+  [24,"전투/직업","WeakAuras","범용 조건부 오라 스크립트 엔진","상시 OnUpdate CPU 병목 + issecretvalue 충돌","DROP_REDUNDANT","P2"],
+  [25,"전투/UI","Plater / KuiNameplates","커스텀 이름표·어그로·시전바","대규모 전투 FPS 급락 → Platynator 권장","ENGINE_BRIDGE","P2"],
+  [26,"코어/진단","BugGrabber + BugSack","Lua 에러 포착·팝업 폭주 방지","서킷 브레이커 EventBus 내장","NATIVE_CORE","P0"]
+];
+
+const MODEL_DEBATE = [
+  {
+    company: "Anthropic · Claude Opus 5.5",
+    role: "시각 정체성 · 한국어 타이포그래피 · 테마 철학",
+    points: [
+      "<b>스킨 2종 절제</b>: 기본 <span class='code-pill'>Forever Gold</span> + 보조 <span class='code-pill'>Midnight Dark</span> (7스킨은 QA 7배 폭증).",
+      "<b>한국어 타이포 기준</b>: 5단(10/12/<b>13 본문</b>/15/18), <b>SetSpacing(3)</b>, 4px 격자, 본문 대비 ≥4.5:1 · 골드 ≥7:1.",
+      "<b>갓존슨 계승</b>: SurfaceRim 오버레이 림, 명시적 SetTextFit(), Ink/Gold 밝기 슬라이더, Basalt 3px 바.",
+      "<b>폐기</b>: outBack·Bounce·Bezier 과잉 모션, 4096×2048 아트 395개, 이중 테두리, '\\n' 덤프."
+    ]
+  },
+  {
+    company: "OpenAI · Codex GPT-6.2 Sol",
+    role: "1.60.1 엔지니어링 · Zero-Taint · 성능 ROI 감사",
+    points: [
+      "<b>최고 ROI 순서</b>: ① '\\n' 텍스트 구조화+행간 → ② 공용 라운드+짧은 AnimationGroup → ③ 긴 목록 1곳 ScrollBox 파일럿.",
+      "<b>갓존슨 함정 차단</b>: 모든 Label hooksecurefunc, coroutine 트리 순회, 4096×2048(장당 32MiB VRAM) 전면 배제.",
+      "<b>Blizzard Dropdown 비채택</b>: WowStyle1Dropdown은 공유 Menu 매니저를 타 Taint 검증 범위 폭증.",
+      "<b>출시 게이트</b>: ≤18MB ZIP, 유휴 0.00ms, 전투 전환·/reload 시 FS 귀속 taint 0건."
+    ]
+  },
+  {
+    company: "Zhipu AI · GLM-5.3",
+    role: "모션 코레오그래피 · 표면 재질 · 스킨 아키텍처",
+    points: [
+      "<b>핵심 통찰</b>: 1.60.1 블러 미지원 환경에서 갓존슨의 <b>불투명 InkUV 연속 입자 + 밝기 2종</b>이 가짜 Glass보다 가독성·성능 모두 우위.",
+      "<b>모션 3계층</b>: 150ms C++ AnimationGroup(페이드) + 숨김 0.00ms Lua Tween(3px 바/호버) + 전투 모션 금지·Reduced Motion·FPS&lt;30 강등.",
+      "<b>4대 전제</b>: Round.tga 아틀라스 통합, 정적 섀도(애니 금지), HSL→RGB 캐시, 저밝기(0.35) 골드 침식 하한선."
+    ]
+  },
+  {
+    company: "DeepSeek · DeepSeek-V4.1-Flash",
+    role: "정보구조(IA) · HUD 인체공학 · 한국 유저 UX",
+    points: [
+      "<b>밀도는 계층화로 해결</b>: StatusPill 22px 캡슐, QuestTracker '3+1' 축약(확장 토글 병행), Navigation 3요소 집중.",
+      "<b>리치 컴포넌트</b>: CharacterDock 상단 요약바+2열 아이콘 그리드+진행바, SetupWizard 3스텝 스테퍼 카드.",
+      "<b>갓존슨 UX 이식</b>: 복잡 페이지 우상단 <b>처음이라면 · 도움말</b> 1개 고정, <b>Toggle(채움+체크) vs Priority(골드 3px 바)</b> 형태 분리.",
+      "<b>크기 절제</b>: 1280×878 과점유·홈 21버튼 거부 → 960×640(최대 1040×680) + 2단 요약 유지."
+    ]
+  },
+  {
+    company: "Google · Gemini 4 Neon High",
+    role: "오케스트레이터 · 충돌 중재 · v6.1 최종 청사진",
+    points: [
+      "<b>최종 정체성</b>: <b>Forever Gold</b>(512px 경량 InkUV + Round.tga 7-tex + 바깥 형제 SurfaceRim + 밝기 슬라이더 2종) + Midnight Dark 보조.",
+      "<b>Glass 갈등 해소</b>: 독립 스킨 대신 불투명도 슬라이더로 흡수(밝은 지형 대비 붕괴 차단).",
+      "<b>HomePage 업그레이드</b>: 상단 슬림 KPI 리본 + <b>v6 부캐 전문기술 쿨다운 &amp; 외부 6대 브리지 상태 카드</b> 추가.",
+      "<b>검증 체계</b>: Wave 1→2→3 단계별 Lua 5.1 VM + Rust fsx AST + 1.60.1 실기 프로파일러 검증."
+    ]
+  }
+];
+
+const CONFLICTS = [
+  ["스킨 개수 (Glass 포함 여부)", "GLM-5.3 (3종 제안 후 InkUV 우위 인정)", "Opus 5.5 (2종 절제, 1.60.1 블러 미지원)", "2종 확정 (Forever Gold 기본 + Midnight Dark) + InkUV·밝기 슬라이더 2종"],
+  ["네이티브 ScrollBox 도입 범위", "Opus 5.5 (전면 전환)", "GPT-6.2 Sol (긴 목록 1곳 파일럿 후 확대)", "BiSBrowser·Codex(100+행) 우선 파일럿 → 짧은 목록은 풀 유지"],
+  ["Blizzard 네이티브 Dropdown", "Platynator REA 패턴 참고", "GPT-6.2 Sol (공유 Menu 매니저 Taint 위험)", "비채택 — 애드온 소유 Zero-Taint PillBar/FlowPillGroup 라운드 고도화"],
+  ["HomePage 밀도 & 갓존슨 21버튼", "DeepSeek (StatCard 병합·카드 축소)", "대시보드 직관성·v6 신기능 노출 필요", "상단 슬림 KPI 리본 + v6 브리지·부캐 쿨다운 카드 신설 (960×640 유지)"]
+];
+
+// Theme & Live Brightness Sliders
+const root = document.documentElement;
+document.querySelectorAll(".theme-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".theme-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    root.setAttribute("data-theme", btn.dataset.setTheme);
+    applyBrightness();
+  });
+});
+
+function applyBrightness() {
+  const ink = parseFloat(document.getElementById("inkSlider").value);
+  const gold = parseFloat(document.getElementById("goldSlider").value);
+  document.getElementById("inkVal").textContent = ink.toFixed(2);
+  document.getElementById("goldVal").textContent = gold.toFixed(2);
+  const isDark = root.getAttribute("data-theme") === "dark";
+  const b0 = Math.round(10 * ink), b1 = Math.round(22 * ink), b2 = Math.round(31 * ink), b3 = Math.round(42 * ink);
+  if (isDark) {
+    root.style.setProperty("--bg0", `rgb(${b0},${b0+3},${b0+7})`);
+    root.style.setProperty("--bg1", `rgb(${b1},${b1+4},${b1+10})`);
+    root.style.setProperty("--bg2", `rgb(${b2},${b2+6},${b2+14})`);
+    root.style.setProperty("--bg3", `rgb(${b3},${b3+8},${b3+18})`);
+    root.style.setProperty("--gold", `rgb(${Math.round(157*gold+20)},${Math.round(182*gold+20)},${Math.round(255*gold)})`);
+  } else {
+    root.style.setProperty("--bg0", `rgb(${b0+3},${b0+2},${b0+5})`);
+    root.style.setProperty("--bg1", `rgb(${b1+3},${b1+1},${b1+6})`);
+    root.style.setProperty("--bg2", `rgb(${b2+4},${b2+1},${b2+7})`);
+    root.style.setProperty("--bg3", `rgb(${b3+5},${b3+1},${b3+9})`);
+    root.style.setProperty("--gold", `rgb(${Math.round(245*gold)},${Math.round(206*gold)},${Math.round(112*gold)})`);
+  }
+}
+document.getElementById("inkSlider").addEventListener("input", applyBrightness);
+document.getElementById("goldSlider").addEventListener("input", applyBrightness);
+
+// Main Navigation
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-" + btn.dataset.view).classList.add("active");
+  });
+});
+
+// Overview Gap Bars
+const GAP_ITEMS = [
+  { label: "SetSpacing (한글 행간)", top: 68, topName: "GodJohnson", fs: 0 },
+  { label: "SetGradient (표면 깊이)", top: 56, topName: "GodJohnson", fs: 3 },
+  { label: "Easing / 모션 곡선", top: 40, topName: "DialogueUI", fs: 0 },
+  { label: "CreateMaskTexture (마스크)", top: 24, topName: "GodJohnson", fs: 2 },
+  { label: "ScrollBox (가상 스크롤)", top: 102, topName: "Auctionator", fs: 0 },
+  { label: "SetTextureSliceMargins", top: 21, topName: "DialogueUI", fs: 0 }
+];
+document.getElementById("overviewGapBars").innerHTML = GAP_ITEMS.map(g => {
+  const pctFs = Math.max(2, Math.round((g.fs / g.top) * 100));
+  return `<div style="margin-bottom:11px;">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+      <strong style="color:var(--text-primary)">${g.label}</strong>
+      <span style="color:var(--text-secondary)">1위 ${g.topName} <b style="color:var(--gold)">${g.top}</b> vs FS v6.0 <b style="color:var(--info)">${g.fs}</b></span>
+    </div>
+    <div style="display:grid;gap:3px;">
+      <div class="bar-track" style="height:10px;"><div class="bar-fill is-gj" style="width:100%"></div></div>
+      <div class="bar-track" style="height:10px;"><div class="bar-fill is-fs" style="width:${g.fs===0?0:pctFs}%"></div></div>
+    </div>
+  </div>`;
+}).join("");
+
+// View 2: AIO Integrated Addons
+function badgeClass(s) {
+  if (s === "NATIVE_CORE") return "b-core";
+  if (s === "ENGINE_BRIDGE") return "b-bridge";
+  if (s === "COEXIST_EXT") return "b-coexist";
+  return "b-drop";
+}
+function renderAIO(cat = "all") {
+  const list = cat === "all" ? AIO_ADDONS : AIO_ADDONS.filter(a => a.cat.includes(cat));
+  document.querySelector("#aioTable tbody").innerHTML = list.map(a => `
+    <tr>
+      <td><strong style="color:var(--gold)">${a.name}</strong></td>
+      <td>${a.arch}</td>
+      <td>${a.compat}</td>
+      <td>${a.krUx}</td>
+      <td>${a.mem}</td>
+      <td>${a.visual}</td>
+      <td><span class="badge ${badgeClass(a.strat)}">${a.stratLabel}</span></td>
+    </tr>`).join("");
+  document.getElementById("aioCards").innerHTML = list.map(a => `
+    <div class="addon-card ${a.name.includes('ForeverSuite') || a.name.includes('GodJohnson') ? 'highlight' : ''}">
+      <div class="addon-top">
+        <div>
+          <div class="addon-title">${a.name}</div>
+          <div class="addon-meta">${a.arch}</div>
+        </div>
+        <span class="badge ${badgeClass(a.strat)}">${a.stratLabel}</span>
+      </div>
+      <div class="pros-cons">
+        <div class="box-pro"><strong>강점 (Pros)</strong>${a.pros}</div>
+        <div class="box-con"><strong>약점 (Cons)</strong>${a.cons}</div>
+      </div>
+    </div>`).join("");
+}
+document.querySelectorAll("#aioFilterPills .pill").forEach(p => {
+  p.addEventListener("click", () => {
+    document.querySelectorAll("#aioFilterPills .pill").forEach(x => x.classList.remove("active"));
+    p.classList.add("active");
+    renderAIO(p.dataset.cat);
+  });
+});
+renderAIO("all");
+
+// View 3: Code-Level UI REA Metrics & Heatmap
+const METRICS = [
+  { key: "spacing", label: "SetSpacing (행간)" },
+  { key: "gradient", label: "SetGradient (깊이)" },
+  { key: "mask", label: "CreateMaskTexture" },
+  { key: "scrollbox", label: "ScrollBox (가상화)" },
+  { key: "easing", label: "Easing (이징)" },
+  { key: "anim", label: "AnimationGroup" },
+  { key: "slice", label: "TextureSlice (9-Slice)" },
+  { key: "backdrop", label: "SetBackdrop" },
+  { key: "lua", label: "Lua 파일 수" },
+  { key: "art", label: "Art 파일 수" }
+];
+let activeMetric = "spacing";
+document.getElementById("metricPills").innerHTML = METRICS.map((m, i) =>
+  `<button class="pill ${i===0?'active':''}" data-m="${m.key}">${m.label}</button>`
+).join("");
+
+function renderMetricBars(key) {
+  const sorted = [...REA_DATA].sort((a, b) => b[key] - a[key]);
+  const maxV = Math.max(1, ...sorted.map(x => x[key]));
+  document.getElementById("metricBars").innerHTML = sorted.map(r => {
+    const pct = Math.round((r[key] / maxV) * 100);
+    const cls = r.isFS ? "is-fs" : (r.isGJ ? "is-gj" : "");
+    return `<div class="bar-row">
+      <div class="bar-name ${r.isFS?'is-fs':''}">${r.name}</div>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="bar-val">${r[key]}</div>
+    </div>`;
+  }).join("");
+}
+document.querySelectorAll("#metricPills .pill").forEach(p => {
+  p.addEventListener("click", () => {
+    document.querySelectorAll("#metricPills .pill").forEach(x => x.classList.remove("active"));
+    p.classList.add("active");
+    activeMetric = p.dataset.m;
+    renderMetricBars(activeMetric);
+  });
+});
+renderMetricBars(activeMetric);
+
+// Heatmap Table
+const HM_COLS = ["lua","art","spacing","gradient","mask","scrollbox","slice","anim","easing","backdrop","sound"];
+const HM_HDRS = ["애드온","Lua","Art","Spacing","Gradient","Mask","ScrollBox","Slice","AnimGrp","Easing","Backdrop","Sound"];
+const maxByCol = {};
+HM_COLS.forEach(c => { maxByCol[c] = Math.max(1, ...REA_DATA.map(r => r[c])); });
+document.getElementById("reaHeatmapTable").innerHTML =
+  `<thead><tr>${HM_HDRS.map((h,i)=>`<th class="${i>0?'num':''}">${h}</th>`).join("")}</tr></thead><tbody>` +
+  REA_DATA.map(r => {
+    const cells = HM_COLS.map(c => {
+      const v = r[c];
+      const ratio = v / maxByCol[c];
+      const bg = v === 0 ? "transparent" : (r.isFS ? `rgba(96,165,250,${0.12 + ratio*0.35})` : `rgba(230,195,106,${0.08 + ratio*0.38})`);
+      const col = v === 0 ? "var(--text-muted)" : "var(--text-primary)";
+      return `<td class="hm-cell" style="background:${bg};color:${col};">${v}</td>`;
+    }).join("");
+    return `<tr><td><strong style="color:${r.isFS?'var(--info)':'var(--gold)'}">${r.name}</strong></td>${cells}</tr>`;
+  }).join("") + `</tbody>`;
+
+document.getElementById("reaForensicCards").innerHTML = REA_DATA.map(r => `
+  <div class="addon-card ${r.isGJ || r.isFS ? 'highlight' : ''}">
+    <div class="addon-top">
+      <div>
+        <div class="addon-title">${r.name}</div>
+        <div class="addon-meta">${r.lua} Lua · ${r.art} Art · <span class="code-pill">${r.files}</span></div>
+      </div>
+    </div>
+    <div class="pros-cons">
+      <div class="box-pro"><strong>핵심 강점</strong>${r.pros}</div>
+      <div class="box-con"><strong>약점 / 제약</strong>${r.cons}</div>
+    </div>
+  </div>`).join("");
+
+// View 4: 26 Addon Ecosystem
+let ecoStrat = "all";
+function renderEco() {
+  const q = (document.getElementById("ecoSearch").value || "").trim().toLowerCase();
+  const rows = ECO_26.filter(r => {
+    if (ecoStrat !== "all" && r[5] !== ecoStrat) return false;
+    if (!q) return true;
+    return r.join(" ").toLowerCase().includes(q);
+  });
+  document.querySelector("#ecoTable tbody").innerHTML = rows.map(r => `
+    <tr>
+      <td class="num">${r[0]}</td>
+      <td>${r[1]}</td>
+      <td><strong style="color:var(--text-primary)">${r[2]}</strong></td>
+      <td>${r[3]}</td>
+      <td style="color:var(--text-secondary)">${r[4]}</td>
+      <td><span class="badge ${badgeClass(r[5])}">${r[5]}</span></td>
+      <td><span class="badge b-gold">${r[6]}</span></td>
+    </tr>`).join("");
+}
+document.getElementById("ecoSearch").addEventListener("input", renderEco);
+document.querySelectorAll("#ecoFilterPills .pill").forEach(p => {
+  p.addEventListener("click", () => {
+    document.querySelectorAll("#ecoFilterPills .pill").forEach(x => x.classList.remove("active"));
+    p.classList.add("active");
+    ecoStrat = p.dataset.strat;
+    renderEco();
+  });
+});
+renderEco();
+
+// View 5: 5-Company Debate & Conflicts
+document.getElementById("modelCards").innerHTML = MODEL_DEBATE.map(m => `
+  <div class="model-card">
+    <h3>${m.company}</h3>
+    <div class="role">${m.role}</div>
+    <ul>${m.points.map(pt => `<li>${pt}</li>`).join("")}</ul>
+  </div>`).join("");
+
+document.querySelector("#conflictTable tbody").innerHTML = CONFLICTS.map(c => `
+  <tr>
+    <td><strong style="color:var(--text-primary)">${c[0]}</strong></td>
+    <td>${c[1]}</td>
+    <td>${c[2]}</td>
+    <td style="color:var(--gold);font-weight:600">${c[3]}</td>
+  </tr>`).join("");
+</script>
+</body>
+</html>

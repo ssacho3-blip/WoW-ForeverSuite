@@ -223,7 +223,7 @@ function CombatHudPack:RefreshRange(inCombatOverride)
             return
         end
         local c = inRange and T.SEMANTIC.SUCCESS or T.SEMANTIC.DANGER
-        self.rangeLabel:SetText(inRange and "사거리 내 ✓" or "사거리 밖 ✕")
+        self.rangeLabel:SetText(inRange and "사거리 내 V" or "사거리 밖 X")
         self.rangeLabel:SetTextColor(c[1], c[2], c[3], 1)
         self.rangeFrame:Show()
         if not self.rangeTicker then

@@ -60,7 +60,7 @@ function CursorTrailHud:Init()
     ringTex:SetAllPoints(ring)
     ringTex:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     ringTex:SetTexCoord(0.05, 0.60, 0.05, 0.60)
-    local dot = W.Label(ring, "◦", "small", T.TEXT.GOLD, { justifyH = "CENTER", wordWrap = false })
+    local dot = W.Label(ring, "○", "small", T.TEXT.GOLD, { justifyH = "CENTER", wordWrap = false })
     dot:SetPoint("CENTER", ring, "CENTER", 0, 0)
     ring:Hide()
 
@@ -139,11 +139,11 @@ function CursorTrailHud:ApplyVisibility(inCombatOverride)
     elseif style == "trail" then
         self.ring:SetSize(math.max(20, sizePref - 4), math.max(20, sizePref - 4))
         if self.ringTex then self.ringTex:Show() end
-        self.dot:SetText("✦")
+        self.dot:SetText("★")
     else
         self.ring:SetSize(sizePref, sizePref)
         if self.ringTex then self.ringTex:Show() end
-        self.dot:SetText("◦")
+        self.dot:SetText("○")
     end
 
     if shouldShow then

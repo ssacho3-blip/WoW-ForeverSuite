@@ -19,7 +19,7 @@ ns.Domain.ThreatModel = ThreatModel
 
 function ThreatModel.FormatThreatValue(val)
     if type(val) ~= "number" or val ~= val then
-        return "—"
+        return "-"
     end
     local absV = (val < 0) and -val or val
     if absV >= 1000000 then
@@ -121,7 +121,7 @@ function ThreatModel.BuildSnapshot(samples, maxRows)
         elseif maxVal > 0 then
             ratio = math_max(0, math_min(1, v.score / maxVal))
         end
-        local pctText = (v.scaledPct ~= nil) and (string_format("%.0f%%", v.scaledPct)) or "—"
+        local pctText = (v.scaledPct ~= nil) and (string_format("%.0f%%", v.scaledPct)) or "-"
         local valText = (v.threatValue ~= nil) and ThreatModel.FormatThreatValue(v.threatValue) or ""
         local rightText = (valText ~= "") and (valText .. " (" .. pctText .. ")") or pctText
 

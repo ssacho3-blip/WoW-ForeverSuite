@@ -260,7 +260,7 @@ function LedgerPage:RefreshView()
         if #list > MAX_VISIBLE_ROWS then
             local fromN = self.scrollOffset + 1
             local toN = self.scrollOffset + shown
-            self.scrollLbl:SetText("스크롤: 최근 " .. tostring(fromN) .. "–" .. tostring(toN) .. " / " .. tostring(#list) .. "건")
+            self.scrollLbl:SetText("스크롤: 최근 " .. tostring(fromN) .. "-" .. tostring(toN) .. " / " .. tostring(#list) .. "건")
         else
             self.scrollLbl:SetText("기록된 골드 변동: " .. tostring(#list) .. " / 100건")
         end

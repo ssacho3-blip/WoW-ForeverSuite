@@ -96,7 +96,7 @@ function SetupWizard:Open(stepNum)
     if not self.frame then
         local win = W.PopupCard(_G.UIParent, 380, 230, "ForeverSuiteSetupWizard", T.ELEVATION.L3_OVERLAY)
         win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
-        local title = W.Label(win, "✦ ForeverSuite v6 초기 연출 마법사 (/fs setup)", "heading", T.TEXT.GOLD)
+        local title = W.Label(win, "★ ForeverSuite v6 초기 연출 마법사 (/fs setup)", "heading", T.TEXT.GOLD)
         title:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -12)
 
         local body = W.Label(win, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = true })
@@ -144,19 +144,19 @@ function SetupWizard:Open(stepNum)
         local r = self.lastStep2Result
         local statusLine
         if type(r) == "table" and r.ok == false then
-            statusLine = "• 적용 보류: " .. tostring(r.reason) .. " (전투 종료 후 다시 실행하세요)"
+            statusLine = "· 적용 보류: " .. tostring(r.reason) .. " (전투 종료 후 다시 실행하세요)"
         elseif type(r) == "table" and r.lsmCount > 0 then
-            statusLine = "• LibSharedMedia-3.0 한글 폰트 등록 완료 (" .. tostring(r.lsmCount) .. "종)"
+            statusLine = "· LibSharedMedia-3.0 한글 폰트 등록 완료 (" .. tostring(r.lsmCount) .. "종)"
         else
-            statusLine = "• LSM 폰트 미등록 (ForeverSuite_Media_Assets 또는 LSM 미로드)"
+            statusLine = "· LSM 폰트 미등록 (ForeverSuite_Media_Assets 또는 LSM 미로드)"
         end
         local snapLine = (type(ns.Api.ProfileStore:GetState("_setupUndoSnapshot")) == "table")
-            and "• 원복 스냅샷 저장됨 — 언제든 /fs setup undo 로 1클릭 복원 가능"
-            or "• 아직 적용 전 (2. 테마정렬 클릭 시 원복 스냅샷 자동 생성)"
+            and "· 원복 스냅샷 저장됨 - 언제든 /fs setup undo 로 1클릭 복원 가능"
+            or "· 아직 적용 전 (2. 테마정렬 클릭 시 원복 스냅샷 자동 생성)"
         text = table_concat({
             "[Step 2/3] 비파괴 테마 & LSM 공통 폰트 정렬",
             statusLine,
-            "• 외부 Baganator/Platynator 프리셋 덮어쓰기: 기본 OFF (사용자 동의 시에만 적용)",
+            "· 외부 Baganator/Platynator 프리셋 덮어쓰기: 기본 OFF (사용자 동의 시에만 적용)",
             snapLine,
         }, "\n")
     else

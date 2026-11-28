@@ -14,7 +14,7 @@ ns.Domain.LedgerModel = LedgerModel
 
 function LedgerModel.FormatCopper(copper)
     if type(copper) ~= "number" then
-        return "—"
+        return "-"
     end
     local sign = copper < 0 and "-" or ""
     local absVal = math_floor(math_abs(copper) + 0.5)

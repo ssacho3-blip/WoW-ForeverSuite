@@ -1,5 +1,5 @@
 -- Module: Features/QuestExtraModule.lua
--- Responsibility: D6/D7/J6 Full Parity — Quest Collection Completion Banner, Party Quest Sync (C_ChatInfo addon msgs),
+-- Responsibility: D6/D7/J6 Full Parity - Quest Collection Completion Banner, Party Quest Sync (C_ChatInfo addon msgs),
 --                 Proximity Quest/Escort Alerts, Starter/Turn-in Hints, and Growth Milestone Alerts.
 -- Layer: Features (uses UI/Widgets + Api/SafeAPI/GameAdapters; zero raw CreateFrame / C_*).
 local _, ns = ...
@@ -54,7 +54,7 @@ function QuestExtraModule:CheckCollectionAlerts()
         if q.isComplete and (not self.notifiedCollections[q.questID]) then
             self.notifiedCollections[q.questID] = true
             triggered = triggered + 1
-            W.Toast("퀘스트 수집 완료!", tostring(q.title) .. " — 보고할 준비가 되었습니다.", "SUCCESS", 4.5)
+            W.Toast("퀘스트 수집 완료!", tostring(q.title) .. " - 보고할 준비가 되었습니다.", "SUCCESS", 4.5)
             local snd = ns.Api.ProfileStore:Get("ui", "alertSoundKey") or "quest_complete"
             if snd ~= "none" then
                 ns.Api.GameAdapters.PlayNotificationSound(snd, 75, "SFX")

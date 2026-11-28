@@ -1,5 +1,5 @@
 -- Module: Bridges/Auctionator.lua
--- Responsibility: Official Auctionator.API.v1 bridge — cached AH/DE/vendor price lookup (nil on miss, never 0c),
+-- Responsibility: Official Auctionator.API.v1 bridge - cached AH/DE/vendor price lookup (nil on miss, never 0c),
 --                 RegisterForDBUpdate cache invalidation, OOC-only CreateShoppingList, and tooltip vendor-price yield.
 -- Layer: Bridges (Rank 3).
 local _, ns = ...

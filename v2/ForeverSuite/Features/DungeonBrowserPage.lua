@@ -94,7 +94,7 @@ end
 
 function DungeonBrowserPage:EnsureQuickLootHud()
     if self.quickLootBtn then return self.quickLootBtn end
-    local btn = W.Button(_G.UIParent, "✦ 던전 빠른 드랍", 128, 24, function()
+    local btn = W.Button(_G.UIParent, "★ 던전 빠른 드랍", 128, 24, function()
         DungeonBrowserPage:ToggleQuickLootPopup()
     end, true)
     btn:Hide()
@@ -151,7 +151,7 @@ function DungeonBrowserPage:ToggleQuickLootPopup()
             break
         end
     end
-    pop._hdr:SetText("✦ 빠른 드랍: " .. tostring((targetDungeon and targetDungeon.title) or (instName ~= "" and instName or "던전")))
+    pop._hdr:SetText("★ 빠른 드랍: " .. tostring((targetDungeon and targetDungeon.title) or (instName ~= "" and instName or "던전")))
     local bosses = targetDungeon and ns.Domain.DungeonBrowserModel.GetBossesForDungeon(packs.dungeon_bosses and packs.dungeon_bosses.entries or {}, targetDungeon) or {}
     local equipped = ns.Api.GameAdapters.GetEquippedItemLevelMap()
     local shown = 0
@@ -203,7 +203,7 @@ function DungeonBrowserPage:OnStartLootRoll(rollID)
     local eqSlot = ns.Domain.BiSBrowserModel and ns.Domain.BiSBrowserModel.ResolveEquipSlot({ slot = info.equipLoc }) or nil
     local eval = ns.Domain.DungeonBrowserModel.EvaluateRollItem(info.itemID, info.itemLevel, eqSlot, equipped, bisSet)
     if not eval then return false end
-    local body = tostring(info.name) .. (info.itemLevel and (" (iLvl " .. tostring(info.itemLevel) .. ")") or "") .. " — " .. tostring(eval.verdict)
+    local body = tostring(info.name) .. (info.itemLevel and (" (iLvl " .. tostring(info.itemLevel) .. ")") or "") .. " - " .. tostring(eval.verdict)
     W.Toast("주사위 미리보기", body, (eval.tone == "GOLD" or eval.tone == "SUCCESS") and "SUCCESS" or "INFO", 5.0)
     return true, eval
 end
@@ -322,7 +322,7 @@ function DungeonBrowserPage:RenderRight()
     end
 
     if d then
-        self.rightTitle:SetText("✦ " .. tostring(d.title) .. (d.levels and d.levels ~= "" and (" (" .. d.levels .. ")") or ""))
+        self.rightTitle:SetText("★ " .. tostring(d.title) .. (d.levels and d.levels ~= "" and (" (" .. d.levels .. ")") or ""))
         self.rightSub:SetText(tostring(d.zone or ""))
     end
 
@@ -361,7 +361,7 @@ function DungeonBrowserPage:RenderRight()
         if self.mapPanel then
             for i = 1, #self.mapPinButtons do self.mapPinButtons[i]:Hide() end
             if #pages == 0 then
-                self.mapTitleLbl:SetText("등록된 내부 지도 없음 — 개요 탭에서 입구 /way 를 이용하세요")
+                self.mapTitleLbl:SetText("등록된 내부 지도 없음 - 개요 탭에서 입구 /way 를 이용하세요")
                 self.mapNoteLbl:SetText(tostring(d.note or ""))
                 if self.mapTex then self.mapTex:Hide() end
                 if self.mapPrevBtn then self.mapPrevBtn:Hide() end
@@ -429,13 +429,13 @@ function DungeonBrowserPage:RenderRight()
             local port = (self.portraitsByNpc and type(b.npcID) == "number" and b.npcID > 0) and self.portraitsByNpc[b.npcID] or nil
             local portIcon = (port and type(port.fileDataID) == "number" and port.fileDataID > 0) and port.fileDataID or nil
             rowsToShow[#rowsToShow + 1] = {
-                title = (isSel and "▾ " or "▸ ") .. tostring(b.title),
+                title = (isSel and "▼ " or "▶ ") .. tostring(b.title),
                 subtitle = (b.tip and b.tip ~= "") and b.tip or nil,
                 right = (type(b.itemCount) == "number") and (tostring(b.itemCount) .. "종 드랍") or "드랍 정보",
                 color = isSel and T.TEXT.GOLD or T.TEXT.PRIMARY,
                 icon = portIcon,
                 portraitDisplayID = (not portIcon and port and type(port.displayID) == "number" and port.displayID > 0) and port.displayID or nil,
-                glyph = "☠",
+                glyph = "★",
                 borderCol = isSel and T.BORDER.GOLD or T.BORDER.SUBTLE,
                 selected = isSel,
                 onClick = function()
@@ -514,7 +514,7 @@ function DungeonBrowserPage:RenderRight()
             if pass then
                 local q = qr.quest
                 local tag, col, glyph
-                if qr.state == "COMPLETED" then tag, col, glyph = "[완료] ", T.SEMANTIC.SUCCESS, "✓"
+                if qr.state == "COMPLETED" then tag, col, glyph = "[완료] ", T.SEMANTIC.SUCCESS, "V"
                 elseif qr.state == "IN_LOG" then tag, col, glyph = "[진행] ", T.TEXT.GOLD, "?"
                 elseif qr.state == "PREREQ_NEEDED" then tag, col, glyph = "[선행필요] ", T.SEMANTIC.DANGER, "×"
                 else tag, col, glyph = "[미수락] ", T.TEXT.PRIMARY, "!" end
@@ -530,7 +530,7 @@ function DungeonBrowserPage:RenderRight()
                             if ns.Features.NavigationHud then
                                 ns.Features.NavigationHud:SetTarget(q.mapID, q.x, q.y, q.title)
                             end
-                            ns.Api.SafeAPI.Print("던전 퀘스트 안내: " .. tostring(q.title) .. " — " .. tostring(q.npc or ""))
+                            ns.Api.SafeAPI.Print("던전 퀘스트 안내: " .. tostring(q.title) .. " - " .. tostring(q.npc or ""))
                         else
                             ns.Api.SafeAPI.Print(tostring(q.title) .. " (" .. tostring(q.npc or "") .. "): " .. tostring(q.objective or ""))
                         end
@@ -562,18 +562,18 @@ function DungeonBrowserPage:RenderRight()
         for idx, sr in ipairs(stepRows) do
             local st = sr.step
             rowsToShow[#rowsToShow + 1] = {
-                title = (sr.done and "[✓] " or ("[" .. tostring(idx) .. "] ")) .. tostring(st.title),
+                title = (sr.done and "[V] " or ("[" .. tostring(idx) .. "] ")) .. tostring(st.title),
                 subtitle = tostring(st.giver or "") .. ((st.source and st.source ~= "") and (" · " .. st.source) or ""),
                 right = (st.questLevel and st.questLevel > 0 and ("Lv." .. tostring(st.questLevel)) or "") .. (st.mapID and " · /way" or ""),
                 color = sr.done and T.SEMANTIC.SUCCESS or T.TEXT.PRIMARY,
-                glyph = sr.done and "✓" or "▸",
+                glyph = sr.done and "V" or "▶",
                 borderCol = sr.done and T.SEMANTIC.SUCCESS or T.BORDER.GOLD_SOFT,
                 onClick = function()
                     if type(st.mapID) == "number" and type(st.x) == "number" and type(st.y) == "number" then
                         if ns.Features.NavigationHud then
                             ns.Features.NavigationHud:SetTarget(st.mapID, st.x, st.y, tostring(st.giver or st.title))
                         end
-                        ns.Api.SafeAPI.Print("단계 안내: " .. tostring(st.title) .. " — " .. tostring(st.source or st.giver or ""))
+                        ns.Api.SafeAPI.Print("단계 안내: " .. tostring(st.title) .. " - " .. tostring(st.source or st.giver or ""))
                     end
                 end,
             }
@@ -583,7 +583,7 @@ function DungeonBrowserPage:RenderRight()
         end
 
     elseif self.activeTab == "report" then
-        self.rightTitle:SetText("✦ 던전 클리어 리포트 (시간 · XP/h · 보스 타임라인 · 골드)")
+        self.rightTitle:SetText("★ 던전 클리어 리포트 (시간 · XP/h · 보스 타임라인 · 골드)")
         self.rightSub:SetText("던전 입장·보스 처치 시각·경험치·골드 변화 자동 기록")
         local ledger = ns.Domain and ns.Domain.LedgerModel
         local fmtCopper = (ledger and type(ledger.FormatCopper) == "function")
@@ -626,7 +626,7 @@ function DungeonBrowserPage:RenderRight()
                 subtitle = bossTxt .. xpTxt,
                 right = ns.Domain.DungeonBrowserModel.FormatDuration(r.elapsed or 0) .. " · " .. fmtCopper(r.goldDelta or 0),
                 color = T.SEMANTIC.SUCCESS,
-                glyph = "✓",
+                glyph = "V",
                 borderCol = T.SEMANTIC.SUCCESS,
             }
         end
@@ -700,7 +700,7 @@ function DungeonBrowserPage:RenderLeft(query)
         if d then
             local sel = (self.selectedDungeon and self.selectedDungeon.id == d.id)
             row._dungeon = d
-            row._left:SetText((sel and "▸ " or "") .. tostring(d.title))
+            row._left:SetText((sel and "▶ " or "") .. tostring(d.title))
             local c = sel and T.TEXT.GOLD or T.TEXT.PRIMARY
             row._left:SetTextColor(c[1], c[2], c[3], 1)
             local lvBadge = (d.levels and d.levels ~= "") and string.gsub(d.levels, "레벨", "") or (d.isRaid and "60 공대" or "5인")

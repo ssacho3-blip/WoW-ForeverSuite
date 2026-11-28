@@ -64,7 +64,7 @@ end
 --   1. STATIC: pack._status == "ACTIVE" (or _complete ~= false) & manifest compatible & entry exists
 --   2. LIVE:   pcall(liveGetterFn, kind, key) returns non-nil
 --   3. EMBED:  CORE_EMBEDDED[kind][key] (or custom embeddedMap)
---   Else:      nil, "MISSING" (Zero Fabricated Status — never returns fake 0)
+--   Else:      nil, "MISSING" (Zero Fabricated Status - never returns fake 0)
 function DataResolver.Resolve(kind, key, staticPacks, manifest, currentInterface, nowEpoch, liveGetterFn, embeddedMap)
     if type(kind) ~= "string" or kind == "" or key == nil then
         return nil, "INVALID_ARGS"

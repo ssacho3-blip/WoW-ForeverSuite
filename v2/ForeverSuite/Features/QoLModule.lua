@@ -75,7 +75,7 @@ function QoLModule:HandleXPCommand(rawArg)
         return true, "MAX_LEVEL"
     end
     local rateStr = st.xpPerHour and (Q.FormatNumberWithCommas(st.xpPerHour) .. " XP/h") or "집계 중"
-    local etaStr = st.etaSec and Q.FormatDuration(st.etaSec) or "—"
+    local etaStr = st.etaSec and Q.FormatDuration(st.etaSec) or "-"
     local gapTag = st.secretGap and " [일부 구간 Secret 미집계]" or ""
     ns.Api.SafeAPI.Print(string_format(
         "세션 XP: +%s (%s) | 속도: %s | Lv.%d까지 %s (%.1f%%, 예상 %s)%s",

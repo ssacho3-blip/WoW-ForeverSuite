@@ -1,5 +1,5 @@
 -- Module: Bridges/DialogueUI.lua
--- Responsibility: Official DialogueUIAPI bridge — reward card BiS/+iLvl evaluator, English-only Korean
+-- Responsibility: Official DialogueUIAPI bridge - reward card BiS/+iLvl evaluator, English-only Korean
 --                 translator (preserves native Korean quests & existing translators), and QuestAutomation yield.
 -- Layer: Bridges (Rank 3: OOC registration only; never auto-accepts/turns-in quests).
 local _, ns = ...

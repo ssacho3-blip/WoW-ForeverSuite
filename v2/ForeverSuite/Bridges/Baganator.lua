@@ -1,5 +1,5 @@
 -- Module: Bridges/Baganator.lua
--- Responsibility: Official Baganator.API bridge — O(1) 4-corner badge widget, /fs protect junk plugin,
+-- Responsibility: Official Baganator.API bridge - O(1) 4-corner badge widget, /fs protect junk plugin,
 --                 BiS/+iLvl upgrade plugin, compact <=52x20px bottom_left "정리" region, and OOC preset ImportString.
 -- Layer: Bridges (Rank 3: display-only; never moves/sells items; OOC registration only).
 local _, ns = ...
@@ -154,7 +154,7 @@ function BaganatorBridge:Init()
         registeredCount = registeredCount + 1
     end
 
-    -- Official Baganator.API.RegisterRegion(label, id, viewType, position, frame) — 5 args + real frame <=52x20px
+    -- Official Baganator.API.RegisterRegion(label, id, viewType, position, frame) - 5 args + real frame <=52x20px
     if type(api.RegisterRegion) == "function" then
         local pillFrame = self.cheapPillFrame
         if not pillFrame then

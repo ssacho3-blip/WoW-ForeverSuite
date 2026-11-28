@@ -26,7 +26,7 @@ ns.Features.CharacterDockPanel = CharacterDockPanel
 
 local function FmtNum(v, suffix)
     if type(v) ~= "number" then
-        return "—"
+        return "-"
     end
     return tostring(v) .. (suffix or "")
 end
@@ -83,7 +83,7 @@ local function BuildTabText(tabId)
         local lines = {}
         for i = 1, #top3 do
             local u = top3[i]
-            lines[#lines + 1] = string_format("%d. %s (+%d iLvl) — %s", i, u.title, u.delta, u.acq)
+            lines[#lines + 1] = string_format("%d. %s (+%d iLvl) - %s", i, u.title, u.delta, u.acq)
         end
         return table_concat(lines, "\n")
     end
@@ -124,7 +124,7 @@ function CharacterDockPanel:Render(tabId)
     end
     if not self.frame then
         local card = W.PopupCard(_G.UIParent, PANEL_WIDTH, PANEL_HEIGHT, "ForeverSuiteCharacterDock", T.ELEVATION.L2_WORKSPACE)
-        local title = W.Label(card, "✦ 캐릭터 확장 브리핑", "heading", T.TEXT.GOLD, { justifyH = "LEFT" })
+        local title = W.Label(card, "★ 캐릭터 확장 브리핑", "heading", T.TEXT.GOLD, { justifyH = "LEFT" })
         title:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -10)
 
         local b1 = W.Button(card, "스탯", 66, 22, function() CharacterDockPanel:Render("stats") end)

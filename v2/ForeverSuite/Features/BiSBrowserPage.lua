@@ -116,19 +116,19 @@ function BiSBrowserPage:RenderDetail(equippedInfoMap)
     end
     if self.equippedIcon then
         if eqInfo then
-            self.equippedIcon:SetIcon(eqInfo.icon, QualityColor(eqInfo.quality), "✓")
+            self.equippedIcon:SetIcon(eqInfo.icon, QualityColor(eqInfo.quality), "V")
             self.equippedNameLbl:SetText("현재 착용: " .. tostring(eqInfo.name))
             local eqCol = QualityColor(eqInfo.quality)
             self.equippedNameLbl:SetTextColor(eqCol[1], eqCol[2], eqCol[3], 1)
             local ilvlStr = (type(eqInfo.ilvl) == "number") and ("iLvl " .. tostring(eqInfo.ilvl)) or "iLvl 미집계"
             self.equippedSubLbl:SetText(ilvlStr .. "  →  " .. tostring(rec.badge or ""))
         elseif type(rec.equippedIlvl) == "number" then
-            self.equippedIcon:SetIcon(T.ICON.FALLBACK, T.BORDER.GOLD_SOFT, "✓")
+            self.equippedIcon:SetIcon(T.ICON.FALLBACK, T.BORDER.GOLD_SOFT, "V")
             self.equippedNameLbl:SetText("현재 착용 슬롯 (iLvl " .. tostring(rec.equippedIlvl) .. ")")
             self.equippedNameLbl:SetTextColor(T.TEXT.PRIMARY[1], T.TEXT.PRIMARY[2], T.TEXT.PRIMARY[3], 1)
             self.equippedSubLbl:SetText("비교 결과: " .. tostring(rec.badge or ""))
         else
-            self.equippedIcon:SetIcon(T.ICON.FALLBACK, T.BORDER.SUBTLE, "—")
+            self.equippedIcon:SetIcon(T.ICON.FALLBACK, T.BORDER.SUBTLE, "-")
             self.equippedNameLbl:SetText("현재 착용 장비 미집계 / 비어 있음")
             self.equippedNameLbl:SetTextColor(T.TEXT.MUTED[1], T.TEXT.MUTED[2], T.TEXT.MUTED[3], 1)
             self.equippedSubLbl:SetText("비교 대상 iLvl 정보 없음")

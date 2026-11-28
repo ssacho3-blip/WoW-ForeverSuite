@@ -130,7 +130,7 @@ function PartyFinderPage:SetHoverFrozen(flag)
         self.frozenList = snap
         if self.freezeLbl then
             local extra = (self.pendingUpdates > 0) and (" (새 글 +" .. tostring(self.pendingUpdates) .. "건)") or ""
-            self.freezeLbl:SetText("⏸ 읽는 중 목록 고정" .. extra)
+            self.freezeLbl:SetText("[일시정지] 읽는 중 목록 고정" .. extra)
             self.freezeLbl:Show()
         end
     else
@@ -212,7 +212,7 @@ function PartyFinderPage:IngestChatMessage(cleanMsg, cleanSender, channel)
         if self.hoverFrozen then
             self.pendingUpdates = self.pendingUpdates + 1
             if self.freezeLbl then
-                self.freezeLbl:SetText("⏸ 읽는 중 목록 고정 (새 글 +" .. tostring(self.pendingUpdates) .. "건)")
+                self.freezeLbl:SetText("[일시정지] 읽는 중 목록 고정 (새 글 +" .. tostring(self.pendingUpdates) .. "건)")
                 self.freezeLbl:Show()
             end
         else
@@ -503,7 +503,7 @@ function PartyFinderPage:OnSearch(query)
         self._pendingSearchReset = true
         self.pendingUpdates = self.pendingUpdates + 1
         if self.freezeLbl then
-            self.freezeLbl:SetText("⏸ 읽는 중 목록 고정 (검색 대기중)")
+            self.freezeLbl:SetText("[일시정지] 읽는 중 목록 고정 (검색 대기중)")
             self.freezeLbl:Show()
         end
         return

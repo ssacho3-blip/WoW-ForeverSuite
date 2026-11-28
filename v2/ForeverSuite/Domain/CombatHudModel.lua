@@ -91,7 +91,7 @@ end
 function CombatHudModel.FormatClockText(localH, localM, srvH, srvM)
     local locTxt = (type(localH) == "number" and type(localM) == "number")
         and string_format("%02d:%02d", math_floor(localH), math_floor(localM))
-        or "—:—"
+        or "-:-"
     if type(srvH) == "number" and type(srvM) == "number" then
         return "로컬 " .. locTxt .. " · 서버 " .. string_format("%02d:%02d", math_floor(srvH), math_floor(srvM))
     end

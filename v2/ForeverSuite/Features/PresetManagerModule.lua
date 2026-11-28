@@ -1,5 +1,5 @@
 -- Module: Features/PresetManagerModule.lua
--- Responsibility: A7 Full Parity — Safe OOC Game CVar Presets, ActionBar Loadout Snapshots/Restore,
+-- Responsibility: A7 Full Parity - Safe OOC Game CVar Presets, ActionBar Loadout Snapshots/Restore,
 --                 EditMode Layout String Export/Import, and Account-Wide Shared Character Settings Sync.
 -- Layer: Features (strictly OOC via SafeAPI.InCombat() guards; zero combat taint).
 local _, ns = ...

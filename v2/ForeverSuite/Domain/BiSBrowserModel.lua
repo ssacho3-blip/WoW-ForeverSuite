@@ -47,10 +47,10 @@ local function MatchesSlotFilter(itemSlot, filterVal)
     return s == filterVal
 end
 
--- Computes exact iLvl delta against currently equipped item in that slot (nil if either side unknown — zero fabrication).
+-- Computes exact iLvl delta against currently equipped item in that slot (nil if either side unknown - zero fabrication).
 function BiSBrowserModel.CompareWithEquipped(itemIlvl, equippedIlvl)
     if type(itemIlvl) ~= "number" or itemIlvl <= 0 then
-        return nil, "—", "MUTED"
+        return nil, "-", "MUTED"
     end
     if type(equippedIlvl) ~= "number" or equippedIlvl <= 0 then
         return nil, "iLvl " .. tostring(math_floor(itemIlvl)), "SECONDARY"

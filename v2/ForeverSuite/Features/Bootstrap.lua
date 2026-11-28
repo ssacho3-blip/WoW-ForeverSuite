@@ -90,7 +90,7 @@ local DEFAULT_SCHEMAS = {
         type = "boolean",
         default = false,
         label = "퀘스트 추적기 헤더만 접기",
-        desc = "상단 헤더의 −/+ 버튼과 연동됩니다",
+        desc = "상단 헤더의 -/+ 버튼과 연동됩니다",
         combatSafe = true,
     },
     {
@@ -345,7 +345,7 @@ local DEFAULT_SCHEMAS = {
             { value = "bold_kr",     label = "굵은 고딕",   width = 76 },
             { value = "pagetext_kr", label = "명조체",     width = 66 },
             { value = "damage_kr",   label = "전투 숫자",   width = 76 },
-            { value = "clean_en",    label = "영문 고딕",   width = 76 },
+            { value = "clean_en",    label = "클린 고딕",   width = 76 },
             { value = "gmarket_kr",  label = "지마켓산스",  width = 82 },
             { value = "gyeonggi_kr", label = "경기천년",    width = 76 },
             { value = "gothic_a1_kr", label = "고딕A1",     width = 68 },
@@ -725,7 +725,7 @@ function Bootstrap:Init()
         return ns.Secure.CombatQueue:RunOrDefer(k, fn)
     end)
 
-    -- Phase 4 (Coexistence Resolve — must precede Secure/UI/Feature mount)
+    -- Phase 4 (Coexistence Resolve - must precede Secure/UI/Feature mount)
     if ns.Bridges and ns.Bridges.BridgeHost then
         if ns.Bridges.Baganator then
             ns.Bridges.Baganator:SetProviders({

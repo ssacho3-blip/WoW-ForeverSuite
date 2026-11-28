@@ -32,7 +32,7 @@ function MerchantModule:ResolvePendingGuildRepair(source)
             return "STILL_WAITING"
         end
         self.awaitingGuildRepair = nil
-        ns.Api.SafeAPI.Print("길드 수리 결과 확인 불가(API 읽기 불가) — 이중 수리 방지를 위해 중단했습니다.")
+        ns.Api.SafeAPI.Print("길드 수리 결과 확인 불가(API 읽기 불가) - 이중 수리 방지를 위해 중단했습니다.")
         return "UNREADABLE"
     end
 
@@ -55,12 +55,12 @@ function MerchantModule:ResolvePendingGuildRepair(source)
 
     -- Timeout confirmed remainingCost > 0 -> fall back safely to personal repair if affordable
     if not stillNeeds or remainingCost <= 0 then
-        ns.Api.SafeAPI.Print("길드 수리 미완료(상태 불일치) — 수동 수리를 확인해 주세요.")
+        ns.Api.SafeAPI.Print("길드 수리 미완료(상태 불일치) - 수동 수리를 확인해 주세요.")
         return "FAILED"
     end
     local curMoney = ns.Api.SafeAPI.GetPlayerMoney()
     if type(curMoney) ~= "number" then
-        ns.Api.SafeAPI.Print("길드 수리 미확인 및 개인 골드 조회 불가 — 수동 확인이 필요합니다.")
+        ns.Api.SafeAPI.Print("길드 수리 미확인 및 개인 골드 조회 불가 - 수동 확인이 필요합니다.")
         return "FAILED"
     end
     if curMoney >= remainingCost then

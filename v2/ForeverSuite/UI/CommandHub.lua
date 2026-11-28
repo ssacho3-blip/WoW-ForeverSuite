@@ -220,7 +220,7 @@ function CommandHub:UpdateSearchPalette(query)
                 rightText = "바로가기"
                 rightCol = T.TEXT.GOLD
             elseif item.kind == "setting" then
-                glyph = "⚙"
+                glyph = "◈"
                 borderCol = T.SEMANTIC.INFO
                 if item.settingType == "boolean" then
                     local on = ns.Api.ProfileStore:Get(item.section, item.key) == true
@@ -299,7 +299,7 @@ function CommandHub:EnsureWindow()
     if self.window then
         return self.window
     end
-    local win = W.Window("ForeverSuiteV2CommandHub", HUB_WIDTH, HUB_HEIGHT, "✦ ForeverSuite")
+    local win = W.Window("ForeverSuiteV2CommandHub", HUB_WIDTH, HUB_HEIGHT, "★ ForeverSuite")
     local savedPos = ns.Api and ns.Api.ProfileStore and ns.Api.ProfileStore:GetLayout("commandHub")
     if type(savedPos) == "table" and type(savedPos.point) == "string" then
         win:ClearAllPoints()
@@ -371,7 +371,7 @@ function CommandHub:EnsureWindow()
     end, "좌클릭: 크기 100% 초기화 · 우클릭: 창 위치·크기 중앙 복원")
     scaleValBtn:SetPoint("RIGHT", scalePlus, "LEFT", -2, 0)
 
-    local scaleMinus = W.MiniButton(win._header, "−", 20, 22, function()
+    local scaleMinus = W.MiniButton(win._header, "-", 20, 22, function()
         CommandHub:AdjustUserScale(-0.05)
     end, "창 크기 -5% 축소")
     scaleMinus:SetPoint("RIGHT", scaleValBtn, "LEFT", -2, 0)

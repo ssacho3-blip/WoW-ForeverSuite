@@ -258,7 +258,7 @@ function DungeonBrowserModel.IndexPortraitsByNpcID(rows)
     return map
 end
 
--- B4: Compute dungeon XP/hour (nil if elapsed < 10s or xp <= 0 — zero fabrication)
+-- B4: Compute dungeon XP/hour (nil if elapsed < 10s or xp <= 0 - zero fabrication)
 function DungeonBrowserModel.ComputeXpPerHour(xpGained, elapsedSec)
     if type(xpGained) ~= "number" or xpGained <= 0 or type(elapsedSec) ~= "number" or elapsedSec < 10 then
         return nil

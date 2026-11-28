@@ -131,7 +131,7 @@ function EncounterTimerHud:Refresh()
         self.card:Hide()
     end
     if view.expiredPull then
-        ns.Api.SafeAPI.Print("풀링 카운트다운 종료 — 시작!")
+        ns.Api.SafeAPI.Print("풀링 카운트다운 종료 - 시작!")
     end
     self:SyncTicker()
     return view

@@ -11,14 +11,14 @@ local math_floor = math.floor
 
 local FontModel = {
     PRESETS = {
-        { id = "default_kr",   label = "기본 고딕 (2002)",       path = "Fonts\\2002.TTF", monoPath = "Fonts\\ARIALN.TTF" },
-        { id = "bold_kr",      label = "굵은 고딕 (2002B)",      path = "Fonts\\2002B.TTF", monoPath = "Fonts\\2002B.TTF" },
+        { id = "default_kr",   label = "기본 고딕 (2002)",         path = "Fonts\\2002.TTF",  monoPath = "Fonts\\2002.TTF" },
+        { id = "bold_kr",      label = "굵은 고딕 (2002B)",        path = "Fonts\\2002B.TTF", monoPath = "Fonts\\2002B.TTF" },
         { id = "pagetext_kr",  label = "클래식 명조 (K_Pagetext)", path = "Fonts\\K_Pagetext.TTF", monoPath = "Fonts\\2002B.TTF" },
         { id = "damage_kr",    label = "전투 강조체 (K_Damage)",   path = "Fonts\\K_Damage.TTF", monoPath = "Fonts\\2002B.TTF" },
-        { id = "clean_en",     label = "클린 숫자 (한글+ARIALN)", path = "Fonts\\2002.TTF", monoPath = "Fonts\\ARIALN.TTF" },
-        { id = "gmarket_kr",   label = "지마켓산스 (번들)",       path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GmarketSansTTFBold.ttf", monoPath = "Fonts\\ARIALN.TTF" },
-        { id = "gyeonggi_kr",  label = "경기천년제목 (번들)",     path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GyeonggiTitle-Bold.ttf", monoPath = "Fonts\\ARIALN.TTF" },
-        { id = "gothic_a1_kr", label = "고딕 A1 블랙 (번들)",    path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GothicA1-Black.ttf", monoPath = "Fonts\\ARIALN.TTF" },
+        { id = "clean_en",     label = "클린 고딕 (2002B 숫자)",   path = "Fonts\\2002.TTF",  monoPath = "Fonts\\2002B.TTF" },
+        { id = "gmarket_kr",   label = "지마켓산스 (번들)",         path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GmarketSansTTFBold.ttf", monoPath = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GmarketSansTTFBold.ttf" },
+        { id = "gyeonggi_kr",  label = "경기천년제목 (번들)",       path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GyeonggiTitle-Bold.ttf", monoPath = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GyeonggiTitle-Bold.ttf" },
+        { id = "gothic_a1_kr", label = "고딕 A1 블랙 (번들)",      path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GothicA1-Black.ttf", monoPath = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GothicA1-Black.ttf" },
     },
     BASE_SIZES = {
         title = 18,
@@ -32,7 +32,7 @@ local FontModel = {
         outline = "OUTLINE",
         thick = "THICKOUTLINE",
     },
-    SAMPLE_TEXT = "한글 완성형 가나다라 · 자모 ㄱㄴㄷ · 숫자 123,456g · 기호 ✦ ★ •",
+    SAMPLE_TEXT = "한글 완성형 가나다라 · 자모 ㄱㄴㄷ · 숫자 123,456g · 기호 ★ ▶ ·",
 }
 ns.Domain.FontModel = FontModel
 

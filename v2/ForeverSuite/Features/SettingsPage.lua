@@ -212,7 +212,7 @@ function SettingsPage:Build(parent)
     end, true)
     pStd:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -28)
 
-    local pRaid = W.Button(parent, "▸ 레이드 집중", 104, 24, function()
+    local pRaid = W.Button(parent, "▶ 레이드 집중", 104, 24, function()
         SettingsPage:ApplyPreset("raid")
     end)
     pRaid:SetPoint("LEFT", pStd, "RIGHT", 6, 0)
@@ -258,7 +258,7 @@ function SettingsPage:Build(parent)
     self.overflowLbl:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 4, 2)
     self.overflowLbl:Hide()
 
-    -- Create pooled widgets ONCE per schema item (including schema.desc & [비전투] badge — Bug #5 Fix!)
+    -- Create pooled widgets ONCE per schema item (including schema.desc & [비전투] badge - Bug #5 Fix!)
     self.builtItems = {}
     for _, item in ipairs(ns.Api.ProfileStore.schemas) do
         local descText = (type(item.desc) == "string" and item.desc ~= "") and item.desc or nil
@@ -409,7 +409,7 @@ function SettingsPage:RenderList(query)
         if #matched > shown then
             local lastIdx = firstIdx + shown - 1
             self.overflowLbl:SetText(
-                "스크롤: " .. tostring(firstIdx) .. "–" .. tostring(lastIdx)
+                "스크롤: " .. tostring(firstIdx) .. "-" .. tostring(lastIdx)
                 .. " / " .. tostring(#matched) .. "개 항목 (마우스 휠 · 우측 스크롤바)"
             )
             self.overflowLbl:Show()

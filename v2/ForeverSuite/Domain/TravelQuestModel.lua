@@ -35,7 +35,7 @@ function TravelQuestModel.DiffQuestProgress(prevState, currQuests)
                     curObj[idx] = fin
                     if prev and fin and not (prev.objDone and prev.objDone[idx] == true) and not doneNow then
                         local txt = (type(o.text) == "string" and o.text ~= "") and o.text or ("목표 " .. tostring(idx))
-                        table_insert(announcements, "[퀘스트 진행] " .. q.title .. " — " .. txt .. " 완료")
+                        table_insert(announcements, "[퀘스트 진행] " .. q.title .. " - " .. txt .. " 완료")
                     end
                 end
             end

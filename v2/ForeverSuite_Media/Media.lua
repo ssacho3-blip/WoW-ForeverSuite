@@ -4,7 +4,8 @@
 local _, ns = ...
 
 local BASE_FONT = "Fonts\\2002.TTF"
-local MONO_FONT = "Fonts\\ARIALN.TTF"
+-- Must support Korean Hangul glyphs (Fonts\ARIALN.TTF has 0 Hangul glyphs and renders Korean as tofu boxes!)
+local MONO_FONT = "Fonts\\2002.TTF"
 
 local function ResolveMediaRoot()
     if _G.C_AddOns and type(_G.C_AddOns.DoesAddOnExist) == "function" then

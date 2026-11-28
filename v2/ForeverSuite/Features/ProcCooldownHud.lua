@@ -1,5 +1,5 @@
 -- Module: Features/ProcCooldownHud.lua
--- Responsibility: I6/I7 Full Parity — Event-driven Combat Proc Alerts HUD (Nightfall, Missile Barrage, Clearcasting, etc.)
+-- Responsibility: I6/I7 Full Parity - Event-driven Combat Proc Alerts HUD (Nightfall, Missile Barrage, Clearcasting, etc.)
 --                 & Major Skill Cooldown Tracker HUD (0% idle CPU when inactive, C_Secrets safe, /fs move movable).
 -- Layer: Features (uses UI/Widgets + Api/SafeAPI/GameAdapters).
 local _, ns = ...
@@ -127,7 +127,7 @@ function ProcCooldownHud:RefreshProcs()
     if foundSpec then
         local newlyTriggered = (self.activeProcId ~= foundId)
         self.activeProcId = foundId
-        self.procIcon:SetIcon(foundSpec.icon, T.BORDER.GOLD, "✦")
+        self.procIcon:SetIcon(foundSpec.icon, T.BORDER.GOLD, "★")
         self.procTitle:SetText(foundSpec.name)
         self.procSub:SetText(foundSpec.desc)
         self.procCard:Show()

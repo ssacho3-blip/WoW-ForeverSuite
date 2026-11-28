@@ -90,7 +90,7 @@ function FontsPage:ApplySavedFonts()
             end
         end
         if self.statusLbl then
-            self.statusLbl:SetText("폰트 적용 실패 (" .. tostring(failed) .. "건) — 기존 폰트로 전체 복원했습니다.")
+            self.statusLbl:SetText("폰트 적용 실패 (" .. tostring(failed) .. "건) - 기존 폰트로 전체 복원했습니다.")
         end
         return false, "ROLLED_BACK"
     end
@@ -196,12 +196,12 @@ function FontsPage:Build(parent)
     pBody:SetPoint("BOTTOMRIGHT", previewCard, "BOTTOMRIGHT", -12, 8)
     self.previewLbl = pBody
 
-    -- K2: Opt-in Global World / Combat Damage / Chat Font Override Switcher (ForeverSuite_Fonts_Global — all 18 fonts, independent World vs Damage selectors)
+    -- K2: Opt-in Global World / Combat Damage / Chat Font Override Switcher (ForeverSuite_Fonts_Global - all 18 fonts, independent World vs Damage selectors)
     local gCard = W.Card(parent, 580, 212, nil, nil)
     gCard:SetPoint("TOPLEFT", previewCard, "BOTTOMLEFT", 0, -8)
     gCard:SetPoint("TOPRIGHT", previewCard, "BOTTOMRIGHT", 0, -8)
     W.SetBorderColor(gCard, T.BORDER.GOLD)
-    local gHdr = W.Label(gCard, "✦ 게임 전역 · 전투 데미지 · 채팅 한글 폰트 (18종 · 월드/데미지 독립 선택)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local gHdr = W.Label(gCard, "★ 게임 전역 · 전투 데미지 · 채팅 한글 폰트 (18종 · 월드/데미지 독립 선택)", "small", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     gHdr:SetPoint("TOPLEFT", gCard, "TOPLEFT", 12, -8)
 
     local gApi = _G.ForeverSuiteGlobalFonts

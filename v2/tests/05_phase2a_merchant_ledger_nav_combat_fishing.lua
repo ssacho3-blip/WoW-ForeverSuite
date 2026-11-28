@@ -261,7 +261,7 @@ _G.__FS_MOCK.userWaypoint = nil
 _G.SlashCmdList["FOREVERSUITEWAYV2"]("50.0 40.0 테스트 목적지2")
 _G.__FS_MOCK.playerPos.facing = nil
 ns.Features.NavigationHud.ticker:Tick()
-assert(ns.Features.NavigationHud.arrowLbl:GetText() == "•", "nil facing must show • instead of fake North")
+assert(ns.Features.NavigationHud.arrowLbl:GetText() == "·", "nil facing must show · instead of fake North")
 _G.__FS_MOCK.playerPos.y = 0.402
 ns.Features.NavigationHud.ticker:Tick()
 assert(ns.Features.NavigationHud.card:IsShown() == false and ns.Features.NavigationHud.ticker == nil)

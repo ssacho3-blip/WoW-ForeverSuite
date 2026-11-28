@@ -1,5 +1,5 @@
 -- Module: Bridges/Spoken.lua
--- Responsibility: Official Spoken TTS bridge — tracks voice playback state without mutating CVars,
+-- Responsibility: Official Spoken TTS bridge - tracks voice playback state without mutating CVars,
 --                 ducks non-survival ForeverSuite SFX while letting survival alerts pierce, and yields QuestAutomation.
 -- Layer: Bridges (Rank 3: zero CVar mutations; AddGate scoped strictly to ForeverSuite-owned clip IDs).
 local _, ns = ...

@@ -50,7 +50,7 @@ function NavigationModel.ParseWayArgs(raw)
 end
 
 -- Computes honest map-unit distance (0..100 scale) and aspect-compensated bearing.
--- When facingRad is nil/unavailable, returns arrow="•" (never fabricates North).
+-- When facingRad is nil/unavailable, returns arrow="·" (never fabricates North).
 function NavigationModel.ComputeGuidance(px, py, facingRad, tx, ty)
     if type(px) ~= "number" or type(py) ~= "number" or type(tx) ~= "number" or type(ty) ~= "number" then
         return nil
@@ -59,7 +59,7 @@ function NavigationModel.ComputeGuidance(px, py, facingRad, tx, ty)
     local dy = (py - ty) * 100 -- north is +dy
     local mapUnits = math_sqrt(dx * dx + dy * dy)
 
-    local arrow = "•"
+    local arrow = "·"
     local relAngle = nil
     if type(facingRad) == "number" then
         local ax = dx * MAP_ASPECT_X

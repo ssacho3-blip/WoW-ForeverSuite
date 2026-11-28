@@ -6,6 +6,7 @@ use full_moon::ast::{
     Assignment, Block, Call, Expression, FunctionArgs, FunctionBody, FunctionCall, Index,
     LocalAssignment, Prefix, Suffix, Var,
 };
+use full_moon::node::Node;
 use full_moon::visitors::{Visit, Visitor};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -736,6 +737,36 @@ pub fn check_secret_dataflow(rel_path: &Path, source: &str) -> Vec<String> {
     violations
 }
 
+pub fn check_korean_font_glyph_safety(rel_path: &Path, ast: &full_moon::ast::Ast) -> Vec<String> {
+    let label = rel_path.to_string_lossy().to_string();
+    let mut violations = Vec::new();
+    const UNSAFE_GLYPHS: &[char] = &[
+        '\u{2013}', '\u{2014}', '\u{2022}', '\u{2212}', '\u{23F8}', '\u{25B8}', '\u{25BE}',
+        '\u{25E6}', '\u{2620}', '\u{2699}', '\u{26A0}', '\u{2713}', '\u{2715}', '\u{2726}',
+    ];
+    for tok in ast.tokens() {
+        if let full_moon::tokenizer::TokenType::StringLiteral { literal, .. } = tok.token_type() {
+            let line_no = tok.start_position().map(|p| p.line()).unwrap_or(0);
+            let s = literal.as_str();
+            if s.to_ascii_uppercase().contains("ARIALN.TTF") {
+                violations.push(format!(
+                    "[{label}:{line_no}] Korean font safety violation: ARIALN.TTF has 0 Hangul glyphs (use Fonts\\2002.TTF or a Korean TTF)"
+                ));
+            }
+            for ch in s.chars() {
+                if UNSAFE_GLYPHS.contains(&ch) {
+                    violations.push(format!(
+                        "[{label}:{line_no}] Korean glyph safety violation: U+{:04X} ('{ch}') is missing in WoW 2002.TTF / bundled Korean fonts",
+                        ch as u32
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    violations
+}
+
 pub fn check_lua_source(rel_path: &Path, source: &str) -> Vec<String> {
     let label = rel_path.to_string_lossy().to_string();
     let ast = match full_moon::parse(source) {
@@ -751,6 +782,7 @@ pub fn check_lua_source(rel_path: &Path, source: &str) -> Vec<String> {
     let mut checker = AstRuleChecker::new(label, Layer::from_rel_path(rel_path));
     checker.visit_ast(&ast);
     checker.violations.extend(check_secret_dataflow(rel_path, source));
+    checker.violations.extend(check_korean_font_glyph_safety(rel_path, &ast));
     checker.violations.sort();
     checker.violations.dedup();
     checker.violations
@@ -1245,5 +1277,18 @@ end
 "#;
         let ok_errs = check_lua_source(Path::new("Api/GoodSecret.lua"), clean);
         assert!(ok_errs.is_empty(), "opaque C_DurationUtil sink and separate function scope must pass cleanly: {ok_errs:?}");
+    }
+
+    #[test]
+    fn korean_font_and_glyph_safety_blocks_arialn_and_non_ks_x_1001_symbols() {
+        let bad = "local f = \"Fonts\\\\ARIALN.TTF\"\nlocal t = \"a -- ✓\"\nlocal u = \"✦\"\n";
+        let errs = check_lua_source(Path::new("UI/BadGlyph.lua"), bad);
+        assert!(errs.iter().any(|e| e.contains("ARIALN.TTF")), "must reject ARIALN.TTF: {errs:?}");
+        assert!(errs.iter().any(|e| e.contains("U+2713")), "must catch unsafe glyph after -- inside string literal: {errs:?}");
+        assert!(errs.iter().any(|e| e.contains("U+2726")), "must reject non-KS-X-1001 glyph: {errs:?}");
+
+        let good = "--[[ block comment with ✦ and ARIALN.TTF ]]\nlocal f = \"Fonts\\\\2002.TTF\"\nlocal t = \"★ 완료 V - ▶ ▼ · ○ ◈\"\n";
+        let ok_errs = check_lua_source(Path::new("UI/GoodGlyph.lua"), good);
+        assert!(ok_errs.is_empty(), "KS X 1001 safe glyphs and block comments must pass: {ok_errs:?}");
     }
 }

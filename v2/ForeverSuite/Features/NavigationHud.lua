@@ -74,7 +74,7 @@ function NavigationHud:Init()
     card:SetRadialScrim(0.46, 0.03, 0.03, 0.04)
     card:SetRibbon({ 0.032, 0.028, 0.038 }, 0.56, -54, 4)
 
-    local arrow = W.Label(card, "•", "title", T.TEXT.GOLD, { justifyH = "CENTER", outline = "OUTLINE", fontSize = 22 })
+    local arrow = W.Label(card, "·", "title", T.TEXT.GOLD, { justifyH = "CENTER", outline = "OUTLINE", fontSize = 22 })
     arrow:SetPoint("TOP", card, "TOP", 0, -14)
 
     -- 12-layer 3D extruded satin arrow (ForeverSuite_Media_Assets/Arrows/Rounded418/*.tga)
@@ -285,7 +285,7 @@ function NavigationHud:Refresh()
     self:Init()
     local pos = ns.Api.GameAdapters.GetPlayerPosition()
     if not pos then
-        self.arrowLbl:SetText("•")
+        self.arrowLbl:SetText("·")
         if self.arrowTex then self.arrowTex:Hide() end
         if self.goldArrow then self.goldArrow:Hide() end
         if self.rounded3D then self.rounded3D:Hide() end
