@@ -81,9 +81,11 @@ local FishingCardHud = {
     pinned = false,
     dismissedForPole = false,
     soundBoost = false,
+    soundBoostPausedBySpoken = false,
     oneKeyInteract = false,
     sessionCatches = 0,
     sessionLootValueCopper = 0,
+    pulsePhase = false,
 }
 ns.Features.FishingCardHud = FishingCardHud
 
@@ -280,15 +282,66 @@ end
 
 function FishingCardHud:ToggleSoundBoost(forceVal)
     local want = (forceVal ~= nil) and (forceVal == true) or (not self.soundBoost)
+    if (not want) and self.soundBoostPausedBySpoken then
+        self.soundBoost = false
+        self.soundBoostPausedBySpoken = false
+        ns.Api.SafeAPI.Print("낚시 음향 강조 OFF (대기 해제)")
+        self:Refresh()
+        return true, "CANCELLED_DEFERRED"
+    end
+    if want and ns.Bridges and ns.Bridges.Spoken and type(ns.Bridges.Spoken.ShouldDuckAudio) == "function"
+        and ns.Bridges.Spoken:ShouldDuckAudio(false)
+    then
+        self.soundBoost = true
+        self.soundBoostPausedBySpoken = true
+        ns.Api.SafeAPI.Print("Spoken 음성 재생 중이므로 낚시 음향 강조를 대기합니다 (음성 종료 시 자동 활성화).")
+        self:Refresh()
+        return true, "DEFERRED_SPOKEN"
+    end
     local ok, reason = ns.Api.GameAdapters.SetFishingSoundBoostSafe(want)
     if not ok then
         ns.Api.SafeAPI.Print("전투 중에는 낚시 음향 강조를 전환할 수 없습니다 (" .. tostring(reason) .. ").")
         return false, reason
     end
     self.soundBoost = want
+    self.soundBoostPausedBySpoken = false
     ns.Api.SafeAPI.Print(want and "낚시 음향 강조 ON (입질 효과음 100% · 배경음 축소)" or "낚시 음향 강조 OFF (원래 볼륨 복원)")
     self:Refresh()
     return true, reason
+end
+
+function FishingCardHud:OnSpokenPlaybackChanged(isPlaying)
+    if not self.soundBoost then
+        return false
+    end
+    if isPlaying then
+        if not self.soundBoostPausedBySpoken and not ns.Api.SafeAPI.InCombat() then
+            local ok = ns.Api.GameAdapters.SetFishingSoundBoostSafe(false)
+            if ok then
+                self.soundBoostPausedBySpoken = true
+                return true, "PAUSED"
+            end
+        end
+    else
+        if self.soundBoostPausedBySpoken and not ns.Api.SafeAPI.InCombat() then
+            local ok = ns.Api.GameAdapters.SetFishingSoundBoostSafe(true)
+            if ok then
+                self.soundBoostPausedBySpoken = false
+                return true, "RESUMED"
+            end
+        end
+    end
+    return false
+end
+
+function FishingCardHud:ReconcileSpokenAudio()
+    if not self.soundBoost or ns.Api.SafeAPI.InCombat() then
+        return false
+    end
+    local spokenPlaying = ns.Bridges and ns.Bridges.Spoken
+        and type(ns.Bridges.Spoken.ShouldDuckAudio) == "function"
+        and ns.Bridges.Spoken:ShouldDuckAudio(false) or false
+    return self:OnSpokenPlaybackChanged(spokenPlaying)
 end
 
 function FishingCardHud:SwapFishingPole()
@@ -439,11 +492,19 @@ function FishingCardHud:Refresh()
     local fStat = ns.Api.GameAdapters.GetFishingStatusSafe()
     local skillTxt = (fStat and fStat.skill) and ("숙련 " .. tostring(fStat.skill) .. "/" .. tostring(fStat.maxSkill or 300)) or "숙련 -"
     local lureTxt
-    if fStat and fStat.hasLure and fStat.lureSec > 0 then
-        local m = math_floor(fStat.lureSec / 60)
-        local s = fStat.lureSec - m * 60
-        lureTxt = string_format("미끼 %02d:%02d", m, s)
-        self.metaLbl:SetTextColor(T.SEMANTIC.SUCCESS[1], T.SEMANTIC.SUCCESS[2], T.SEMANTIC.SUCCESS[3], 1)
+    if fStat and fStat.hasLure and type(fStat.lureSec) == "number" and fStat.lureSec > 0 then
+        local totalSec = math_floor(fStat.lureSec)
+        local m = math_floor(totalSec / 60)
+        local s = totalSec - m * 60
+        if totalSec < 60 then
+            self.pulsePhase = not self.pulsePhase
+            lureTxt = string_format("[!] 미끼 %02d:%02d", m, s)
+            local pCol = self.pulsePhase and T.TEXT.GOLD or T.SEMANTIC.DANGER
+            self.metaLbl:SetTextColor(pCol[1], pCol[2], pCol[3], 1)
+        else
+            lureTxt = string_format("미끼 %02d:%02d", m, s)
+            self.metaLbl:SetTextColor(T.SEMANTIC.SUCCESS[1], T.SEMANTIC.SUCCESS[2], T.SEMANTIC.SUCCESS[3], 1)
+        end
     else
         lureTxt = "[!] 미끼 없음"
         self.metaLbl:SetTextColor(T.SEMANTIC.WARN[1], T.SEMANTIC.WARN[2], T.SEMANTIC.WARN[3], 1)
@@ -481,6 +542,25 @@ function FishingCardHud:Refresh()
         end
     end
 
+    local activeQuestBlob = ""
+    if #matches > 0 and ns.Api.SafeAPI and type(ns.Api.SafeAPI.CollectQuestLog) == "function" then
+        local qLog = ns.Api.SafeAPI.CollectQuestLog()
+        local qParts = {}
+        for _, q in ipairs(qLog or {}) do
+            if type(q) == "table" and not q.isComplete then
+                if type(q.title) == "string" then qParts[#qParts + 1] = q.title end
+                if type(q.objectives) == "table" then
+                    for _, obj in ipairs(q.objectives) do
+                        if type(obj) == "table" and not obj.finished and type(obj.text) == "string" then
+                            qParts[#qParts + 1] = obj.text
+                        end
+                    end
+                end
+            end
+        end
+        activeQuestBlob = table.concat(qParts, " ")
+    end
+
     if #matches > 0 then
         local summary = {}
         for i = 1, MAX_FISH_ROWS do
@@ -490,9 +570,17 @@ function FishingCardHud:Refresh()
                 local ahPrice = LookupFishAuctionPrice(e)
                 local priceSuffix = (type(ahPrice) == "number" and ahPrice > 0 and ns.Domain and ns.Domain.LedgerModel)
                     and (" · " .. ns.Domain.LedgerModel.FormatCopper(ahPrice)) or ""
-                summary[#summary + 1] = tostring(e.title) .. " (숙련 " .. tostring(e.minSkill or "?") .. priceSuffix .. ")"
+                local baseName = tostring(e.title or ""):match("^([^%(]+)") or tostring(e.title or "")
+                baseName = baseName:match("^%s*(.-)%s*$") or baseName
+                local isQuestFish = (activeQuestBlob ~= "" and baseName ~= "" and string_find(activeQuestBlob, baseName, 1, true) ~= nil)
+                local prefix = isQuestFish and "★ [퀘] " or "· "
+                summary[#summary + 1] = (isQuestFish and "★ " or "") .. tostring(e.title) .. " (숙련 " .. tostring(e.minSkill or "?") .. priceSuffix .. ")"
                 row._fishEntry = e
-                row._left:SetText("· " .. tostring(e.title))
+                row._left:SetText(prefix .. tostring(e.title))
+                if row._left and type(row._left.SetTextColor) == "function" then
+                    local lc = isQuestFish and T.TEXT.GOLD or T.TEXT.PRIMARY
+                    row._left:SetTextColor(lc[1], lc[2], lc[3], 1)
+                end
                 row._right:SetText("숙련 " .. tostring(e.minSkill or "?") .. priceSuffix)
                 row:Show()
             else

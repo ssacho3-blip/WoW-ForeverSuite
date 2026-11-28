@@ -71,6 +71,7 @@ function CombatHudModel.FilterShortBuffs(auras, now, maxRemSec, limit)
                 table_insert(out, {
                     name = a.name,
                     spellId = a.spellId,
+                    auraInstanceID = a.auraInstanceID,
                     remaining = rem,
                     duration = a.duration,
                     urgent = (rem <= 5),

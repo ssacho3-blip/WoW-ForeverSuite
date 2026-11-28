@@ -1,8 +1,8 @@
 ## Interface: 16001, 120105
 ## Title: |cffd4af37Forever|rSuite
-## Notes: WoW Forever 1.60.1 Zero-Taint · 단일 연출자 OS 셸 + 외부 전문 앱 편입 (v6.1)
+## Notes: WoW Forever 1.60.1 Zero-Taint · 단일 연출자 OS 셸 + 외부 전문 앱 편입 (v6.4)
 ## Author: Youngseo Cho
-## Version: 6.3.0
+## Version: 6.4.0
 ## SavedVariables: ForeverSuiteV2DB, ForeverSuiteDB
 ## SavedVariablesPerCharacter: ForeverSuiteV2CharDB, ForeverSuiteCharDB
 ## OptionalDeps: Baganator, Syndicator, Auctionator, DialogueUI, Spoken, Platynator, ForeverTotems, RareScanner, LibSharedMedia-3.0, ForeverSuite_Media, ForeverSuite_Media_Assets, ForeverSuite_Fonts_Global, ForeverSuite_Data
@@ -41,6 +41,7 @@ Domain/SettingsSchemaModel.lua
 Domain/ProfileMigrationModel.lua
 Domain/HomeDashboardModel.lua
 Domain/GlobalSearchModel.lua
+Domain/MailboxModel.lua
 Api/SafeAPI.lua
 Api/AddonProbe.lua
 Api/DataHub.lua
@@ -112,5 +113,8 @@ Features/TrackingSwitcher.lua
 Features/QuickDockHud.lua
 Features/CharacterDockPanel.lua
 Features/SetupWizard.lua
+Features/CommandPalette.lua
+Features/MailboxModule.lua
 Features/DiagnosticsPage.lua
+Features/Boot/Schemas.lua
 Features/Bootstrap.lua

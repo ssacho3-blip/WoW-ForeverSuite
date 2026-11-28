@@ -101,6 +101,13 @@ function TooltipModel.BuildItemLines(itemID, sellPrice, stackCount, protectedSet
                 tone = "GOLD",
             }
         end
+        if type(opts.altOwnedText) == "string" and opts.altOwnedText ~= "" then
+            lines[#lines + 1] = {
+                left = "부캐 보유 (Syndicator)",
+                right = opts.altOwnedText,
+                tone = "GOLD",
+            }
+        end
     end
 
     return lines

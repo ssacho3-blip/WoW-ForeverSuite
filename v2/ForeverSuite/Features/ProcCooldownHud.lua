@@ -85,14 +85,19 @@ function ProcCooldownHud:Init()
     cc:SetRadialScrim(0.32, 0.03, 0.03, 0.04)
     cc:EnableMouse(false)
     self.cdBars = {}
+    self.cdTimeRows = {}
     for i = 1, 4 do
         local track = W.StatusBarTrack(cc, 196, 16)
         track:SetPoint("TOPLEFT", cc, "TOPLEFT", 8, -(8 + (i - 1) * 20))
         track:Hide()
         self.cdBars[i] = track
+        local tLbl = W.Label(cc, "", "small", T.TEXT.GOLD, { justifyH = "RIGHT", wordWrap = false, outline = "OUTLINE" })
+        tLbl:SetPoint("TOPRIGHT", cc, "TOPRIGHT", -10, -(9 + (i - 1) * 20))
+        tLbl:SetWidth(52)
+        self.cdTimeRows[i] = tLbl
         local lbl = W.Label(cc, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
         lbl:SetPoint("TOPLEFT", cc, "TOPLEFT", 12, -(9 + (i - 1) * 20))
-        lbl:SetPoint("TOPRIGHT", cc, "TOPRIGHT", -10, -(9 + (i - 1) * 20))
+        lbl:SetPoint("TOPRIGHT", tLbl, "TOPLEFT", -4, 0)
         self.cdRows[i] = lbl
     end
     cc:Hide()
@@ -205,13 +210,15 @@ function ProcCooldownHud:RefreshCooldowns()
         self.cdCard:Hide()
         return 0
     end
+    local durAdapter = ns.Api and ns.Api.Adapters and ns.Api.Adapters.Duration
     local active = {}
     for _, sp in ipairs(list) do
         local st, dur = ns.Api.GameAdapters.GetSpellCooldownSafe(sp.id)
-        if type(st) == "number" and type(dur) == "number" and dur > 2.0 and st > 0 then
+        local validStart = type(st) == "number" and ((st > 0) or (st < 0 and now < 0))
+        if validStart and type(dur) == "number" and dur > 2.0 then
             local rem = (st + dur) - now
-            if rem > 0.2 then
-                active[#active + 1] = { name = sp.name, remaining = rem, duration = dur }
+            if rem > 0.2 and rem <= dur + 1.0 then
+                active[#active + 1] = { id = sp.id, name = sp.name, remaining = rem, duration = dur }
             end
         end
     end
@@ -225,10 +232,24 @@ function ProcCooldownHud:RefreshCooldowns()
     for i = 1, 4 do
         local r = active[i]
         local lbl = self.cdRows[i]
+        local tLbl = self.cdTimeRows and self.cdTimeRows[i]
         local bar = self.cdBars and self.cdBars[i]
         if r and i <= shown then
-            lbl:SetText(string_format("%s  %.1fs", r.name, r.remaining))
             local col = (r.remaining <= 5.0) and T.SEMANTIC.SUCCESS or T.TEXT.GOLD
+            local boundNative = false
+            if tLbl and durAdapter and type(durAdapter.BindSpellCooldown) == "function" and type(r.id) == "number" then
+                boundNative = durAdapter.BindSpellCooldown(r.id, tLbl) == true
+            end
+            if tLbl then
+                lbl:SetText(tostring(r.name))
+                if not boundNative then
+                    tLbl:SetText(string_format("%.1fs", r.remaining))
+                end
+                tLbl:SetTextColor(col[1], col[2], col[3], 1)
+                tLbl:Show()
+            else
+                lbl:SetText(string_format("%s  %.1fs", r.name, r.remaining))
+            end
             lbl:SetTextColor(col[1], col[2], col[3], 1)
             lbl:Show()
             if bar then
@@ -239,6 +260,7 @@ function ProcCooldownHud:RefreshCooldowns()
         else
             lbl:SetText("")
             lbl:Hide()
+            if tLbl then tLbl:SetText(""); tLbl:Hide() end
             if bar then bar:Hide() end
         end
     end

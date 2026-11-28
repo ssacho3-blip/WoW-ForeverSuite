@@ -1553,6 +1553,7 @@ function GameAdapters.GetPlayerHelpfulAuras()
             out[#out + 1] = {
                 name = a.name,
                 spellId = (not SafeAPI.IsSecret(a.spellId)) and a.spellId or nil,
+                auraInstanceID = (not SafeAPI.IsSecret(a.auraInstanceID)) and a.auraInstanceID or nil,
                 duration = a.duration,
                 expirationTime = a.expirationTime,
             }
@@ -1976,6 +1977,18 @@ function GameAdapters.SetAudioDuckPredicate(fn)
     GameAdapters.audioDuckPredicate = (type(fn) == "function") and fn or nil
 end
 
+-- Append-only 0KB built-in WoW SoundKitID catalog (ForeverTotems REA Pattern 5)
+GameAdapters.SOUNDKIT_CATALOG = {
+    raid_warning   = 8959,
+    quest_complete = 619,
+    ready_check    = 8960,
+    level_up       = 888,
+    coin           = 120,
+    tell           = 3081,
+    map_ping       = 3175,
+    ui_click       = 856,
+}
+
 -- I7: Play notification sound file (ForeverSuite_Media_Assets) or built-in SoundKitID safely without touching CVars
 function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel, isSurvivalAlert)
     if type(GameAdapters.audioDuckPredicate) == "function" then
@@ -1991,11 +2004,9 @@ function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel, isSurv
     if type(soundKey) ~= "string" or soundKey == "" or soundKey == "none" then
         return false
     end
-    if soundKey == "raid_warning" and type(_G.PlaySound) == "function" then
-        return pcall(_G.PlaySound, 8959, ch) and true or false
-    end
-    if soundKey == "quest_complete" and type(_G.PlaySound) == "function" then
-        return pcall(_G.PlaySound, 619, ch) and true or false
+    local builtInId = GameAdapters.SOUNDKIT_CATALOG[soundKey]
+    if type(builtInId) == "number" and type(_G.PlaySound) == "function" then
+        return pcall(_G.PlaySound, builtInId, ch) and true or false
     end
     if type(_G.PlaySoundFile) == "function" then
         local vol = tonumber(volumePct) or 75

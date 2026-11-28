@@ -12,8 +12,38 @@ local string_sub = string.sub
 local SpokenBridge = {
     registered = false,
     playingFlag = false,
+    listeners = {},
 }
 ns.Bridges.Spoken = SpokenBridge
+
+function SpokenBridge:OnPlaybackChange(cb)
+    if type(cb) ~= "function" then return false end
+    for i = 1, #self.listeners do
+        if self.listeners[i] == cb then
+            return true
+        end
+    end
+    self.listeners[#self.listeners + 1] = cb
+    return true
+end
+
+function SpokenBridge:OffPlaybackChange(cb)
+    if type(cb) ~= "function" then return false end
+    for i = #self.listeners, 1, -1 do
+        if self.listeners[i] == cb then
+            table.remove(self.listeners, i)
+            return true
+        end
+    end
+    return false
+end
+
+function SpokenBridge:NotifyPlayback(isPlaying)
+    self.playingFlag = isPlaying == true
+    for i = 1, #self.listeners do
+        pcall(self.listeners[i], self.playingFlag)
+    end
+end
 
 local function GetSpoken()
     local sp = ns.Api.AddonProbe.GetGlobal("Spoken")
@@ -60,10 +90,10 @@ function SpokenBridge:Init()
 
     if type(sp.RegisterCallback) == "function" then
         pcall(sp.RegisterCallback, sp, "PlaybackStarted", function()
-            SpokenBridge.playingFlag = true
+            SpokenBridge:NotifyPlayback(true)
         end)
         pcall(sp.RegisterCallback, sp, "PlaybackStopped", function()
-            SpokenBridge.playingFlag = false
+            SpokenBridge:NotifyPlayback(false)
         end)
     end
 

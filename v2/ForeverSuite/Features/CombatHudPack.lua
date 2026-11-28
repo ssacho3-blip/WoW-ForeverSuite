@@ -96,14 +96,19 @@ function CombatHudPack:Init()
     bf:SetRadialScrim(0.32, 0.03, 0.03, 0.04)
     bf:EnableMouse(false)
     self.buffBars = {}
+    self.buffTimeLabels = {}
     for i = 1, 4 do
         local track = W.StatusBarTrack(bf, 184, 16)
         track:SetPoint("TOPLEFT", bf, "TOPLEFT", 8, -(8 + (i - 1) * 20))
         track:Hide()
         self.buffBars[i] = track
+        local tLbl = W.Label(bf, "", "small", T.TEXT.GOLD, { justifyH = "RIGHT", wordWrap = false, outline = "OUTLINE" })
+        tLbl:SetPoint("TOPRIGHT", bf, "TOPRIGHT", -10, -(9 + (i - 1) * 20))
+        tLbl:SetWidth(48)
+        self.buffTimeLabels[i] = tLbl
         local lbl = W.Label(bf, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
         lbl:SetPoint("TOPLEFT", bf, "TOPLEFT", 12, -(9 + (i - 1) * 20))
-        lbl:SetPoint("TOPRIGHT", bf, "TOPRIGHT", -10, -(9 + (i - 1) * 20))
+        lbl:SetPoint("TOPRIGHT", tLbl, "TOPLEFT", -4, 0)
         self.buffLabels[i] = lbl
     end
     bf:Hide()
@@ -277,13 +282,28 @@ function CombatHudPack:RefreshShortBuffs()
         self.buffFrame:Hide()
         return
     end
+    local durAdapter = ns.Api and ns.Api.Adapters and ns.Api.Adapters.Duration
     for i = 1, 4 do
         local b = list[i]
         local lbl = self.buffLabels[i]
+        local tLbl = self.buffTimeLabels and self.buffTimeLabels[i]
         local bar = self.buffBars and self.buffBars[i]
         if b then
-            lbl:SetText(string_format("%s  %.1fs", tostring(b.name), b.remaining))
             local c = b.urgent and T.SEMANTIC.DANGER or T.TEXT.GOLD
+            local boundNative = false
+            if tLbl and durAdapter and type(durAdapter.BindAuraDuration) == "function" and b.auraInstanceID ~= nil then
+                boundNative = durAdapter.BindAuraDuration("player", b.auraInstanceID, tLbl) == true
+            end
+            if tLbl then
+                lbl:SetText(tostring(b.name))
+                if not boundNative then
+                    tLbl:SetText(string_format("%.1fs", b.remaining))
+                end
+                tLbl:SetTextColor(c[1], c[2], c[3], 1)
+                tLbl:Show()
+            else
+                lbl:SetText(string_format("%s  %.1fs", tostring(b.name), b.remaining))
+            end
             lbl:SetTextColor(c[1], c[2], c[3], 1)
             lbl:Show()
             if bar then
@@ -293,6 +313,7 @@ function CombatHudPack:RefreshShortBuffs()
         else
             lbl:SetText("")
             lbl:Hide()
+            if tLbl then tLbl:SetText(""); tLbl:Hide() end
             if bar then bar:Hide() end
         end
     end

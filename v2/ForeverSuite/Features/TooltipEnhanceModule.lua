@@ -125,8 +125,22 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
     local starterRec = (wantSources and ns.Features.QuestExtraModule) and ns.Features.QuestExtraModule:GetStarterHintForItem(itemID) or nil
     local starterHint = starterRec and ("퀘스트 #" .. tostring(starterRec.questsCsv or "") .. ((type(starterRec.minLevel) == "number" and starterRec.minLevel > 0) and (" · Lv." .. tostring(starterRec.minLevel) .. "+") or "")) or nil
 
-    local yieldVendorPrice = ns.Bridges and ns.Bridges.BridgeHost
-        and ns.Bridges.BridgeHost:IsFeatureYielded("tooltip_vendor_price") or false
+    local yieldVendorPrice = (ns.Bridges and ns.Bridges.BridgeHost
+        and type(ns.Bridges.BridgeHost.IsFeatureYielded) == "function"
+        and ns.Bridges.BridgeHost:IsFeatureYielded("tooltip_vendor_price"))
+        or (ns.Bridges and ns.Bridges.Auctionator
+            and type(ns.Bridges.Auctionator.ShouldYieldTooltipVendorPrice) == "function"
+            and ns.Bridges.Auctionator:ShouldYieldTooltipVendorPrice())
+        or false
+
+    local altOwnedText = nil
+    local syn = ns.Bridges and ns.Bridges.Syndicator
+    if syn and type(syn.GetTotalItemCount) == "function" then
+        local totalOwned, synStatus = syn:GetTotalItemCount(itemID)
+        if synStatus == "OK" and type(totalOwned) == "number" and totalOwned > 0 then
+            altOwnedText = "총 " .. tostring(totalOwned) .. "개"
+        end
+    end
 
     local lines = ns.Domain.TooltipModel.BuildItemLines(itemID, sellPrice, 1, protected, {
         showItemID = true,
@@ -138,6 +152,7 @@ function TooltipEnhanceModule:OnItemTooltip(tooltip, itemID)
         profMaterialTag = profMatTag,
         koTranslation = koTrans,
         questStarterHint = starterHint,
+        altOwnedText = altOwnedText,
     })
     local added = 0
     for _, ln in ipairs(lines) do

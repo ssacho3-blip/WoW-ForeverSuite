@@ -2,6 +2,6 @@
 ## Title: |cffd4af37Forever|rSuite · Media
 ## Notes: ForeverSuite v6 경량 타이포그래피 · 1px HiDPI · Burnished Gold 9-slice & 12-Layer 3D 화살표 팩
 ## Author: Youngseo Cho
-## Version: 6.3.0
+## Version: 6.4.0
 
 Media.lua

@@ -18,7 +18,19 @@ local math_max = math.max
 local math_min = math.min
 
 local PANEL_WIDTH = 264
-local PANEL_HEIGHT = 310
+local PANEL_HEIGHT = 326
+
+local CLASS_TRAINER_KEYWORDS = {
+    WARRIOR = "전사",
+    MAGE = "마법사",
+    ROGUE = "도적",
+    HUNTER = "사냥꾼",
+    PRIEST = "사제",
+    WARLOCK = "흑마법사",
+    PALADIN = "성기사",
+    SHAMAN = "주술사",
+    DRUID = "드루이드",
+}
 
 local CharacterDockPanel = {
     frame = nil,
@@ -31,6 +43,7 @@ local CharacterDockPanel = {
     upgradeRows = nil,
     upgradeEmpty = nil,
     skillRows = nil,
+    trainerArrowBtn = nil,
     activeTab = "stats",
     ticker = nil,
     initialized = false,
@@ -170,23 +183,30 @@ local function EnsureUI()
     CharacterDockPanel.upgradeRows = upgradeRows
     CharacterDockPanel.upgradeEmpty = upgEmpty
 
-    -- Tab 3: Upcoming 5-level skill structured cards
+    -- Tab 3: Upcoming 5-level skill structured cards + [상급자 화살표] 1-click navigation
     local skillRows = {}
     local skillTitles = { "현재 습득 가능 스킬", "다음 5레벨 예정 스킬", "예상 총 습득 비용", "부족 골드" }
     for i = 1, 4 do
-        local row = W.Card(card, PANEL_WIDTH - 24, 44)
-        row:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -(68 + (i - 1) * 50))
+        local row = W.Card(card, PANEL_WIDTH - 24, 42)
+        row:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -(68 + (i - 1) * 47))
         local cap = W.Label(row, skillTitles[i], "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
-        cap:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
+        cap:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -5)
         local val = W.Label(row, "집계 없음", "body", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
-        val:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 10, 6)
-        val:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -10, 6)
+        val:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 10, 5)
+        val:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -10, 5)
         row._cap = cap
         row._val = val
         row:Hide()
         skillRows[i] = row
     end
     CharacterDockPanel.skillRows = skillRows
+
+    local trainerBtn = W.Button(card, "★ 직업 상급자 3D 화살표 안내", PANEL_WIDTH - 24, 24, function()
+        CharacterDockPanel:NavigateToNearestClassTrainer()
+    end, true)
+    trainerBtn:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -260)
+    trainerBtn:Hide()
+    CharacterDockPanel.trainerArrowBtn = trainerBtn
 
     CharacterDockPanel.frame = card
     card:Hide()
@@ -222,6 +242,64 @@ local function SetTabSectionVisibility(active)
     for i = 1, #(CharacterDockPanel.skillRows or {}) do
         if isSkills then CharacterDockPanel.skillRows[i]:Show() else CharacterDockPanel.skillRows[i]:Hide() end
     end
+    if CharacterDockPanel.trainerArrowBtn then
+        if isSkills then CharacterDockPanel.trainerArrowBtn:Show() else CharacterDockPanel.trainerArrowBtn:Hide() end
+    end
+end
+
+function CharacterDockPanel:NavigateToNearestClassTrainer()
+    local cls = ns.Api.GameAdapters.GetPlayerClass()
+    local kw = cls and CLASS_TRAINER_KEYWORDS[cls] or nil
+    if not kw then
+        ns.Api.SafeAPI.Print("직업 정보를 확인할 수 없습니다.")
+        return false, "NO_CLASS"
+    end
+    ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_Atlas")
+    local packs = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
+    local npcs = packs and packs.atlas_npcs and packs.atlas_npcs.entries or {}
+    local pPos = ns.Api.GameAdapters.GetPlayerPosition and ns.Api.GameAdapters.GetPlayerPosition() or nil
+    local pMap = type(pPos) == "table" and pPos.mapID or nil
+    local px = type(pPos) == "table" and pPos.x or nil
+    local py = type(pPos) == "table" and pPos.y or nil
+    local faction = ns.Api.GameAdapters.GetPlayerFaction()
+    local wantFacShort = (faction == "Horde") and "H" or ((faction == "Alliance") and "A" or nil)
+    local best, bestSameMap, bestDistSq = nil, false, 1e18
+    for i = 1, #npcs do
+        local n = npcs[i]
+        if type(n) == "table" and type(n.mapID) == "number" and type(n.x) == "number" and type(n.y) == "number" then
+            local isTrainer = (n.category == "trainer" and n.class == cls)
+            if not isTrainer then
+                local title = tostring(n.title or "")
+                local note = tostring(n.note or n.service or "")
+                local hay = title .. " " .. note
+                isTrainer = (string.find(hay, kw, 1, true) ~= nil and string.find(hay, "상급", 1, true) ~= nil)
+            end
+            local nf = n.faction
+            local factionOk = (not wantFacShort) or (not nf) or (nf == "N") or (nf == "Neutral") or (nf == wantFacShort) or (nf == faction)
+            if isTrainer and factionOk then
+                local sameMap = (type(pMap) == "number" and n.mapID == pMap)
+                local distSq = 1e18
+                if sameMap and type(px) == "number" and type(py) == "number" then
+                    local dx, dy = n.x - px, n.y - py
+                    distSq = dx * dx + dy * dy
+                end
+                if (best == nil) or (sameMap and not bestSameMap) or (sameMap == bestSameMap and distSq < bestDistSq) then
+                    best = n
+                    bestSameMap = sameMap
+                    bestDistSq = distSq
+                end
+            end
+        end
+    end
+    if not best then
+        ns.Api.SafeAPI.Print(kw .. " 상급자 좌표가 로드되지 않았습니다 (ForeverSuite-DataPack 확인).")
+        return false, "NOT_FOUND"
+    end
+    if ns.Features.NavigationHud and type(ns.Features.NavigationHud.SetTarget) == "function" then
+        ns.Features.NavigationHud:SetTarget(best.mapID, best.x, best.y, tostring(best.title or (kw .. " 상급자")))
+    end
+    ns.Api.SafeAPI.Print("직업 상급자 안내: " .. tostring(best.title or kw) .. " (" .. tostring(best.zone or "") .. ")")
+    return true, best
 end
 
 function CharacterDockPanel:Render(tabId)

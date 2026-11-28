@@ -103,7 +103,8 @@ local function EnsureWizardUI()
     local win = W.PopupCard(_G.UIParent, 440, 296, "ForeverSuiteSetupWizard", T.ELEVATION.L3_OVERLAY)
     win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
 
-    local title = W.Label(win, "★ ForeverSuite v6.1 초기 연출 마법사", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local ver = (ns.Api and ns.Api.SafeAPI and type(ns.Api.SafeAPI.GetAddonVersion) == "function" and ns.Api.SafeAPI.GetAddonVersion()) or "6.4.0"
+    local title = W.Label(win, "★ ForeverSuite v" .. tostring(ver) .. " 초기 연출 마법사", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     title:SetPoint("TOPLEFT", win, "TOPLEFT", 16, -14)
 
     -- 3-Step Stepper Badges (1/3 · 2/3 · 3/3)
@@ -280,9 +281,29 @@ function SetupWizard:Open(stepNum)
     return summaryText
 end
 
+function SetupWizard:ExportPortableProfile()
+    local settings = ns.Api.ProfileStore and ns.Api.ProfileStore.db and ns.Api.ProfileStore.db.v2
+        and ns.Api.ProfileStore.db.v2.settings or {}
+    if ns.Domain and ns.Domain.PowerQoLModel and type(ns.Domain.PowerQoLModel.SerializeProfile) == "function" then
+        local body = ns.Domain.PowerQoLModel.SerializeProfile(settings)
+        if type(body) == "string" and body ~= "" then
+            -- Portable format omits device-specific identifiers for safe cross-machine sharing
+            return "FS6|" .. body, "PORTABLE_FS6"
+        end
+    end
+    return nil, "UNAVAILABLE"
+end
+
 function SetupWizard:HandleCommand(arg)
     if arg == "undo" then
         return self:Undo()
+    elseif arg == "export" then
+        local str, mode = self:ExportPortableProfile()
+        if str then
+            ns.Api.SafeAPI.Print("3기기 프로필 내보내기 완료 (" .. tostring(mode) .. ", " .. tostring(#str) .. "B): " .. string.sub(str, 1, 64) .. "...")
+            return true, str
+        end
+        return false, mode
     end
     return self:Open(1)
 end
