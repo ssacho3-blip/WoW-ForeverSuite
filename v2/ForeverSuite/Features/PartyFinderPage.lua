@@ -275,7 +275,7 @@ function PartyFinderPage:RenderRowsFromList(list)
                 row:SetPoint("TOPLEFT", self.listBox, "TOPLEFT", 0, -((i - 1) * 33))
                 row:SetPoint("TOPRIGHT", self.listBox, "TOPRIGHT", rightMargin, -((i - 1) * 33))
                 row:SetData({
-                    icon = "Interface\\Icons\\INV_Misc_GroupLooking",
+                    icon = T.ICON.CUSTOM.partyFinder,
                     borderCol = isSel and T.BORDER.GOLD or T.BORDER.HAIRLINE,
                     title = "[" .. tostring(item.dungeonName or "") .. " · " .. tostring(item.roleSummary or "") .. "] " .. tostring(item.sender or ""),
                     subtitle = tostring(item.text or ""),
@@ -426,7 +426,7 @@ function PartyFinderPage:Build(parent)
     self.scrollBar = sb
 
     local empty = W.EmptyState(listBox, {
-        icon = "Interface\\Icons\\INV_Misc_GroupLooking",
+        icon = T.ICON.CUSTOM.partyFinder,
         title = "수집된 파티 모집글이 없습니다",
         desc = "파티찾기(/4) · 공개(/1) 채널에 모집글이 올라오면 던전과 역할별로 자동 분류됩니다.",
     })

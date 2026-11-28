@@ -19,14 +19,17 @@ end
 
 local MEDIA_ROOT = ResolveMediaRoot()
 local UI_ROOT = MEDIA_ROOT .. "UI\\"
+local ICON_ROOT = MEDIA_ROOT .. "Icons\\"
 
 local Media = {
-    version = "6.1.0",
+    version = "6.1.1",
     fonts = {
         bodyPath = BASE_FONT,
         monoPath = MONO_FONT,
     },
+    mediaRoot = MEDIA_ROOT,
     uiRoot = UI_ROOT,
+    iconRoot = ICON_ROOT,
     atlas = {
         frameGold = UI_ROOT .. "FS-Frame-Gold.tga",
         frameDark = UI_ROOT .. "FS-Frame-Dark.tga",

@@ -166,7 +166,7 @@ function LedgerPage:Build(parent)
     self.scrollBar = sb
 
     local empty = W.EmptyState(parent, {
-        icon = "Interface\\Icons\\INV_Misc_Coin_01",
+        icon = T.ICON.CUSTOM.coinGold,
         title = "기록된 골드 변동이 없습니다",
         desc = "상점 수리·잡템 판매·루팅·퀘스트 보상 등으로 골드가 변동되면 자동으로 여기에 기록됩니다.",
     })

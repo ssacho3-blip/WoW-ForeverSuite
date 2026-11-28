@@ -103,8 +103,11 @@ function DungeonBrowserPage:EnsureQuickLootHud()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -206,
-        y = -208,
+        y = -216,
     }, "던전 빠른 드랍 버튼")
+    if type(ns.UI.HudLayout.EnableDirectDrag) == "function" then
+        ns.UI.HudLayout:EnableDirectDrag("dungeonQuickLoot", btn, { requireShift = true })
+    end
 
     local pop = W.Card(_G.UIParent, 340, 316, "ForeverSuiteQuickLootPopup", T.ELEVATION.L3_OVERLAY)
     pop:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -4)
@@ -426,15 +429,13 @@ function DungeonBrowserPage:RenderRight()
         end
         for _, b in ipairs(bosses) do
             local isSel = (self.selectedBoss and self.selectedBoss.title == b.title)
-            local port = (self.portraitsByNpc and type(b.npcID) == "number" and b.npcID > 0) and self.portraitsByNpc[b.npcID] or nil
-            local portIcon = (port and type(port.fileDataID) == "number" and port.fileDataID > 0) and port.fileDataID or nil
+            local bossBaseIcon = (T.ICON and T.ICON.CUSTOM and T.ICON.CUSTOM.boss) or T.ICON.FALLBACK
             rowsToShow[#rowsToShow + 1] = {
                 title = (isSel and "▼ " or "▶ ") .. tostring(b.title),
                 subtitle = (b.tip and b.tip ~= "") and b.tip or nil,
                 right = (type(b.itemCount) == "number") and (tostring(b.itemCount) .. "종 드랍") or "드랍 정보",
                 color = isSel and T.TEXT.GOLD or T.TEXT.PRIMARY,
-                icon = portIcon,
-                portraitDisplayID = (not portIcon and port and type(port.displayID) == "number" and port.displayID > 0) and port.displayID or nil,
+                icon = bossBaseIcon,
                 glyph = "★",
                 borderCol = isSel and T.BORDER.GOLD or T.BORDER.SUBTLE,
                 selected = isSel,
@@ -660,13 +661,6 @@ function DungeonBrowserPage:RenderRight()
                 selected = data.selected,
                 sepCol = T.BORDER.SUBTLE,
             })
-            if data.portraitDisplayID and row._icon and row._icon._tex
-                and type(_G.SetPortraitTextureFromCreatureDisplayID) == "function"
-            then
-                pcall(_G.SetPortraitTextureFromCreatureDisplayID, row._icon._tex, data.portraitDisplayID)
-                row._icon._tex:Show()
-                if row._icon._glyph then row._icon._glyph:Hide() end
-            end
             row._item = data.item
             row._onActivate = data.onClick
             row:Show()

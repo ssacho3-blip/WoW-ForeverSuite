@@ -448,8 +448,8 @@ local PIN_ICON_BY_KIND = {
     quest = "Interface\\GossipFrame\\AvailableQuestIcon",
     dungeon = "Interface\\Icons\\INV_Misc_Map_01",
     trainer = "Interface\\Icons\\Trade_BlackSmithing",
-    transport = "Interface\\Icons\\Ability_Mount_Gryphon_01",
-    service = "Interface\\Icons\\INV_Misc_Coin_01",
+    transport = T.ICON.CUSTOM.transport,
+    service = T.ICON.CUSTOM.coinGold,
 }
 
 function WorldMapOverlay:InvalidatePinCache()

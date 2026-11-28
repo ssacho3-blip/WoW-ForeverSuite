@@ -87,7 +87,9 @@ function QuestItemDock:EnsureButtons()
             end
         end
         if not usedAtlas and type(ring.SetTexture) == "function" then
-            pcall(ring.SetTexture, ring, "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\FS-IconRing.tga")
+            local ringPath = (ns.UI and ns.UI.Tokens and ns.UI.Tokens.UI_ART and ns.UI.Tokens.UI_ART.iconRing)
+                or (((_G.ForeverSuiteMedia and type(_G.ForeverSuiteMedia.uiRoot) == "string") and _G.ForeverSuiteMedia.uiRoot or "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\") .. "FS-IconRing.tga")
+            pcall(ring.SetTexture, ring, ringPath)
             if type(ring.SetVertexColor) == "function" then
                 pcall(ring.SetVertexColor, ring, 0.855, 0.694, 0.255, 0.92)
             end

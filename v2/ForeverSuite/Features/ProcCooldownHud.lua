@@ -14,13 +14,13 @@ local string_format = string.format
 
 -- Forever 1.60.1 signature combat procs (aura spellID -> banner)
 local WATCHED_PROCS = {
-    [17941]   = { name = "일몰 발동!", desc = "어둠의 화살 즉시 시전", icon = "Interface\\Icons\\Spell_Shadow_Twilight" },
-    [400589]  = { name = "화살 탄막 발동!", desc = "신비한 화살 강화", icon = "Interface\\Icons\\Spell_Arcane_StarFire" },
-    [1326083] = { name = "화살 탄막 발동!", desc = "신비한 화살 강화", icon = "Interface\\Icons\\Spell_Arcane_StarFire" },
-    [12536]   = { name = "정신 집중 발동!", desc = "다음 주문 마나 소모 0", icon = "Interface\\Icons\\Spell_Shadow_ManaBurn" },
-    [16870]   = { name = "청명의 전조 발동!", desc = "다음 기술 자원 소모 0", icon = "Interface\\Icons\\Spell_Crystal" },
-    [14201]   = { name = "격노 발동!", desc = "공격력 증가", icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy" },
-    [20216]   = { name = "신의 은총 발동!", desc = "다음 치유 극대화", icon = "Interface\\Icons\\Spell_Holy_Heal" },
+    [17941]   = { name = "일몰 발동!", desc = "어둠의 화살 즉시 시전", icon = T.ICON.CUSTOM.procTwilight },
+    [400589]  = { name = "화살 탄막 발동!", desc = "신비한 화살 강화", icon = T.ICON.CUSTOM.procArcane },
+    [1326083] = { name = "화살 탄막 발동!", desc = "신비한 화살 강화", icon = T.ICON.CUSTOM.procArcane },
+    [12536]   = { name = "정신 집중 발동!", desc = "다음 주문 마나 소모 0", icon = T.ICON.CUSTOM.procMana },
+    [16870]   = { name = "청명의 전조 발동!", desc = "다음 기술 자원 소모 0", icon = T.ICON.CUSTOM.procCrystal },
+    [14201]   = { name = "격노 발동!", desc = "공격력 증가", icon = T.ICON.CUSTOM.procFrenzy },
+    [20216]   = { name = "신의 은총 발동!", desc = "다음 치유 극대화", icon = T.ICON.CUSTOM.procHoly },
 }
 
 -- Key major cooldown spell IDs per class (only shown when known & currently on cooldown > 2s)

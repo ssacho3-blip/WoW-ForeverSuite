@@ -127,8 +127,11 @@ function CombatHudPack:Init()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -24,
-        y = -208,
+        y = -216,
     }, "온스크린 시계")
+    if type(ns.UI.HudLayout.EnableDirectDrag) == "function" then
+        ns.UI.HudLayout:EnableDirectDrag("clockHud", clf, { requireShift = true })
+    end
 
     self:RefreshAll()
 end

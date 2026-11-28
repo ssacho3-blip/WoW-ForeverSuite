@@ -151,8 +151,8 @@ fn build_consolidated_media_entries(
 
     let assets = source_root.join("ForeverSuite_Media_Assets");
     if assets.is_dir() {
-        // 1. Essential RLE-compressed UI & 3D Arrow TGA art kit
-        for sub in ["UI", "Arrows"] {
+        // 1. Essential UI, Bespoke RPG Icons & 3D Arrow TGA art kit
+        for sub in ["UI", "Icons", "Arrows"] {
             let sub_path = assets.join(sub);
             if sub_path.is_dir() {
                 collect_tree(&sub_path, &format!("ForeverSuite_Media/{sub}"), entries)?;
@@ -356,6 +356,12 @@ mod tests {
             "## Interface: 16001\nMedia.lua\n",
         )?;
         fs::write(root.join("ForeverSuite_Media/Media.lua"), "return {}\n")?;
+
+        fs::create_dir_all(root.join("ForeverSuite_Media_Assets/Icons"))?;
+        fs::write(
+            root.join("ForeverSuite_Media_Assets/Icons/FS-Icon-Fallback.tga"),
+            vec![0u8; 32],
+        )?;
         Ok(())
     }
 
@@ -380,6 +386,7 @@ mod tests {
         let mut ar = zip::ZipArchive::new(f)?;
         let mut top_dirs = HashSet::new();
         let mut has_shard = false;
+        let mut has_icon = false;
         for i in 0..ar.len() {
             let name = ar.by_index(i)?.name().to_string();
             if let Some(first) = name.split('/').next() {
@@ -388,12 +395,16 @@ mod tests {
             if name.contains("Shards/ForeverSuite_Data_Dungeon_Pack_d.lua") {
                 has_shard = true;
             }
+            if name == "ForeverSuite_Media/Icons/FS-Icon-Fallback.tga" {
+                has_icon = true;
+            }
         }
         assert_eq!(top_dirs.len(), 3, "must emit exactly 3 top-level folders: {top_dirs:?}");
         assert!(top_dirs.contains("ForeverSuite"));
         assert!(top_dirs.contains("ForeverSuite_Data"));
         assert!(top_dirs.contains("ForeverSuite_Media"));
         assert!(has_shard, "split data shard must be consolidated into ForeverSuite_Data/Shards/");
+        assert!(has_icon, "bespoke RPG icons must be consolidated into ForeverSuite_Media/Icons/");
 
         // 3. Hard cap overflow rejected fail-closed
         fs::write(src.join("ForeverSuite_Media/big.bin"), vec![0u8; 2 * 1024 * 1024])?;

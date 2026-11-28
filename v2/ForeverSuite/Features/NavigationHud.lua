@@ -373,7 +373,8 @@ function NavigationHud:Refresh()
         if self.rounded3D then self.rounded3D:Hide() end
         self.arrowLbl:Show()
     else
-        local texPath = ns.Domain.WorldMapModel and ns.Domain.WorldMapModel.ResolveArrowTexture(styleId) or nil
+        local rawTexPath = ns.Domain.WorldMapModel and ns.Domain.WorldMapModel.ResolveArrowTexture(styleId) or nil
+        local texPath = (rawTexPath and T.ResolveMediaPath) and T.ResolveMediaPath(rawTexPath) or rawTexPath
         if self.arrowTex and texPath then
             if self.goldArrow then self.goldArrow:Hide() end
             if self.rounded3D then self.rounded3D:Hide() end

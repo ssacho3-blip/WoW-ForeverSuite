@@ -2587,7 +2587,35 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 copied_count += 1;
             }
 
-            if copied_count > 0 {
+            let extracted_count = copied_count;
+            if extracted_count > 0 {
+                // Preserve bespoke local UI/ and Icons/ art kits across media regeneration
+                let mut preserved_ui_tgas = 0usize;
+                let mut preserved_icon_tgas = 0usize;
+                for sub in ["UI", "Icons"] {
+                    let src_sub = target_dir.join(sub);
+                    if src_sub.is_dir() {
+                        let dst_sub = stage_dir.join(sub);
+                        fs::create_dir_all(&dst_sub)?;
+                        for entry in fs::read_dir(&src_sub)? {
+                            let entry = entry?;
+                            let p = entry.path();
+                            if p.is_file() && !p.is_symlink() {
+                                if let Some(fname) = p.file_name() {
+                                    fs::copy(&p, dst_sub.join(fname))?;
+                                    if p.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("tga")).unwrap_or(false) {
+                                        if sub == "UI" {
+                                            preserved_ui_tgas += 1;
+                                        } else {
+                                            preserved_icon_tgas += 1;
+                                        }
+                                        copied_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 sound_files.sort();
                 font_files.sort();
                 map_files.sort();
@@ -2596,13 +2624,15 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                     "-- Auto-generated ForeverSuite Media Assets Manifest\n\
 _G.ForeverSuiteMediaAssets = {{\n\
     root = \"Interface\\\\AddOns\\\\ForeverSuite_Media_Assets\\\\\",\n\
-    counts = {{ total = {}, maps = {}, arrows = {}, sounds = {}, fonts = {} }},\n\
+    counts = {{ total = {}, maps = {}, arrows = {}, sounds = {}, fonts = {}, ui = {}, icons = {} }},\n\
 }}\n",
                     copied_count,
                     map_files.len(),
                     arrow_files.len(),
                     sound_files.len(),
-                    font_files.len()
+                    font_files.len(),
+                    preserved_ui_tgas,
+                    preserved_icon_tgas
                 );
                 full_moon::parse(&manifest_lua)
                     .map_err(|e| anyhow::anyhow!("Invalid AssetsManifest.lua: {e:?}"))?;

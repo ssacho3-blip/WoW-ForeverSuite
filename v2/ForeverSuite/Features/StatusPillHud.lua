@@ -28,7 +28,11 @@ function StatusPillHud:Init()
         Draw.CreateRoundedFill(card, 11, T.SURFACE.HUD_GLASS, { sublevel = -4 })
     end
     card:EnableMouse(true)
-    card:SetScript("OnMouseUp", function(_, mouseBtn)
+    card:SetScript("OnMouseUp", function(selfFrame, mouseBtn)
+        if selfFrame._fsJustDragged then
+            selfFrame._fsJustDragged = false
+            return
+        end
         if ns.UI.HudLayout and ns.UI.HudLayout.unlocked then return end
         if mouseBtn == "RightButton" then
             ns.UI.CommandHub:JumpTo("utilities", { subTab = "alts" })
@@ -36,6 +40,22 @@ function StatusPillHud:Init()
             ns.UI.CommandHub:JumpTo("ledger")
         end
     end)
+    if type(card.SetScript) == "function" then
+        card:SetScript("OnEnter", function(selfFrame)
+            if _G.GameTooltip and type(_G.GameTooltip.SetOwner) == "function" then
+                _G.GameTooltip:SetOwner(selfFrame, "ANCHOR_BOTTOM")
+                _G.GameTooltip:SetText("★ 상태 필 바", T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3])
+                _G.GameTooltip:AddLine("좌클릭: 골드 원장 · 우클릭: 부캐 장부", 0.90, 0.90, 0.92, true)
+                _G.GameTooltip:AddLine("Shift + 좌클릭 드래그: 잠금 없이 바로 이동", 0.56, 0.94, 0.66, true)
+                _G.GameTooltip:Show()
+            end
+        end)
+        card:SetScript("OnLeave", function()
+            if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
+                _G.GameTooltip:Hide()
+            end
+        end)
+    end
 
     -- Live visible 3-Segment Compact Capsule Readout (Bags | Durability | Gold · Realm)
     local seg1 = W.Label(card, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
@@ -73,8 +93,11 @@ function StatusPillHud:Init()
         point = "TOPRIGHT",
         relPoint = "TOPRIGHT",
         x = -24,
-        y = -240,
+        y = -244,
     }, "상태 필 바")
+    if type(ns.UI.HudLayout.EnableDirectDrag) == "function" then
+        ns.UI.HudLayout:EnableDirectDrag("statusPill", card, { requireShift = true })
+    end
 
     self:ApplyVisibility()
     self:RefreshLive()

@@ -16,7 +16,10 @@ local pcall = pcall
 local type = type
 local setmetatable = setmetatable
 
-local UI_ART_DIR = "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\"
+local MEDIA_ROOT = (_G.ForeverSuiteMedia and type(_G.ForeverSuiteMedia.mediaRoot) == "string" and _G.ForeverSuiteMedia.mediaRoot)
+    or "Interface\\AddOns\\ForeverSuite_Media_Assets\\"
+local UI_ART_DIR = MEDIA_ROOT .. "UI\\"
+local ICON_ART_DIR = MEDIA_ROOT .. "Icons\\"
 
 local DEFAULT_TEXTURE_BRIGHTNESS = 0.78
 local DEFAULT_GOLD_BRIGHTNESS = 0.88
@@ -211,17 +214,37 @@ local Tokens = {
         MD = 26,
         LG = 34,
         TRIM = { 0.08, 0.92, 0.08, 0.92 },
-        FALLBACK = "Interface\\Icons\\INV_Misc_QuestionMark",
+        FALLBACK = ICON_ART_DIR .. "FS-Icon-Fallback.tga",
+        CUSTOM = {
+            partyFinder  = ICON_ART_DIR .. "FS-Icon-PartyFinder.tga",
+            chat         = ICON_ART_DIR .. "FS-Icon-Chat.tga",
+            diagnostics  = ICON_ART_DIR .. "FS-Icon-Diagnostics.tga",
+            allItems     = ICON_ART_DIR .. "FS-Icon-AllItems.tga",
+            codex        = ICON_ART_DIR .. "FS-Icon-Codex.tga",
+            loot         = ICON_ART_DIR .. "FS-Icon-Loot.tga",
+            coinGold     = ICON_ART_DIR .. "FS-Icon-CoinGold.tga",
+            coinPot      = ICON_ART_DIR .. "FS-Icon-CoinPot.tga",
+            trade        = ICON_ART_DIR .. "FS-Icon-Trade.tga",
+            transport    = ICON_ART_DIR .. "FS-Icon-Transport.tga",
+            procTwilight = ICON_ART_DIR .. "FS-Icon-ProcTwilight.tga",
+            procArcane   = ICON_ART_DIR .. "FS-Icon-ProcArcane.tga",
+            procMana     = ICON_ART_DIR .. "FS-Icon-ProcMana.tga",
+            procCrystal  = ICON_ART_DIR .. "FS-Icon-ProcCrystal.tga",
+            procFrenzy   = ICON_ART_DIR .. "FS-Icon-ProcFrenzy.tga",
+            procHoly     = ICON_ART_DIR .. "FS-Icon-ProcHoly.tga",
+            fallback     = ICON_ART_DIR .. "FS-Icon-Fallback.tga",
+            boss         = ICON_ART_DIR .. "FS-Icon-Boss.tga",
+        },
         CLASS_TEX = {
-            WARRIOR = "Interface\\Icons\\ClassIcon_Warrior",
-            PALADIN = "Interface\\Icons\\ClassIcon_Paladin",
-            HUNTER  = "Interface\\Icons\\ClassIcon_Hunter",
-            ROGUE   = "Interface\\Icons\\ClassIcon_Rogue",
-            PRIEST  = "Interface\\Icons\\ClassIcon_Priest",
-            SHAMAN  = "Interface\\Icons\\ClassIcon_Shaman",
-            MAGE    = "Interface\\Icons\\ClassIcon_Mage",
-            WARLOCK = "Interface\\Icons\\ClassIcon_Warlock",
-            DRUID   = "Interface\\Icons\\ClassIcon_Druid",
+            WARRIOR = ICON_ART_DIR .. "FS-Class-Warrior.tga",
+            PALADIN = ICON_ART_DIR .. "FS-Class-Paladin.tga",
+            HUNTER  = ICON_ART_DIR .. "FS-Class-Hunter.tga",
+            ROGUE   = ICON_ART_DIR .. "FS-Class-Rogue.tga",
+            PRIEST  = ICON_ART_DIR .. "FS-Class-Priest.tga",
+            SHAMAN  = ICON_ART_DIR .. "FS-Class-Shaman.tga",
+            MAGE    = ICON_ART_DIR .. "FS-Class-Mage.tga",
+            WARLOCK = ICON_ART_DIR .. "FS-Class-Warlock.tga",
+            DRUID   = ICON_ART_DIR .. "FS-Class-Druid.tga",
         },
         PROF_TEX = {
             ["대장기술"] = "Interface\\Icons\\Trade_BlackSmithing",
@@ -255,6 +278,17 @@ local Tokens = {
         L3_OVERLAY = "FULLSCREEN_DIALOG",
     },
 }
+
+function Tokens.ResolveMediaPath(path)
+    if type(path) ~= "string" then
+        return path
+    end
+    local defaultPrefix = "Interface\\AddOns\\ForeverSuite_Media_Assets\\"
+    if MEDIA_ROOT ~= defaultPrefix and string.sub(path, 1, #defaultPrefix) == defaultPrefix then
+        return MEDIA_ROOT .. string.sub(path, #defaultPrefix + 1)
+    end
+    return path
+end
 
 function Tokens.ClampTextureBrightness(v)
     return ClampFinite(v, 0.35, 1.00, DEFAULT_TEXTURE_BRIGHTNESS)

@@ -460,6 +460,9 @@ function QuestTrackerView:Init()
     }, "퀘스트 추적기", function(anchor)
         QuestTrackerView:SyncDockAnchor(anchor)
     end)
+    if type(ns.UI.HudLayout.SetDirectDragFlag) == "function" then
+        ns.UI.HudLayout:SetDirectDragFlag("questTracker", true)
+    end
 
     self:SyncToolbarLabels()
     self:UpdateCombatVisuals()

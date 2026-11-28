@@ -1836,9 +1836,11 @@ function GameAdapters.PlayNotificationSound(soundKey, volumePct, channel, isSurv
         local step = (vol <= 35) and 25 or ((vol <= 62) and 50 or ((vol <= 87) and 75 or 100))
         local ext = (soundKey == "cash") and ".wav"
             or ((soundKey == "cooking_master" and step == 100) and ".mp3" or ".ogg")
-        local path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Notifications\\" .. soundKey .. "_" .. tostring(step) .. ext
-        local ok = pcall(_G.PlaySoundFile, path, ch)
-        if ok then return true end
+        local mediaRoot = (_G.ForeverSuiteMedia and type(_G.ForeverSuiteMedia.mediaRoot) == "string")
+            and _G.ForeverSuiteMedia.mediaRoot or "Interface\\AddOns\\ForeverSuite_Media_Assets\\"
+        local path = mediaRoot .. "Notifications\\" .. soundKey .. "_" .. tostring(step) .. ext
+        local ok, played = pcall(_G.PlaySoundFile, path, ch)
+        if ok and played ~= false then return true end
     end
     if type(_G.PlaySound) == "function" then
         return pcall(_G.PlaySound, 8959, ch) and true or false
@@ -1957,6 +1959,140 @@ function GameAdapters.GetFishingStatusSafe()
         skill = skill,
         maxSkill = maxSkill,
     }
+end
+
+GameAdapters.FISHING_LURES = {
+    { itemID = 6533, bonus = 100, fallbackName = "아쿠아다이내믹 물고기 유인기" },
+    { itemID = 7307, bonus = 75,  fallbackName = "살덩이 벌레" },
+    { itemID = 6532, bonus = 75,  fallbackName = "빛나는 미끼" },
+    { itemID = 6811, bonus = 50,  fallbackName = "아쿠아다이내믹 물고기 렌즈" },
+    { itemID = 6530, bonus = 50,  fallbackName = "밤벌레" },
+    { itemID = 6529, bonus = 25,  fallbackName = "반짝이는 미끼" },
+}
+
+function GameAdapters.FindBestFishingLureInBags()
+    local items = GameAdapters.ScanBagItems()
+    local byID = {}
+    for i = 1, #items do
+        local it = items[i]
+        if type(it.itemID) == "number" and not it.isLocked then
+            local rec = byID[it.itemID]
+            if not rec then
+                byID[it.itemID] = {
+                    itemID = it.itemID,
+                    name = it.name,
+                    count = it.stackCount or 1,
+                    bag = it.bag,
+                    slot = it.slot,
+                }
+            else
+                rec.count = rec.count + (it.stackCount or 1)
+            end
+        end
+    end
+    for i = 1, #GameAdapters.FISHING_LURES do
+        local spec = GameAdapters.FISHING_LURES[i]
+        local found = byID[spec.itemID]
+        if found then
+            return {
+                itemID = spec.itemID,
+                bonus = spec.bonus,
+                name = (found.name and found.name ~= ("#" .. tostring(spec.itemID))) and found.name or spec.fallbackName,
+                count = found.count,
+                bag = found.bag,
+                slot = found.slot,
+            }
+        end
+    end
+    return nil
+end
+
+function GameAdapters.FindFishingPoleInBags()
+    local items = GameAdapters.ScanBagItems()
+    for i = 1, #items do
+        local it = items[i]
+        if type(it.itemID) == "number" and not it.isLocked and C_Item and type(C_Item.GetItemInfo) == "function" then
+            local ok, _, _, _, _, _, _, _, _, _, _, _, classID, subClassID = pcall(C_Item.GetItemInfo, it.itemID)
+            if ok and (not SafeAPI.IsSecret(classID)) and (not SafeAPI.IsSecret(subClassID))
+                and classID == 2 and subClassID == 20
+            then
+                return { itemID = it.itemID, name = it.name, bag = it.bag, slot = it.slot }
+            end
+        end
+    end
+    return nil
+end
+
+function GameAdapters.GetEquippedWeaponsSafe()
+    if type(_G.GetInventoryItemID) ~= "function" then
+        return nil, nil
+    end
+    local mh = SafeAPI.SafeRead(_G.GetInventoryItemID, "player", 16)
+    local oh = SafeAPI.SafeRead(_G.GetInventoryItemID, "player", 17)
+    mh = (mh ~= UNAVAILABLE and type(mh) == "number" and mh > 0) and mh or nil
+    oh = (oh ~= UNAVAILABLE and type(oh) == "number" and oh > 0) and oh or nil
+    return mh, oh
+end
+
+function GameAdapters.EquipItemByIDSafe(itemID)
+    if SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    if type(itemID) ~= "number" or itemID <= 0 then
+        return false, "INVALID_ITEM"
+    end
+    if type(_G.EquipItemByName) == "function" then
+        local ok = pcall(_G.EquipItemByName, itemID)
+        if ok then return true, "EQUIPPED" end
+    end
+    -- Fallback: locate item in bags and UseContainerItem OOC
+    local items = GameAdapters.ScanBagItems()
+    for i = 1, #items do
+        local it = items[i]
+        if it.itemID == itemID and not it.isLocked then
+            if C_Container and type(C_Container.UseContainerItem) == "function" then
+                local ok = pcall(C_Container.UseContainerItem, it.bag, it.slot)
+                if ok then return true, "USED_BAG_ITEM" end
+            end
+        end
+    end
+    return false, "NOT_FOUND"
+end
+
+local FISHING_AUDIO_CVARS = {
+    { name = "Sound_SFXVolume", target = "1.0" },
+    { name = "Sound_AmbienceVolume", target = "0.15" },
+    { name = "Sound_MusicVolume", target = "0.15" },
+}
+
+function GameAdapters.SetFishingSoundBoostSafe(enable)
+    if SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    local ps = ns.Api and ns.Api.ProfileStore
+    if enable then
+        for i = 1, #FISHING_AUDIO_CVARS do
+            local spec = FISHING_AUDIO_CVARS[i]
+            local cur = GameAdapters.GetCVarRaw(spec.name)
+            if cur ~= nil and ps and type(ps.RecordCvarJournal) == "function" then
+                ps:RecordCvarJournal(spec.name, tostring(cur))
+            end
+            GameAdapters.SetCVarSafe(spec.name, spec.target)
+        end
+        return true, "BOOST_ON"
+    else
+        local journal = ps and ps.db and ps.db.v2 and ps.db.v2.state and ps.db.v2.state.cvarRestoreJournal
+        for i = 1, #FISHING_AUDIO_CVARS do
+            local spec = FISHING_AUDIO_CVARS[i]
+            local orig = type(journal) == "table" and journal[spec.name] or nil
+            if orig ~= nil then
+                if GameAdapters.SetCVarSafe(spec.name, orig) and ps and type(ps.ClearCvarJournal) == "function" then
+                    ps:ClearCvarJournal(spec.name)
+                end
+            end
+        end
+        return true, "BOOST_OFF"
+    end
 end
 
 -- A7: Safe OOC ActionBar snapshot & restore + EditMode export/import + Chat window layout

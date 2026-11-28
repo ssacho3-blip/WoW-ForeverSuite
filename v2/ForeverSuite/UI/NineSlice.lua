@@ -15,7 +15,8 @@ local type = type
 local NineSlice = {}
 ns.UI.NineSlice = NineSlice
 
-local ART_DIR = "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\"
+local ART_DIR = (_G.ForeverSuiteMedia and type(_G.ForeverSuiteMedia.uiRoot) == "string" and _G.ForeverSuiteMedia.uiRoot)
+    or "Interface\\AddOns\\ForeverSuite_Media_Assets\\UI\\"
 
 NineSlice.PRESETS = {
     window_gold = {

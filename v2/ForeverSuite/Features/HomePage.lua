@@ -90,11 +90,12 @@ function HomePage:Build(parent)
     local cardGap = 7
     local overview0 = ns.Domain.HomeDashboardModel.BuildOverview({})
     for i, cdef in ipairs(overview0.cards) do
+        local resolvedIcon = (cdef.iconKey and T.ICON and T.ICON.CUSTOM and T.ICON.CUSTOM[cdef.iconKey]) or cdef.icon
         local sc = W.StatCard(parent, cardW, 74, {
             caption = cdef.caption,
             value = cdef.value,
             sub = cdef.sub,
-            icon = cdef.icon,
+            icon = resolvedIcon,
             onClick = function()
                 if cdef.targetPage then
                     ns.UI.CommandHub:SelectPage(cdef.targetPage)
@@ -165,11 +166,12 @@ function HomePage:Build(parent)
     for idx, tdef in ipairs(tiles) do
         local col = (idx - 1) % 2
         local row = math.floor((idx - 1) / 2)
+        local tileIcon = (tdef.iconKey and T.ICON and T.ICON.CUSTOM and T.ICON.CUSTOM[tdef.iconKey]) or tdef.icon
         local tile = W.StatCard(parent, tileW, tileH, {
             caption = "바로가기",
             value = tdef.title,
             sub = tdef.sub,
-            icon = tdef.icon,
+            icon = tileIcon,
             onClick = function()
                 ns.UI.CommandHub:SelectPage(tdef.id)
             end,
@@ -262,7 +264,8 @@ function HomePage:OnShow()
     for _, c in ipairs(ov.cards) do
         local sc = self.statCards[c.id]
         if sc then
-            sc:SetMetrics(c.value, c.sub, ToneColor(c.tone), c.icon)
+            local cardIcon = (c.iconKey and T.ICON and T.ICON.CUSTOM and T.ICON.CUSTOM[c.iconKey]) or c.icon
+            sc:SetMetrics(c.value, c.sub, ToneColor(c.tone), cardIcon)
         end
     end
 

@@ -32,7 +32,16 @@ local DEFAULT_SCHEMAS = {
         type = "boolean",
         default = true,
         label = "상단 상태 필 바 표시 (가방·내구·골드·렐름)",
-        desc = "L0 상시 HUD 상태 요약 바 표시/숨김",
+        desc = "L0 상시 HUD 상태 요약 바 표시/숨김 (Shift+드래그 자유 이동)",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "showQuickDock",
+        type = "boolean",
+        default = true,
+        label = "빠른 도구 바 표시 (낚시·추적·싼템·파찾·풀링·채팅·이동)",
+        desc = "자주 쓰는 편의 기능을 1클릭으로 실행하는 접이식 플로팅 도구 바",
         combatSafe = true,
     },
     {
@@ -870,6 +879,16 @@ function Bootstrap:Init()
         ns.Features.StatusPillHud:ApplyVisibility()
     end)
 
+    ns.Api.EventBus:Subscribe("hud:layout_unlocked", function()
+        if ns.Secure and ns.Secure.FishingCastButton and type(ns.Secure.FishingCastButton.SyncDock) == "function" then
+            ns.Secure.FishingCastButton:SyncDock(ns.Features.FishingCardHud and ns.Features.FishingCardHud.card, false, nil)
+        end
+    end)
+    ns.Api.EventBus:Subscribe("hud:layout_locked", function()
+        if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
+            ns.Features.FishingCardHud:Refresh()
+        end
+    end)
     ns.Api.EventBus:Subscribe("setting:changed", function(sec, key, val)
         if sec == "quest" and key == "defaultTrackerMode" then
             ns.Api.ProfileStore:SetState("userExplicitTrackerMode", true)
@@ -897,6 +916,8 @@ function Bootstrap:Init()
             end
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
+        elseif sec == "ui" and key == "showQuickDock" then
+            ns.Features.QuickDockHud:ApplyVisibility()
         elseif sec == "ui" and (key == "showWorldMapOverlay" or key == "showWorldMapPins" or key == "worldMapReveal" or key == "worldMapHeatmap" or key == "worldMapPetHeatmap") then
             ns.Features.WorldMapOverlay:ApplyVisibility()
         elseif sec == "ui" and key == "showMinimapButton" then
@@ -950,6 +971,7 @@ function Bootstrap:Init()
     ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
     ns.Features.FishingCardHud:Init()
     ns.Features.FishingCardHud:Refresh()
+    ns.Features.QuickDockHud:Init()
     ns.Features.MinimapButton:Init()
     ns.Features.TooltipEnhanceModule:Init()
     ns.Features.ChatToolsModule:Init()
@@ -983,7 +1005,10 @@ function Bootstrap:Init()
             inCombat        = inCombat,
             isDeadOrGhost   = ns.Api.GameAdapters.IsPlayerDeadOrGhost() == true,
             isFeignDeath    = (ns.Api.GameAdapters.IsPlayerFeignDeath and ns.Api.GameAdapters.IsPlayerFeignDeath()) and true or false,
-            hasFishingPole  = (ns.Api.GameAdapters.IsFishingPoleEquipped and ns.Api.GameAdapters.IsFishingPoleEquipped()) and true or false,
+            hasFishingPole  = (
+                (ns.Api.GameAdapters.IsFishingPoleEquipped and ns.Api.GameAdapters.IsFishingPoleEquipped())
+                or (ns.Features.FishingCardHud and ns.Features.FishingCardHud.pinned == true)
+            ) and true or false,
             isMounted       = (ns.Api.GameAdapters.IsPlayerMounted and ns.Api.GameAdapters.IsPlayerMounted()) and true or false,
             isDialogueShown = directorInDialogue == true,
         }
@@ -1058,6 +1083,15 @@ function Bootstrap:Init()
         ns.Features.StatusPillHud:RefreshLive()
         ns.Features.ProfessionPage:RecordBagBankMaterials(false)
         ns.Features.QuestExtraModule:CheckCollectionAlerts()
+        if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
+            ns.Features.FishingCardHud:Refresh()
+        end
+    end)
+    ns.Api.EventBus:OnEvent("v6:fishLoot", "CHAT_MSG_LOOT", function(_, msg)
+        if ns.Api.SafeAPI.IsSecret(msg) then return end
+        if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
+            ns.Features.FishingCardHud:OnLootMessage(msg)
+        end
     end)
     ns.Api.EventBus:OnEvent("v4:bankOpen", "BANKFRAME_OPENED", function()
         ns.Features.ProfessionPage:RecordBagBankMaterials(true)
@@ -1273,6 +1307,9 @@ function Bootstrap:Init()
         if ns.Secure and ns.Secure.FishingCastButton then
             ns.Secure.FishingCastButton:OnCombatEntered()
         end
+        if ns.Features.FishingCardHud and type(ns.Features.FishingCardHud.OnCombatEntered) == "function" then
+            ns.Features.FishingCardHud:OnCombatEntered()
+        end
         ns.Features.QuestTrackerView:UpdateCombatVisuals(true)
         ns.Features.CombatAssistHud:Refresh(true)
         ns.Features.CombatHudPack:RefreshRange(true)
@@ -1301,6 +1338,9 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnCombatEnd()
         ns.Features.QoLModule:ApplyCameraZoomIfEnabled()
         ns.Features.QuestExtraModule:SyncProximityTicker(false)
+        if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
+            ns.Features.FishingCardHud:Refresh()
+        end
         SyncDirectorState(false, false)
     end)
 
@@ -1426,9 +1466,14 @@ function Bootstrap:Init()
                 ns.Features.SetupWizard:HandleCommand(string_lower(rest or ""))
             elseif cmd == "track" then
                 ns.Features.TrackingSwitcher:CycleNext()
+            elseif cmd == "fish" then
+                ns.Features.FishingCardHud:HandleCommand(rest)
+            elseif cmd == "dock" then
+                local shown = ns.Features.QuickDockHud:Toggle()
+                ns.Api.SafeAPI.Print(shown and "빠른 도구 바 표시 ON" or "빠른 도구 바 숨김 OFF")
             elseif cmd == "help" then
                 ns.Api.SafeAPI.Print("허브 페이지: /fs [dungeons|bis|professions|questguide|codex|partyfinder|utilities|ledger|fonts|settings|move]")
-                ns.Api.SafeAPI.Print("기능 커맨드: /fs [setup|track|bridges|reset|gdkp|kw|train|farm|fav|profile|protect|cheap|layer|xp|pull|timer|clearway] · /fsdb · /way <x> <y> [이름]")
+                ns.Api.SafeAPI.Print("기능 커맨드: /fs [fish|dock|setup|track|bridges|reset|gdkp|kw|train|farm|fav|profile|protect|cheap|layer|xp|pull|timer|clearway] · /fsdb · /way <x> <y> [이름]")
             else
                 ns.UI.CommandHub:Toggle()
             end

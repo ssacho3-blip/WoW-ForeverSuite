@@ -622,7 +622,7 @@ function UtilitiesPage:Render(query)
                     right = right,
                     color = h.matchedKeyword and T.SEMANTIC.WARN or T.TEXT.PRIMARY,
                     rightCol = hasUrl and T.TEXT.GOLD or T.SEMANTIC.WARN,
-                    icon = hasUrl and "Interface\\Icons\\INV_Misc_Note_01" or "Interface\\Icons\\UI_Chat",
+                    icon = hasUrl and "Interface\\Icons\\INV_Misc_Note_01" or T.ICON.CUSTOM.chat,
                     glyph = hasUrl and "↗" or "말",
                     onClick = hasUrl and function()
                         W.CopyPasteModal():OpenExport(
@@ -677,7 +677,7 @@ function UtilitiesPage:Render(query)
                     right = ns.Domain.LedgerModel.FormatCopper(s.copper),
                     color = s.paid and T.SEMANTIC.SUCCESS or T.TEXT.GOLD,
                     rightCol = s.paid and T.SEMANTIC.SUCCESS or T.SEMANTIC.WARN,
-                    icon = "Interface\\Icons\\INV_Misc_Coin_02",
+                    icon = T.ICON.CUSTOM.coinPot,
                     borderCol = s.paid and T.SEMANTIC.SUCCESS or T.BORDER.GOLD_SOFT,
                     onClick = function()
                         capturedSale.paid = not capturedSale.paid
@@ -769,7 +769,7 @@ function UtilitiesPage:Render(query)
                     right = "-" .. ns.Domain.LedgerModel.FormatCopper(r.givenCopper) .. " / +" .. ns.Domain.LedgerModel.FormatCopper(r.receivedCopper),
                     color = T.TEXT.PRIMARY,
                     rightCol = T.TEXT.GOLD,
-                    icon = "Interface\\Icons\\INV_Misc_Coin_05",
+                    icon = T.ICON.CUSTOM.trade,
                 }
             end
         end

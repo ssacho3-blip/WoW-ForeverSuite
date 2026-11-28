@@ -50,11 +50,12 @@ function SetupWizard:ApplyStep2(opts)
 
     local lsmCount = 0
     local hasFontAssets = (ns.Api.AddonProbe and type(ns.Api.AddonProbe.Exists) == "function"
-        and ns.Api.AddonProbe.Exists("ForeverSuite_Media_Assets")) and true or false
+        and (ns.Api.AddonProbe.Exists("ForeverSuite_Media_Assets") or ns.Api.AddonProbe.Exists("ForeverSuite_Media"))) and true or false
     if hasFontAssets and ns.Bridges and ns.Bridges.Platynator then
+        local fontBase = T.ResolveMediaPath("Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\")
         local okReg, cnt = ns.Bridges.Platynator:RegisterSharedFonts({
-            { name = "ForeverSuite Gmarket Bold", path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GmarketSansTTFBold.ttf" },
-            { name = "ForeverSuite Gothic A1", path = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Fonts\\GothicA1-Black.ttf" },
+            { name = "ForeverSuite Gmarket Bold", path = fontBase .. "GmarketSansTTFBold.ttf" },
+            { name = "ForeverSuite Gothic A1", path = fontBase .. "GothicA1-Black.ttf" },
         })
         if okReg and type(cnt) == "number" then
             lsmCount = cnt

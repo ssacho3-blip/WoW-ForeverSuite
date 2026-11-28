@@ -32,15 +32,17 @@ local LEVEL_RECOMMENDATIONS = {
     { maxLv = 99, dungeon = "화산심장부 · 오닉시아의 둥지 · 검은날개 둥지", tip = "BiS 장비 2-Pane 비교로 업그레이드 슬롯을 점검하고, 골드팟 장부로 분배를 기록하세요." },
 }
 
+local CUSTOM_ICON_DIR = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Icons\\"
+
 local QUICK_TILES = {
     { id = "dungeons",    title = "던전 도감",     sub = "보스 드랍 · 퀘스트 · iLvl",  icon = "Interface\\Icons\\INV_Misc_Map_01" },
     { id = "bis",         title = "BiS 장비 비교", sub = "착용 장비 vs 추천 슬롯 비교", icon = "Interface\\Icons\\INV_Helmet_03" },
-    { id = "partyfinder", title = "파티 찾기",     sub = "실시간 모집 · 안전 귓말",     icon = "Interface\\Icons\\INV_Misc_GroupLooking" },
+    { id = "partyfinder", title = "파티 찾기",     sub = "실시간 모집 · 안전 귓말",     iconKey = "partyFinder", icon = CUSTOM_ICON_DIR .. "FS-Icon-PartyFinder.tga" },
     { id = "professions", title = "전문기술",      sub = "숙련도 루트 · 도안 검색",     icon = "Interface\\Icons\\Trade_BlackSmithing" },
     { id = "questguide",  title = "퀘스트 가이드", sub = "레벨별 루트 · 직업/특수 퀘",  icon = "Interface\\Icons\\INV_Misc_Book_09" },
-    { id = "utilities",   title = "유틸 · 골드팟", sub = "경매·북마크·보호목록·부캐",  icon = "Interface\\Icons\\INV_Misc_Coin_02" },
-    { id = "ledger",      title = "골드 원장",     sub = "세션 수입·지출 · 100건 내역", icon = "Interface\\Icons\\INV_Misc_Coin_01" },
-    { id = "codex",       title = "통합 도감",     sub = "낚시·보상·펫·NPC 원스톱",     icon = "Interface\\Icons\\INV_Misc_Book_07" },
+    { id = "utilities",   title = "유틸 · 골드팟", sub = "경매·북마크·보호목록·부캐",  iconKey = "coinPot",     icon = CUSTOM_ICON_DIR .. "FS-Icon-CoinPot.tga" },
+    { id = "ledger",      title = "골드 원장",     sub = "세션 수입·지출 · 100건 내역", iconKey = "coinGold",    icon = CUSTOM_ICON_DIR .. "FS-Icon-CoinGold.tga" },
+    { id = "codex",       title = "통합 도감",     sub = "낚시·보상·펫·NPC 원스톱",     iconKey = "codex",       icon = CUSTOM_ICON_DIR .. "FS-Icon-Codex.tga" },
 }
 
 function HomeDashboardModel.GetQuickTiles()
@@ -147,7 +149,8 @@ function HomeDashboardModel.BuildOverview(ctx)
                 value = goldVal,
                 sub = "클릭하여 수입·지출 원장 열기",
                 tone = "GOLD",
-                icon = "Interface\\Icons\\INV_Misc_Coin_01",
+                iconKey = "coinGold",
+                icon = CUSTOM_ICON_DIR .. "FS-Icon-CoinGold.tga",
                 targetPage = "ledger",
             },
             {

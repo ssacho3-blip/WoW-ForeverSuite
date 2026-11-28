@@ -66,11 +66,12 @@ function FontsPage:ApplySavedFonts()
     local failed = 0
     for i, spec in ipairs(specs) do
         local fontObj = backups[i].obj
-        local okSet, setRet = pcall(fontObj.SetFont, fontObj, spec.path, spec.size, spec.flags)
+        local resolvedPath = (T and T.ResolveMediaPath) and T.ResolveMediaPath(spec.path) or spec.path
+        local okSet, setRet = pcall(fontObj.SetFont, fontObj, resolvedPath, spec.size, spec.flags)
         local verified = okSet and (setRet ~= false)
         if verified and type(fontObj.GetFont) == "function" then
             local okV, curPath = pcall(fontObj.GetFont, fontObj)
-            if (not okV) or (NormFontPath(curPath) == nil) or (NormFontPath(curPath) ~= NormFontPath(spec.path)) then
+            if (not okV) or (NormFontPath(curPath) == nil) or (NormFontPath(curPath) ~= NormFontPath(resolvedPath)) then
                 verified = false
             end
         end

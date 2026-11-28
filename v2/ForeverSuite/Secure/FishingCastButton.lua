@@ -8,6 +8,11 @@ ns.Secure = ns.Secure or {}
 
 local FishingCastButton = {
     button = nil,
+    dockCastBtn = nil,
+    dockLureBtn = nil,
+    dockVisible = false,
+    dockAnchor = nil,
+    lastLure = nil,
     enabled = false,
     bound = false,
     armedUntil = 0,
@@ -18,6 +23,166 @@ local FishingCastButton = {
     clearTimerGen = 0,
 }
 ns.Secure.FishingCastButton = FishingCastButton
+
+local function StyleDockSecureButton(btn, labelText, accentGold)
+    if not btn then return end
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(btn)
+    if accentGold then
+        bg:SetColorTexture(0.24, 0.19, 0.07, 0.92)
+    else
+        bg:SetColorTexture(0.11, 0.13, 0.18, 0.90)
+    end
+    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(btn)
+    hl:SetColorTexture(0.84, 0.69, 0.28, 0.24)
+    local topLine = btn:CreateTexture(nil, "BORDER")
+    topLine:SetHeight(1)
+    topLine:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    topLine:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
+    topLine:SetColorTexture(0.84, 0.69, 0.28, accentGold and 0.85 or 0.45)
+    local botLine = btn:CreateTexture(nil, "BORDER")
+    botLine:SetHeight(1)
+    botLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
+    botLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    botLine:SetColorTexture(0.84, 0.69, 0.28, accentGold and 0.65 or 0.35)
+    local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    lbl:SetText(labelText or "")
+    if accentGold then
+        lbl:SetTextColor(0.98, 0.86, 0.44, 1)
+    else
+        lbl:SetTextColor(0.88, 0.91, 0.96, 1)
+    end
+    btn._fsBg = bg
+    btn._fsLabel = lbl
+end
+
+function FishingCastButton:EnsureDockButtons()
+    if self.dockCastBtn and self.dockLureBtn then
+        return self.dockCastBtn, self.dockLureBtn
+    end
+    if type(_G.CreateFrame) ~= "function" then
+        return nil, nil
+    end
+    local spellName = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetSpellName(7620)) or "낚시"
+
+    if not self.dockCastBtn then
+        local cbtn = CreateFrame("Button", "ForeverSuiteFishingDockCastBtn", _G.UIParent, "SecureActionButtonTemplate,SecureHandlerStateTemplate")
+        if cbtn then
+            cbtn:SetSize(134, 24)
+            if type(cbtn.RegisterForClicks) == "function" then
+                pcall(cbtn.RegisterForClicks, cbtn, "AnyUp")
+            end
+            if type(cbtn.SetAttribute) == "function" then
+                pcall(cbtn.SetAttribute, cbtn, "type", "spell")
+                pcall(cbtn.SetAttribute, cbtn, "spell", spellName)
+                pcall(cbtn.SetAttribute, cbtn, "fsVisible", false)
+                pcall(cbtn.SetAttribute, cbtn, "_onstate-combat", "if newstate == 1 then self:Hide() elseif self:GetAttribute('fsVisible') then self:Show() end")
+            end
+            if type(_G.RegisterStateDriver) == "function" then
+                pcall(_G.RegisterStateDriver, cbtn, "combat", "[combat] 1; 0")
+            end
+            StyleDockSecureButton(cbtn, "★ 낚시 시전", true)
+            if type(cbtn.Hide) == "function" then cbtn:Hide() end
+        end
+        self.dockCastBtn = cbtn
+    end
+
+    if not self.dockLureBtn then
+        local lbtn = CreateFrame("Button", "ForeverSuiteFishingDockLureBtn", _G.UIParent, "SecureActionButtonTemplate,SecureHandlerStateTemplate")
+        if lbtn then
+            lbtn:SetSize(134, 24)
+            if type(lbtn.RegisterForClicks) == "function" then
+                pcall(lbtn.RegisterForClicks, lbtn, "AnyUp")
+            end
+            if type(lbtn.SetAttribute) == "function" then
+                pcall(lbtn.SetAttribute, lbtn, "type", "macro")
+                pcall(lbtn.SetAttribute, lbtn, "macrotext", "")
+                pcall(lbtn.SetAttribute, lbtn, "fsVisible", false)
+                pcall(lbtn.SetAttribute, lbtn, "_onstate-combat", "if newstate == 1 then self:Hide() elseif self:GetAttribute('fsVisible') then self:Show() end")
+            end
+            if type(_G.RegisterStateDriver) == "function" then
+                pcall(_G.RegisterStateDriver, lbtn, "combat", "[combat] 1; 0")
+            end
+            StyleDockSecureButton(lbtn, "미끼 없음", false)
+            if type(lbtn.Hide) == "function" then lbtn:Hide() end
+        end
+        self.dockLureBtn = lbtn
+    end
+
+    return self.dockCastBtn, self.dockLureBtn
+end
+
+function FishingCastButton:SyncDock(anchorFrame, visible, lureInfo)
+    self.dockAnchor = anchorFrame or self.dockAnchor
+    self.dockVisible = visible == true
+    self.lastLure = lureInfo
+    if ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then
+        if ns.Secure and ns.Secure.CombatQueue and type(ns.Secure.CombatQueue.RunOrDefer) == "function" then
+            ns.Secure.CombatQueue:RunOrDefer("fishing:syncDock", function()
+                FishingCastButton:SyncDock(FishingCastButton.dockAnchor, FishingCastButton.dockVisible, FishingCastButton.lastLure)
+            end)
+        end
+        return false, "DEFERRED_COMBAT"
+    end
+    local cbtn, lbtn = self:EnsureDockButtons()
+    if not (cbtn and lbtn) then
+        return false, "UNSUPPORTED"
+    end
+    if (not self.dockVisible) or (not self.dockAnchor) then
+        if type(cbtn.SetAttribute) == "function" then pcall(cbtn.SetAttribute, cbtn, "fsVisible", false) end
+        if type(lbtn.SetAttribute) == "function" then pcall(lbtn.SetAttribute, lbtn, "fsVisible", false) end
+        if type(cbtn.Hide) == "function" then cbtn:Hide() end
+        if type(lbtn.Hide) == "function" then lbtn:Hide() end
+        return true, "HIDDEN"
+    end
+
+    local spellName = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetSpellName(7620)) or "낚시"
+    local strata = (type(self.dockAnchor.GetFrameStrata) == "function" and self.dockAnchor:GetFrameStrata()) or "MEDIUM"
+    local lvl = ((type(self.dockAnchor.GetFrameLevel) == "function" and self.dockAnchor:GetFrameLevel()) or 10) + 5
+
+    cbtn:ClearAllPoints()
+    cbtn:SetPoint("BOTTOMLEFT", self.dockAnchor, "BOTTOMLEFT", 8, 8)
+    if type(cbtn.SetFrameStrata) == "function" then cbtn:SetFrameStrata(strata) end
+    if type(cbtn.SetFrameLevel) == "function" then cbtn:SetFrameLevel(lvl) end
+    if type(cbtn.SetAttribute) == "function" then
+        pcall(cbtn.SetAttribute, cbtn, "type", "spell")
+        pcall(cbtn.SetAttribute, cbtn, "spell", spellName)
+        pcall(cbtn.SetAttribute, cbtn, "fsVisible", true)
+    end
+    cbtn:Show()
+
+    lbtn:ClearAllPoints()
+    lbtn:SetPoint("BOTTOMRIGHT", self.dockAnchor, "BOTTOMRIGHT", -8, 8)
+    if type(lbtn.SetFrameStrata) == "function" then lbtn:SetFrameStrata(strata) end
+    if type(lbtn.SetFrameLevel) == "function" then lbtn:SetFrameLevel(lvl) end
+    if type(lbtn.SetAttribute) == "function" then
+        pcall(lbtn.SetAttribute, lbtn, "fsVisible", true)
+    end
+    if type(lureInfo) == "table" and type(lureInfo.itemID) == "number" then
+        local macro = "/use item:" .. tostring(lureInfo.itemID) .. "\n/use 16"
+        if type(lbtn.SetAttribute) == "function" then
+            pcall(lbtn.SetAttribute, lbtn, "type", "macro")
+            pcall(lbtn.SetAttribute, lbtn, "macrotext", macro)
+        end
+        if lbtn._fsLabel then
+            lbtn._fsLabel:SetText("미끼 +" .. tostring(lureInfo.bonus or 0) .. " (" .. tostring(lureInfo.count or 1) .. ")")
+            lbtn._fsLabel:SetTextColor(0.56, 0.94, 0.66, 1)
+        end
+    else
+        if type(lbtn.SetAttribute) == "function" then
+            pcall(lbtn.SetAttribute, lbtn, "type", "macro")
+            pcall(lbtn.SetAttribute, lbtn, "macrotext", "")
+        end
+        if lbtn._fsLabel then
+            lbtn._fsLabel:SetText("미끼 없음")
+            lbtn._fsLabel:SetTextColor(0.60, 0.63, 0.68, 1)
+        end
+    end
+    lbtn:Show()
+    return true, "SHOWN"
+end
 
 function FishingCastButton:OnWorldMouseDown(mouseBtn)
     if mouseBtn == "RightButton" and self.enabled then

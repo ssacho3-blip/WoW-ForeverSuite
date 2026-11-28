@@ -43,17 +43,17 @@ local DEFAULT_GROUP_BY_ID = {
 
 local PAGE_ICON_BY_ID = {
     home        = "Interface\\Icons\\INV_Misc_Book_09",
-    partyfinder = "Interface\\Icons\\INV_Misc_GroupLooking",
+    partyfinder = T.ICON.CUSTOM.partyFinder,
     questguide  = "Interface\\Icons\\INV_Misc_Map_01",
     dungeons    = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
     bis         = "Interface\\Icons\\INV_Sword_39",
-    codex       = "Interface\\Icons\\INV_Misc_Book_11",
+    codex       = T.ICON.CUSTOM.codex,
     professions = "Interface\\Icons\\Trade_BlackSmithing",
     utilities   = "Interface\\Icons\\INV_Misc_Bag_10",
-    ledger      = "Interface\\Icons\\INV_Misc_Coin_02",
+    ledger      = T.ICON.CUSTOM.coinPot,
     settings    = "Interface\\Icons\\Trade_Engineering",
     fonts       = "Interface\\Icons\\INV_Scroll_03",
-    diagnostics = "Interface\\Icons\\Spell_Holy_MagicalSentry",
+    diagnostics = T.ICON.CUSTOM.diagnostics,
 }
 
 local CommandHub = {

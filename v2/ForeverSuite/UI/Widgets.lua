@@ -251,7 +251,8 @@ function Widgets.GoldArrow(parent, size)
 end
 
 -- 12-Layer 3D Extruded Satin Rounded418 Navigation Arrow (GodJohnson RoundedArrowArt418 algorithm, zero taint)
-local ARROW_418_DIR = "Interface\\AddOns\\ForeverSuite_Media_Assets\\Arrows\\Rounded418\\"
+local ARROW_418_DIR = ((_G.ForeverSuiteMedia and type(_G.ForeverSuiteMedia.mediaRoot) == "string" and _G.ForeverSuiteMedia.mediaRoot)
+    or "Interface\\AddOns\\ForeverSuite_Media_Assets\\") .. "Arrows\\Rounded418\\"
 local ARROW_418_DESIGNS = {
     roundedClassic = true,
     roundedWedge   = true,

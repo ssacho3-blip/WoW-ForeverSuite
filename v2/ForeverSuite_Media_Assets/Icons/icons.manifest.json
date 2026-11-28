@@ -1,0 +1,222 @@
+{
+  "assets": {
+    "FS-Class-Druid.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "1e9f4090cf4dfc83dbc968bdf5f5f640",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Hunter.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "bc9c2766d0850f37f7b6fcb3de1d81fb",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Mage.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "1753d197ff4a7f21d9174f36b4f9ef04",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Paladin.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "ab75ab2a10771d84aee3e837a4b94a33",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Priest.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "fa5b0ea8bd2a163313e8f62a05bdcda9",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Rogue.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "7254fb3fd6c42532fb25cfd5e27a7900",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Shaman.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "dab27b6c5db867dca202ee3196586bc9",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Warlock.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "f3208fd4201e07ff167e8de1f901077b",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Class-Warrior.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "4debe637ce2331cd1d891c2e6b8e2bac",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-AllItems.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "a5380e60ba2beb869f29291347fc3da2",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Boss.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "e470927b6b1a0adc92757a34dd1eab5c",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Chat.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "828547420f3e8690f236564dbbd62ce2",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Codex.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "52d778d1179dfb2c3dc2a0f66a22e6b3",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-CoinGold.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "0d05dba253fa0647e23e3f0d0dc39a8f",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-CoinPot.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "6eccd6de3dfb4f8ea3efd721d1e212c6",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Diagnostics.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "c3703027abcafe7569a58c967ef72e39",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Fallback.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "3df7fa9f9443a8aba1226721b6c49ab1",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Loot.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "c9ce79b888221ec8c92ab1505adc3b81",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-PartyFinder.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "efbf7daff516cf50733c9350f93c2d3a",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcArcane.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "0ce5a484da2f3cd9ebe518d1dafd142b",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcCrystal.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "e7d069c4241759243363c267daf5c070",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcFrenzy.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "ae093980369cd9651904df5f08fcad31",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcHoly.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "1447e7c83fe30b14e9aa8d3a08ff1c1a",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcMana.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "87b649ba52bad07c3f540366cb2ebba8",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-ProcTwilight.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "5c54e0558af1c271ba08c9145d3f2cd8",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Trade.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "62829971147fdf166790808229fdc4fe",
+      "type": 2,
+      "width": 64
+    },
+    "FS-Icon-Transport.tga": {
+      "bpp": 32,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "3d293b7ca992f94f569cc0c856e31992",
+      "type": 2,
+      "width": 64
+    }
+  },
+  "count": 27,
+  "version": "6.1.1"
+}

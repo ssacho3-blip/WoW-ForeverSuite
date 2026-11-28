@@ -122,6 +122,33 @@ function HudLayout:GetEffectiveAnchor(id)
     }
 end
 
+local function GetBlizzardProtectedRects()
+    local sw, sh = GetViewportSize()
+    local mm = _G.MinimapCluster or _G.Minimap
+    if type(mm) == "table" and type(mm.GetLeft) == "function" and type(mm.GetRight) == "function"
+        and type(mm.GetBottom) == "function" and type(mm.GetTop) == "function"
+    then
+        local okL, l = pcall(mm.GetLeft, mm)
+        local okR, r = pcall(mm.GetRight, mm)
+        local okB, b = pcall(mm.GetBottom, mm)
+        local okT, t = pcall(mm.GetTop, mm)
+        local isSec = ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.IsSecret
+        local valid = okL and okR and okB and okT
+            and type(l) == "number" and type(r) == "number" and type(b) == "number" and type(t) == "number"
+            and (not (isSec and (isSec(l) or isSec(r) or isSec(b) or isSec(t))))
+            and r > l and t > b
+        if valid then
+            local scale = GetScaleRatioToUIParent(mm)
+            return {
+                { id = "BlizzMinimap", rect = { left = l * scale, right = r * scale, bottom = b * scale, top = t * scale } },
+            }
+        end
+    end
+    return {
+        { id = "BlizzMinimap", rect = { left = sw - 196, right = sw, bottom = sh - 204, top = sh } },
+    }
+end
+
 function HudLayout:FindOverlaps()
     local items = {}
     for id, rec in pairs(self.registry) do
@@ -130,11 +157,22 @@ function HudLayout:FindOverlaps()
         items[#items + 1] = { id = id, rect = r }
     end
     table.sort(items, function(a, b) return a.id < b.id end)
+    local blizzProtected = GetBlizzardProtectedRects()
     local pairsOut = {}
     local map = {}
     for i = 1, #items do
+        local a = items[i]
+        for k = 1, #blizzProtected do
+            local bz = blizzProtected[k]
+            local ox = math_min(a.rect.right, bz.rect.right) - math_max(a.rect.left, bz.rect.left)
+            local oy = math_min(a.rect.top, bz.rect.top) - math_max(a.rect.bottom, bz.rect.bottom)
+            if ox > 1.5 and oy > 1.5 then
+                pairsOut[#pairsOut + 1] = { a = a.id, b = bz.id, ox = ox, oy = oy }
+                map[a.id] = true
+            end
+        end
         for j = i + 1, #items do
-            local a, b = items[i], items[j]
+            local b = items[j]
             local ox = math_min(a.rect.right, b.rect.right) - math_max(a.rect.left, b.rect.left)
             local oy = math_min(a.rect.top, b.rect.top) - math_max(a.rect.bottom, b.rect.bottom)
             if ox > 1.5 and oy > 1.5 then
@@ -155,11 +193,22 @@ local function CountOverlapsWithOverride(overrideId, overrideAnchor)
         local r = ResolveAnchorRect(rec.frame, a, id == overrideId)
         items[#items + 1] = { id = id, rect = r }
     end
+    local blizzProtected = GetBlizzardProtectedRects()
     local count = 0
     local area = 0
     for i = 1, #items do
+        local a = items[i]
+        for k = 1, #blizzProtected do
+            local bz = blizzProtected[k]
+            local ox = math_min(a.rect.right, bz.rect.right) - math_max(a.rect.left, bz.rect.left)
+            local oy = math_min(a.rect.top, bz.rect.top) - math_max(a.rect.bottom, bz.rect.bottom)
+            if ox > 1.5 and oy > 1.5 then
+                count = count + 1
+                area = area + (ox * oy)
+            end
+        end
         for j = i + 1, #items do
-            local a, b = items[i], items[j]
+            local b = items[j]
             local ox = math_min(a.rect.right, b.rect.right) - math_max(a.rect.left, b.rect.left)
             local oy = math_min(a.rect.top, b.rect.top) - math_max(a.rect.bottom, b.rect.bottom)
             if ox > 1.5 and oy > 1.5 then
@@ -457,8 +506,70 @@ function HudLayout:Register(id, frame, defaultAnchor, label, onMoved)
         label = label or id,
         onMoved = onMoved,
         overlay = nil,
+        directDrag = false,
     }
     self:ApplySavedAnchor(id)
+    return true
+end
+
+function HudLayout:SetDirectDragFlag(id, flag)
+    local rec = self.registry[id]
+    if not rec then return false end
+    rec.directDrag = flag == true
+    if rec.directDrag and rec.frame and type(rec.frame.SetMovable) == "function" then
+        rec.frame:SetMovable(true)
+    end
+    return true
+end
+
+function HudLayout:EnableDirectDrag(id, handleFrame, opts)
+    local rec = self.registry[id]
+    if not rec then return false end
+    opts = opts or {}
+    local target = opts.moveTarget or rec.frame
+    local handle = handleFrame or target
+    if not (target and handle) then return false end
+    local requireShift = (opts.requireShift ~= false)
+    rec.directDrag = true
+    if type(target.SetMovable) == "function" then target:SetMovable(true) end
+    if type(target.SetClampedToScreen) == "function" then target:SetClampedToScreen(true) end
+    if type(handle.EnableMouse) == "function" then handle:EnableMouse(true) end
+    if type(handle.RegisterForDrag) == "function" then handle:RegisterForDrag("LeftButton") end
+
+    local function OnStart()
+        if HudLayout:IsUnlocked() then return end
+        if ns.Api and ns.Api.SafeAPI and ns.Api.SafeAPI.InCombat() then return end
+        if requireShift and not (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.IsShiftDown()) then
+            return
+        end
+        if type(opts.canDrag) == "function" and not opts.canDrag() then return end
+        target._fsDirectDragging = true
+        if type(target.SetMovable) == "function" then target:SetMovable(true) end
+        if type(target.StartMoving) == "function" then target:StartMoving() end
+    end
+    local function OnStop()
+        if not target._fsDirectDragging then return end
+        target._fsDirectDragging = false
+        target._fsJustDragged = true
+        if type(target.StopMovingOrSizing) == "function" then target:StopMovingOrSizing() end
+        HudLayout:SaveCurrentPosition(id)
+    end
+
+    if type(handle.HookScript) == "function" and type(handle.GetScript) == "function" then
+        if handle:GetScript("OnDragStart") then
+            handle:HookScript("OnDragStart", OnStart)
+        else
+            handle:SetScript("OnDragStart", OnStart)
+        end
+        if handle:GetScript("OnDragStop") then
+            handle:HookScript("OnDragStop", OnStop)
+        else
+            handle:SetScript("OnDragStop", OnStop)
+        end
+    elseif type(handle.SetScript) == "function" then
+        handle:SetScript("OnDragStart", OnStart)
+        handle:SetScript("OnDragStop", OnStop)
+    end
     return true
 end
 
@@ -596,7 +707,7 @@ function HudLayout:SetUnlocked(flag)
     end
     for _, rec in pairs(self.registry) do
         local f = rec.frame
-        if f.SetMovable then f:SetMovable(self.unlocked) end
+        if f.SetMovable then f:SetMovable(self.unlocked or rec.directDrag == true) end
         local ov = EnsureDragOverlay(rec)
         if self.unlocked then
             if not wasUnlocked then
@@ -617,6 +728,9 @@ function HudLayout:SetUnlocked(flag)
     end
     if self.unlocked then
         self:RefreshEditUI()
+        if (not wasUnlocked) and ns.Api and ns.Api.EventBus then
+            ns.Api.EventBus:Publish("hud:layout_unlocked")
+        end
     end
     if wasUnlocked and (not self.unlocked) and ns.Api and ns.Api.EventBus then
         ns.Api.EventBus:Publish("hud:layout_locked")

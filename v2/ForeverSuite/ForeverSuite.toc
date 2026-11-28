@@ -109,6 +109,7 @@ Features/QuestExtraModule.lua
 Features/ProcCooldownHud.lua
 Features/PresetManagerModule.lua
 Features/TrackingSwitcher.lua
+Features/QuickDockHud.lua
 Features/CharacterDockPanel.lua
 Features/SetupWizard.lua
 Features/DiagnosticsPage.lua

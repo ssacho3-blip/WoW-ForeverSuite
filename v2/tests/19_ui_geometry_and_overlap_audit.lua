@@ -466,6 +466,7 @@ if ns.Features.DungeonBrowserPage and ns.Features.DungeonBrowserPage.EnsureQuick
 end
 if ns.Features.NavigationHud and ns.Features.NavigationHud.Init then ns.Features.NavigationHud:Init() end
 if ns.Features.FishingCardHud and ns.Features.FishingCardHud.Init then ns.Features.FishingCardHud:Init() end
+if ns.Features.QuickDockHud and ns.Features.QuickDockHud.Init then ns.Features.QuickDockHud:Init() end
 if ns.Features.EncounterTimerHud and ns.Features.EncounterTimerHud.Init then ns.Features.EncounterTimerHud:Init() end
 if ns.Features.ThreatMeterHud and ns.Features.ThreatMeterHud.Init then ns.Features.ThreatMeterHud:Init() end
 if ns.Features.CombatAssistHud and ns.Features.CombatAssistHud.Init then ns.Features.CombatAssistHud:Init() end
@@ -598,8 +599,8 @@ do
     AuditSubtree(editBar, "HudEditBar", 1920, 1080, allIssues)
 
     ns.UI.HudLayout:Select("statusPill")
-    -- Intentionally collide statusPill onto clockHud (y=-238 -> nudge +30 => y=-208)
-    ns.UI.HudLayout:Nudge("statusPill", 0, 30)
+    -- Intentionally collide statusPill onto clockHud (y=-244 -> nudge +28 => y=-216)
+    ns.UI.HudLayout:Nudge("statusPill", 0, 28)
     local overlaps = ns.UI.HudLayout:FindOverlaps()
     assert(#overlaps >= 1, "HudLayout:FindOverlaps must detect intentional statusPill <-> clockHud collision")
     local moved, remaining = ns.UI.HudLayout:ResolveOverlaps()
@@ -615,7 +616,7 @@ do
     assert(roOk == false and roReason == "READ_ONLY", "HudLayout:SetScale must return false, READ_ONLY when ProfileStore is read-only")
     ns.UI.HudLayout:ResetOne("statusPill")
     local restored = ns.UI.HudLayout:GetEffectiveAnchor("statusPill")
-    assert(restored.scale == 1.0 and restored.y == -240, "HudLayout:ResetOne must restore default anchor & 1.0 scale")
+    assert(restored.scale == 1.0 and restored.y == -244, "HudLayout:ResetOne must restore default anchor & 1.0 scale")
     ns.UI.HudLayout:SetUnlocked(false)
 end
 

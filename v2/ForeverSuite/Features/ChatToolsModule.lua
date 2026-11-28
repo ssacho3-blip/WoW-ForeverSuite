@@ -69,6 +69,9 @@ function ChatToolsModule:EnsureChannelBar()
         x = 24,
         y = 224,
     }, "채팅 빠른 채널 바")
+    if type(ns.UI.HudLayout.EnableDirectDrag) == "function" then
+        ns.UI.HudLayout:EnableDirectDrag("chatQuickBar", bar, { requireShift = true })
+    end
     bar:Hide()
     self.channelBar = bar
     return bar
