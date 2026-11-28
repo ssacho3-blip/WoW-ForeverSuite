@@ -145,4 +145,85 @@ assert(has5060, "RecommendLevelingZones must cover Lv.50-60 for high-level chara
 _G.UnitFactionGroup = origFac
 _G.UnitRace = origRace
 
+------------------------------------------------------------------------
+-- 4. Low-Level & Forever Dungeon Bosses + Drops Coverage Regression
+------------------------------------------------------------------------
+__FS_LOAD_DATA_ADDON("ForeverSuite_Data_Dungeon")
+local dPacks = _G.ForeverSuiteData and _G.ForeverSuiteData.packs
+assert(type(dPacks) == "table" and type(dPacks.dungeons) == "table" and type(dPacks.dungeon_bosses) == "table" and type(dPacks.dungeon_loot) == "table",
+    "ForeverSuite_Data_Dungeon packs must be loaded")
+assert(#dPacks.dungeon_bosses.entries >= 360,
+    "Full dungeon_bosses pack must include all low-level + Forever + Lv.60 bosses (>=360, got=" .. tostring(#dPacks.dungeon_bosses.entries) .. ")")
+
+local lootIdx = DBM.IndexLootByItemID(dPacks.dungeon_loot.entries)
+local lowLevelMustHave = {
+    { id = "rfc",     inst = 389,  name = "성난불길 협곡",    minBosses = 4, minDrops = 10 },
+    { id = "wc",      inst = 43,   name = "통곡의 동굴",      minBosses = 8, minDrops = 20 },
+    { id = "dm",      inst = 36,   name = "폐광",             minBosses = 7, minDrops = 20 },
+    { id = "hot",     inst = 3065, name = "영주의 전당",      minBosses = 4, minDrops = 10 },
+    { id = "rol",     inst = 2999, name = "로데론의 폐허",    minBosses = 6, minDrops = 15 },
+    { id = "sfk",     inst = 33,   name = "그림자송곳니 성채", minBosses = 8, minDrops = 15 },
+    { id = "bfd",     inst = 48,   name = "검은심연 나락",    minBosses = 6, minDrops = 20 },
+    { id = "stocks",  inst = 34,   name = "스톰윈드 지하감옥", minBosses = 5, minDrops = 10 },
+    { id = "wetlands",inst = 2998, name = "저습지 발굴 현장",  minBosses = 4, minDrops = 10 },
+    { id = "dalaran", inst = 2959, name = "달라란 시가지",    minBosses = 8, minDrops = 15 },
+    { id = "gnomer",  inst = 90,   name = "놈리건",           minBosses = 5, minDrops = 20 },
+    { id = "rfk",     inst = 47,   name = "가시덩굴 우리",    minBosses = 6, minDrops = 20 },
+    { id = "rfd",     inst = 129,  name = "가시덩굴 구릉",    minBosses = 6, minDrops = 15 },
+    { id = "sm",      inst = 189,  name = "붉은십자군 수도원", minBosses = 8, minDrops = 20 },
+    { id = "uldaman", inst = 70,   name = "울다만",           minBosses = 8, minDrops = 20 },
+    { id = "drowned_city",    inst = 2970, name = "가라앉은 도시", minBosses = 6,  minDrops = 15 },
+    { id = "kroldok",         inst = 3039, name = "크롤도크 보루", minBosses = 5,  minDrops = 15 },
+    { id = "alcaz",           inst = 2994, name = "알카즈 감옥",   minBosses = 5,  minDrops = 15 },
+    { id = "blackmaw",        inst = 2974, name = "검은아귀 요새", minBosses = 7,  minDrops = 20 },
+    { id = "shapers_terrace", inst = 3001, name = "구체자의 정원", minBosses = 11, minDrops = 20 },
+}
+
+local dungById = {}
+local totalUnresolved = 0
+for _, d in ipairs(dPacks.dungeons.entries) do
+    dungById[d.id] = d
+    assert(type(d.bossCount) == "number" and d.bossCount >= 1,
+        "Every dungeon in Pack_dungeons must have >= 1 boss (zero-boss regression on: " .. tostring(d.title) .. ")")
+    local bosses = DBM.GetBossesForDungeon(dPacks.dungeon_bosses.entries, d)
+    assert(#bosses >= 1, "Every dungeon must resolve >= 1 boss entry: " .. tostring(d.title))
+    local seenBoss = {}
+    local dDrops = 0
+    for _, b in ipairs(bosses) do
+        assert(not seenBoss[b.title], "Duplicate boss in " .. tostring(d.title) .. ": " .. tostring(b.title))
+        seenBoss[b.title] = true
+        local drops = DBM.GetDropsForBoss(b, lootIdx)
+        for _, it in ipairs(drops) do
+            dDrops = dDrops + 1
+            if it.placeholder then
+                totalUnresolved = totalUnresolved + 1
+            end
+        end
+    end
+    assert(dDrops >= 1, "Every dungeon must have >= 1 drop entry: " .. tostring(d.title))
+end
+assert(totalUnresolved <= 6,
+    "Unresolved placeholder drops across all 35 dungeons must not regress past 6 (got=" .. tostring(totalUnresolved) .. ")")
+
+for _, req in ipairs(lowLevelMustHave) do
+    local d = dungById[req.id]
+    assert(type(d) == "table", "Dungeon missing from Pack_dungeons: " .. req.id)
+    assert(type(d.bossCount) == "number" and d.bossCount >= req.minBosses,
+        req.name .. " bossCount must be >= " .. tostring(req.minBosses) .. " (got=" .. tostring(d.bossCount) .. ")")
+    local bosses = DBM.GetBossesForDungeon(dPacks.dungeon_bosses.entries, d)
+    assert(#bosses >= req.minBosses,
+        req.name .. " must have >= " .. tostring(req.minBosses) .. " bosses (got=" .. tostring(#bosses) .. ")")
+    local resolvedDrops = 0
+    for _, b in ipairs(bosses) do
+        local drops = DBM.GetDropsForBoss(b, lootIdx)
+        for _, it in ipairs(drops) do
+            if not it.placeholder and type(it.title) == "string" and it.title ~= "" then
+                resolvedDrops = resolvedDrops + 1
+            end
+        end
+    end
+    assert(resolvedDrops >= req.minDrops,
+        req.name .. " must have >= " .. tostring(req.minDrops) .. " resolved non-placeholder drops (got=" .. tostring(resolvedDrops) .. ")")
+end
+
 print("OK: 29_faction_quests_home_and_db_refresh")

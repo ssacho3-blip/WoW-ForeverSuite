@@ -123,8 +123,11 @@ fn create_sandboxed_lua() -> Result<Lua> {
             Dungeons = {},
             DungeonInfo = {},
             Quests = {},
+            QuestFinishLocations = {},
+            PublicDungeonLoot = {},
             PublicDungeonItems = {},
             PublicDungeonExtras = {},
+            PlayLootEvidence = {},
             DungeonEntranceData4110 = {},
             DungeonPrerequisites = {},
             DungeonInside = {},
@@ -149,6 +152,12 @@ fn exec_zip_lua_patched<R: Read + std::io::Seek>(
 ) -> Result<bool> {
     if let Some(mut src) = read_zip_lua(archive, path)? {
         for (from, to) in replacements {
+            if !src.contains(from) {
+                if required {
+                    bail!("Required patch anchor '{from}' not found in {path}");
+                }
+                return Ok(false);
+            }
             src = src.replacen(from, to, 1);
         }
         let res = lua.load(&src).set_name(path).set_mode(ChunkMode::Text).exec();
@@ -175,6 +184,38 @@ fn exec_zip_lua<R: Read + std::io::Seek>(
     loaded_sources: &mut Vec<String>,
 ) -> Result<bool> {
     exec_zip_lua_patched(lua, archive, path, required, loaded_sources, &[])
+}
+
+fn exec_zip_lua_prefix<R: Read + std::io::Seek>(
+    lua: &Lua,
+    archive: &mut ZipArchive<R>,
+    path: &str,
+    stop_before: &str,
+    required: bool,
+    loaded_sources: &mut Vec<String>,
+) -> Result<bool> {
+    if let Some(src) = read_zip_lua(archive, path)? {
+        let Some(pos) = src.find(stop_before) else {
+            if required {
+                bail!("Required marker '{stop_before}' not found in {path}");
+            }
+            return Ok(false);
+        };
+        let prefix = &src[..pos];
+        let res = lua.load(prefix).set_name(path).set_mode(ChunkMode::Text).exec();
+        if let Err(e) = res {
+            if required {
+                bail!("Sandboxed execution error in required prefix of {path}: {e}");
+            }
+            return Ok(false);
+        }
+        loaded_sources.push(path.to_string());
+        Ok(true)
+    } else if required {
+        bail!("Required GodJohnson source file missing from ZIP: {path}");
+    } else {
+        Ok(false)
+    }
 }
 
 fn serialize_lua_entry(tbl: &Table) -> Result<String> {
@@ -410,33 +451,80 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
             let lua = create_sandboxed_lua()?;
             let mut src = Vec::new();
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonData.lua", true, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonAlliance.lua", false, &mut src)?;
-            lua.load("GJCompanion.QuestFinishLocations = GJCompanion.QuestFinishLocations or {}")
-                .set_mode(ChunkMode::Text)
-                .exec()
-                .map_err(|e| anyhow::anyhow!("QuestFinishLocations init failed: {e}"))?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonExtra.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonAlliance.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonPlayEvidence.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonGuideData.lua", true, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBlueleaf.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonGnomeregan.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonWetlands.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaran468.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonReferenceUpdate.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBlueleaf.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonMaps.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBossPins.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Maps4130.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonPublicReference.lua", true, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonReferenceRefresh438.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaran468.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaranMaps468.lua", false, &mut src)?;
+            // Execute only the pure data-initialization prefix of DungeonBrowser.lua
+            // (builds C.DungeonInfo for all 15 low-to-mid-level dungeons and merges PublicDungeonLoot + PlayLootEvidence)
+            exec_zip_lua_prefix(
+                &lua,
+                &mut archive,
+                "GodJohnsonGoldBorder/DungeonBrowser.lua",
+                "\nlocal function DB()",
+                true,
+                &mut src,
+            )?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonEntranceData4110.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/Dungeon196Data.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua", true, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLootDetails4201.lua", true, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/Dungeon196Data.lua", true, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLegacyEncounters196.lua", true, &mut src)?;
+            exec_zip_lua_patched(
+                &lua,
+                &mut archive,
+                "GodJohnsonGoldBorder/DungeonLootRelease196.lua",
+                true,
+                &mut src,
+                &[("function C.DungeonReleaseItem196(id)", "C.DungeonReleasePacked196=packed\nfunction C.DungeonReleaseItem196(id)")],
+            )?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLootCoverage218.lua", true, &mut src)?;
+            // UI-only map presentation files are intentionally omitted from the headless compiler;
+            // ensure mapPages exists so DungeonSources221 can append Forever interior pages cleanly.
+            lua.load("for _, d in ipairs(GJCompanion.DungeonInfo or {}) do d.mapPages = d.mapPages or {} end")
+                .set_mode(ChunkMode::Text)
+                .exec()
+                .map_err(|e| anyhow::anyhow!("DungeonInfo mapPages init failed: {e}"))?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonSources221.lua", true, &mut src)?;
+            // Fail-closed compiler invariant: every dungeon in C.DungeonInfo must have bosses populated
+            // (guards against future GodJohnson TOC drift silently dropping low-level/Forever dungeons).
+            lua.load(
+                r#"
+                local C = GJCompanion
+                if type(C.DungeonInfo) ~= "table" or #C.DungeonInfo < 30 then
+                    error("Fail-closed invariant: C.DungeonInfo underpopulated (" .. tostring(type(C.DungeonInfo) == "table" and #C.DungeonInfo or 0) .. ")")
+                end
+                local empty = {}
+                for _, d in ipairs(C.DungeonInfo) do
+                    if type(d) == "table" and type(d.name) == "string" and (type(d.bosses) ~= "table" or #d.bosses == 0) then
+                        empty[#empty+1] = d.name .. "(" .. tostring(d.instance or "?") .. ")"
+                    end
+                end
+                if #empty > 0 then
+                    error("Fail-closed invariant: dungeons with 0 bosses detected (possible TOC drift): " .. table.concat(empty, ", "))
+                end
+                "#,
+            )
+            .set_mode(ChunkMode::Text)
+            .exec()
+            .map_err(|e| anyhow::anyhow!("Dungeon compilation invariant failed: {e}"))?;
             lua.load("for _, d in ipairs(GJCompanion.Dungeons or {}) do if d.instance == nil then d.instance = d.key or d.name end end")
                 .set_mode(ChunkMode::Text)
                 .exec()
                 .map_err(|e| anyhow::anyhow!("DungeonData normalization failed: {e}"))?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonPublicReference.lua", true, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLootDetails4201.lua", true, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Data4130.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/MapTransportData.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonMaps.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonLevel60Maps4130.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonDalaranMaps468.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonInterior219.lua", false, &mut src)?;
-            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBossPins.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonBossRouteData223.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonKrolSteps259.lua", false, &mut src)?;
             exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/DungeonOtherSteps259.lua", false, &mut src)?;
@@ -609,22 +697,32 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 local C = GJCompanion
                 local rows, inp, skip = {}, 0, 0
                 local seen = {}
+                local keyByInst = {}
+                for _, d in ipairs(C.Dungeons or {}) do
+                    if type(d) == "table" and type(d.instance) == "number" and type(d.key) == "string" and d.key ~= "" then
+                        keyByInst[d.instance] = d.key
+                    end
+                end
                 local function scanBosses(d, dKey)
                     if type(d) ~= "table" or type(d.bosses) ~= "table" then return end
                     local dName = tostring(d.name or dKey or "")
                     local inst = type(d.instance) == "number" and d.instance or 0
+                    local resolvedKey = tostring(d.key or (inst > 0 and keyByInst[inst]) or dKey or dName)
                     for idx, b in ipairs(d.bosses) do
                         inp = inp + 1
                         if type(b) == "table" and type(b.name) == "string" and b.name ~= "" then
                             local key = dName .. ":" .. b.name
                             if not seen[key] then
                                 seen[key] = true
-                                local ids = {}
+                                local ids, seenId = {}, {}
                                 for _, iid in ipairs(b.items or {}) do
-                                    if type(iid) == "number" then ids[#ids+1] = tostring(iid) end
+                                    if type(iid) == "number" and iid > 0 and not seenId[iid] then
+                                        seenId[iid] = true
+                                        ids[#ids+1] = tostring(iid)
+                                    end
                                 end
                                 rows[#rows+1] = {
-                                    dungeonKey = tostring(d.key or dKey or dName),
+                                    dungeonKey = resolvedKey,
                                     dungeonName = dName,
                                     instance = inst,
                                     order = idx,
@@ -706,6 +804,10 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 "#,
             )?;
 
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ItemReferenceData5089.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonGoldBorder/ItemTranslation445.lua", false, &mut src)?;
+            exec_zip_lua(&lua, &mut archive, "GodJohnsonBiSData/ItemCatalogData315.lua", false, &mut src)?;
+
             let (l_in, l_skip, l_rows) = collect_entries_from_lua(
                 &lua,
                 r#"
@@ -728,13 +830,57 @@ pub fn compile_gj_lod_packs(zip_path: &Path, v2_root: &Path) -> Result<()> {
                 for id, it in pairs(C.DungeonLootDetails4201 or {}) do
                     if type(id) == "number" and type(it) == "table" and not merged[id] then merged[id] = it end
                 end
+                if type(C.DungeonReleaseItem196) == "function" and type(C.DungeonReleasePacked196) == "table" then
+                    for id in pairs(C.DungeonReleasePacked196) do
+                        if type(id) == "number" then
+                            local rel = C.DungeonReleaseItem196(id)
+                            if type(rel) == "table" then
+                                local prev = merged[id]
+                                if type(rel.name) == "string" and string.match(rel.name, "%S") ~= nil then
+                                    merged[id] = rel
+                                elseif not prev then
+                                    merged[id] = rel
+                                end
+                            end
+                        end
+                    end
+                end
+                local refData = (type(C.PrepareItemReferenceCatalog5089) == "function") and C.PrepareItemReferenceCatalog5089() or {}
+                local refItems = (type(refData) == "table" and type(refData.items) == "table") and refData.items or {}
+                local catItems = (type(C.ItemCatalogData315) == "table" and type(C.ItemCatalogData315.items) == "table") and C.ItemCatalogData315.items or {}
+                local transNames = (type(C.ItemTranslations445) == "table" and type(C.ItemTranslations445.names) == "table") and C.ItemTranslations445.names or {}
+                for id in pairs(bossByItem) do
+                    local cur = merged[id]
+                    if not (type(cur) == "table" and type(cur.name) == "string" and cur.name ~= "") then
+                        local cat = catItems[id]
+                        local ref = refItems[id]
+                        local koName = transNames[id]
+                            or (type(cat) == "table" and type(cat.name) == "string" and cat.name ~= "" and cat.name)
+                            or (type(ref) == "table" and type(ref.koName) == "string" and ref.koName ~= "" and ref.koName)
+                            or (type(ref) == "table" and type(ref.name) == "string" and ref.name ~= "" and ref.name)
+                            or (type(ref) == "table" and type(ref.enName) == "string" and ref.enName ~= "" and ref.enName)
+                            or nil
+                        if koName then
+                            local src = (type(cat) == "table" and cat) or (type(ref) == "table" and ref) or {}
+                            merged[id] = {
+                                name = koName,
+                                altName = (type(cat) == "table" and cat.altName) or (type(ref) == "table" and ref.enName) or "",
+                                quality = (type(src.quality) == "number" and src.quality) or (type(ref) == "table" and ref.quality) or 1,
+                                itemLevel = (type(src.itemLevel) == "number" and src.itemLevel) or (type(ref) == "table" and ref.itemLevel) or 0,
+                                requiredLevel = (type(src.requiredLevel) == "number" and src.requiredLevel) or 0,
+                                slot = (type(src.slot) == "string" and src.slot) or "",
+                                type = (type(src.type) == "string" and src.type) or "",
+                            }
+                        end
+                    end
+                end
                 local SLOT_TO_INV = {
                     ["머리"] = 1, ["목"] = 2, ["어깨"] = 3, ["가슴"] = 5, ["허리"] = 6,
                     ["다리"] = 7, ["발"] = 8, ["손목"] = 9, ["손"] = 10, ["손가락"] = 11,
                     ["장신구"] = 13, ["등"] = 15, ["망토"] = 15, ["주장비"] = 16, ["한손"] = 16,
                     ["한손 장비"] = 16, ["양손"] = 16, ["양손 장비"] = 16, ["보조장비"] = 17,
                     ["방패"] = 17, ["원거리"] = 18, ["원거리 장비"] = 18, ["마법봉"] = 18,
-                    ["투척"] = 18, ["성물"] = 18, ["성서"] = 18,
+                    ["투척"] = 18, ["투척 무기"] = 18, ["성물"] = 18, ["성서"] = 18,
                 }
                 local ids = {}
                 for id in pairs(merged) do ids[#ids+1] = id end
