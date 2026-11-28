@@ -22,7 +22,7 @@ local UI_ROOT = MEDIA_ROOT .. "UI\\"
 local ICON_ROOT = MEDIA_ROOT .. "Icons\\"
 
 local Media = {
-    version = "6.1.1",
+    version = "6.2.0",
     fonts = {
         bodyPath = BASE_FONT,
         monoPath = MONO_FONT,

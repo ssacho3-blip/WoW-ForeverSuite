@@ -124,3 +124,71 @@ function CombatAlertModel.EvaluateLowHealth(hp, hpMax, threshold, isDeadOrGhost)
         isLow = (ratio > 0 and ratio <= limit),
     }
 end
+
+-- Lv<60 XP Buff Expiry Detection (WoW Forever 1.60.1 food "포만감", sleeping bag "충분한 휴식", Darkmoon "야호!", etc.)
+CombatAlertModel.XP_BUFF_SPELL_IDS = {
+    [433106] = true, -- 아늑한 침낭 (충분한 휴식 / Well Rested +1~3% XP)
+    [433107] = true, -- 아늑한 침낭 보조 ID
+    [46668]  = true, -- 다크문 회전목마 (야호! +10% XP)
+    [24705]  = true, -- 할로윈 밀짚인형 (+10% XP)
+}
+
+CombatAlertModel.XP_BUFF_PATTERNS = {
+    "포만감",
+    "충분한 휴식",
+    "침낭",
+    "달콤한 휴식",
+    "편안한 휴식",
+    "경험치",
+    "야호!",
+    "밀짚인형",
+    "well fed",
+    "well rested",
+    "sleeping bag",
+    "whee!",
+    "experience",
+}
+
+function CombatAlertModel.IsXpBuffAura(spellId, auraName)
+    if type(spellId) == "number" and CombatAlertModel.XP_BUFF_SPELL_IDS[spellId] == true then
+        return true
+    end
+    if type(auraName) ~= "string" or auraName == "" then
+        return false
+    end
+    local low = string.lower(auraName)
+    for i = 1, #CombatAlertModel.XP_BUFF_PATTERNS do
+        if string.find(low, CombatAlertModel.XP_BUFF_PATTERNS[i], 1, true) ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
+-- Pure diff of active XP buffs before Lv.60.
+-- Returns (expiredList, nextActiveMap). Silent on Lv>=60, dead/ghost, or initial nil baseline.
+function CombatAlertModel.DiffExpiredXpBuffs(prevMap, currentMap, playerLevel, isDeadOrGhost)
+    local nextMap = {}
+    if type(currentMap) == "table" then
+        for k, v in pairs(currentMap) do
+            if v then nextMap[k] = true end
+        end
+    end
+    if type(playerLevel) ~= "number" or playerLevel < 1 or playerLevel >= 60 then
+        return {}, nextMap
+    end
+    if isDeadOrGhost == true then
+        return {}, nextMap
+    end
+    if type(prevMap) ~= "table" then
+        return {}, nextMap
+    end
+    local expired = {}
+    for name, wasOn in pairs(prevMap) do
+        if wasOn and not nextMap[name] then
+            expired[#expired + 1] = name
+        end
+    end
+    table.sort(expired)
+    return expired, nextMap
+end

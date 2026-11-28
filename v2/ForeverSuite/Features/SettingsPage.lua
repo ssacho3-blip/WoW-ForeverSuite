@@ -37,6 +37,8 @@ local PRESETS = {
             { "ui", "showScreenClock", false },
             { "quest", "autoAccept", true },
             { "quest", "autoTurnIn", true },
+            { "quest", "completionSound", true },
+            { "quest", "xpBuffExpiryAlert", true },
             { "quest", "combatFade", true },
             { "merchant", "autoRepair", true },
             { "merchant", "autoSellJunk", true },
@@ -51,7 +53,7 @@ local PRESETS = {
             { "qol", "fastLoot", true },
             { "social", "autoGreetJoin", false },
             { "social", "autoGreetWelcome", false },
-            { "social", "autoThankBuff", false },
+            { "social", "autoThankBuff", true },
         },
     },
     raid = {

@@ -226,4 +226,315 @@ for _, req in ipairs(lowLevelMustHave) do
         req.name .. " must have >= " .. tostring(req.minDrops) .. " resolved non-placeholder drops (got=" .. tostring(resolvedDrops) .. ")")
 end
 
+------------------------------------------------------------------------
+-- 5. QuestTracker "현지역" Current-Zone Filter Regression
+------------------------------------------------------------------------
+local QTM = ns.Domain.QuestTrackerModel
+local mixedQuests = {
+    { questID = 5001, title = "불모의 땅 평원 사냥", zone = "불모의땅", level = 14, mapID = 1413 },
+    { questID = 5002, title = "전사 태세 퀘스트",     zone = "전사",     level = 14, mapID = 1413 },
+    { questID = 5003, title = "오그리마 파견 보고",   zone = "오그리마", level = 15 },
+    { questID = 5004, title = "타나리스 해적 토벌",   zone = "타나리스", level = 44, mapID = 1446 },
+}
+
+-- Matches via: (a) whitespace-normalized zone name ("불모의땅" == "불모의 땅"),
+-- (b) native quest mapID (class quest 5002 on map 1413),
+-- (c) native GetQuestsOnMap localQuestIDs POI (city quest 5003 whose objective is on current map),
+-- while strictly excluding remote zone quest 5004 (타나리스, mapID 1446).
+local zSnap = QTM.BuildSnapshot(mixedQuests, {
+    currentZone = "불모의 땅",
+    currentZoneAliases = { "불모의 땅", "십자로" },
+    currentMapID = 1413,
+    localQuestIDs = { [5003] = true },
+    currentZoneOnly = true,
+})
+assertEq(zSnap.questCount, 3, "Current-zone filter must include whitespace-normalized, mapID, and native POI quests")
+assertEq(zSnap.hiddenCount, 1, "Current-zone filter must exclude remote zone quest (Tanaris)")
+assertEq(zSnap.currentZoneOnly, true, "Snapshot exposes currentZoneOnly flag")
+
+-- Micro-map / cave parentMapID match (parentMapID = 1413 while player is inside cave map 9999)
+local caveSnap = QTM.BuildSnapshot(mixedQuests, {
+    currentZone = "통곡의 동굴 입구",
+    currentMapID = 9999,
+    parentMapID = 1413,
+    currentZoneOnly = true,
+})
+assertEq(caveSnap.questCount, 2, "Cave/micro-map must still match parent zone (mapID=1413) quests")
+
+-- Empty current zone with compactMode=true STILL emits clear actionable empty row (never blank box!)
+local emptyZoneSnap = QTM.BuildSnapshot(mixedQuests, {
+    currentZone = "운고로 분화구",
+    currentMapID = 1449,
+    currentZoneOnly = true,
+    compactMode = true,
+})
+assertEq(emptyZoneSnap.questCount, 0, "No quests in Un'Goro")
+assertEq(#emptyZoneSnap.rows, 1, "Empty current-zone compactMode must emit 1 clear empty-state row")
+assertEq(emptyZoneSnap.rows[1].kind, "empty", "Row kind is empty")
+assertEq(emptyZoneSnap.rows[1].clearZoneFilter, true, "Empty row supports 1-click clearZoneFilter")
+assert(string.find(emptyZoneSnap.rows[1].text, "운고로 분화구", 1, true) ~= nil, "Empty row displays detected zone name")
+assert(string.find(emptyZoneSnap.rows[1].text, "4개", 1, true) ~= nil, "Empty row displays total quest count")
+
+-- Live QuestTrackerView ToggleCurrentZoneFilter & header/empty-row UX
+local qtv = ns.Features.QuestTrackerView
+local origGetRealZone = _G.GetRealZoneText
+local origGetQuestsOnMap = _G.C_QuestLog and _G.C_QuestLog.GetQuestsOnMap
+local origGetQuestUiMapID = _G.GetQuestUiMapID
+local origGetBestMap = _G.C_Map and _G.C_Map.GetBestMapForUnit
+local origGetMapInfo = _G.C_Map and _G.C_Map.GetMapInfo
+
+_G.GetRealZoneText = function() return "불모의 땅" end
+_G.GetQuestUiMapID = function(qid) return (qid == 5002) and 1413 or ((qid == 5004) and 1446 or 0) end
+if _G.C_Map then
+    _G.C_Map.GetBestMapForUnit = function() return 1413 end
+    _G.C_Map.GetMapInfo = function(id)
+        if id == 1413 then return { mapID = 1413, name = "불모의 땅", mapType = 3, parentMapID = 1414 } end
+        if id == 1414 then return { mapID = 1414, name = "칼림도어", mapType = 2, parentMapID = 947 } end
+        return nil
+    end
+end
+if _G.C_QuestLog then
+    _G.C_QuestLog.GetQuestsOnMap = function(mid)
+        if mid == 1413 then
+            return {
+                { questID = 5003, mapID = 1413, childDepth = 0, isQuestStart = false },
+                { questID = 9999, mapID = 1413, childDepth = 0, isQuestStart = true }, -- unaccepted starter must be ignored
+            }
+        end
+        return {}
+    end
+end
+
+local ctx = ns.Api.GameAdapters.GetPlayerZoneContext()
+assertEq(ctx.zone, "불모의 땅", "GetPlayerZoneContext resolves primary zone")
+assertEq(ctx.mapID, 1413, "GetPlayerZoneContext resolves numeric mapID")
+assertEq(ctx.parentMapID, nil, "Continent parentMapID (mapType=2) must NOT leak into parentMapID")
+assertEq(ctx.localQuestIDs[5003], true, "Active POI quest captured in localQuestIDs")
+assertEq(ctx.localQuestIDs[9999], nil, "isQuestStart=true starter pin excluded from localQuestIDs")
+
+-- Ensure ToggleCurrentZoneFilter auto-unminimizes & updates header title
+ns.Api.ProfileStore:Set("quest", "trackerMinimized", true)
+ns.Api.ProfileStore:Set("quest", "currentZoneOnly", false)
+qtv:ToggleCurrentZoneFilter()
+assertEq(ns.Api.ProfileStore:Get("quest", "currentZoneOnly"), true, "ToggleCurrentZoneFilter turns currentZoneOnly ON")
+assertEq(ns.Api.ProfileStore:Get("quest", "trackerMinimized"), false, "Turning ON currentZoneOnly auto-unminimizes tracker")
+assert(string.find(qtv.titleLbl:GetText() or "", "★ 현지역", 1, true) ~= nil, "Header switches to ★ 현지역 when filter active")
+
+-- Clicking clearZoneFilter empty row resets currentZoneOnly to false
+qtv:OnRowClick({ _rowData = { kind = "empty", clearZoneFilter = true } }, "LeftButton")
+assertEq(ns.Api.ProfileStore:Get("quest", "currentZoneOnly"), false, "Clicking empty current-zone row clears filter")
+
+_G.GetRealZoneText = origGetRealZone
+_G.GetQuestUiMapID = origGetQuestUiMapID
+if _G.C_Map then
+    _G.C_Map.GetBestMapForUnit = origGetBestMap
+    _G.C_Map.GetMapInfo = origGetMapInfo
+end
+if _G.C_QuestLog then
+    _G.C_QuestLog.GetQuestsOnMap = origGetQuestsOnMap
+end
+
+------------------------------------------------------------------------
+-- 6. Quest Completion / Turn-In "딩동" (dingdong) Chime Sound Regression
+------------------------------------------------------------------------
+do
+    local qem = ns.Features.QuestExtraModule
+    local playedFiles = {}
+    local origPlaySoundFile = _G.PlaySoundFile
+    local origGetMono = ns.Api.GameAdapters.GetMonotonicTime
+    local mockNow = 100.0
+    ns.Api.GameAdapters.GetMonotonicTime = function() return mockNow end
+    _G.PlaySoundFile = function(path, ch)
+        playedFiles[#playedFiles + 1] = { path = path, channel = ch }
+        return true, 1
+    end
+
+    -- Reset default sound setting & state
+    ns.Api.ProfileStore:Set("quest", "completionSound", true)
+    ns.Api.ProfileStore:Set("ui", "alertSoundKey", "dingdong")
+    qem.lastCompletionSoundAt = -999
+    qem.notifiedCollections = {}
+
+    -- (a) Turning in a quest via QUEST_TURNED_IN plays dingdong_75.ogg on Master
+    __FS_FIRE_EVENT("QUEST_TURNED_IN", 7001, 500, 120)
+    assertEq(#playedFiles, 1, "QUEST_TURNED_IN must play completion chime")
+    assert(string.find(playedFiles[1].path, "dingdong_75.ogg", 1, true) ~= nil,
+        "Default quest finish sound must play dingdong_75.ogg (got=" .. tostring(playedFiles[1].path) .. ")")
+    assertEq(playedFiles[1].channel, "Master", "Quest finish chime plays on Master channel")
+
+    -- (b) Burst throttle within 0.8s suppresses duplicate overlapping chimes
+    mockNow = 100.2
+    __FS_FIRE_EVENT("QUEST_TURNED_IN", 7002, 500, 120)
+    assertEq(#playedFiles, 1, "Rapid burst within 0.8s must throttle duplicate chime")
+
+    -- (c) After cooldown (>0.8s), next quest objective completion plays dingdong_75.ogg
+    mockNow = 102.0
+    local origCollect = ns.Api.SafeAPI.CollectQuestLog
+    ns.Api.SafeAPI.CollectQuestLog = function()
+        return { { questID = 7003, title = "테스트 퀘스트", isComplete = true } }
+    end
+    qem:CheckCollectionAlerts()
+    assertEq(#playedFiles, 2, "Newly completed quest objective must play dingdong chime")
+    assertEq(qem.notifiedCollections[7003], true, "Completed quest ID recorded to prevent repeat chimes")
+
+    -- (d) Turning in quest 7003 clears notifiedCollections[7003] and plays turn-in chime
+    mockNow = 104.0
+    __FS_FIRE_EVENT("QUEST_TURNED_IN", 7003, 500, 120)
+    assertEq(#playedFiles, 3, "Turning in quest 7003 plays dingdong chime")
+    assertEq(qem.notifiedCollections[7003], nil, "Turning in clears notifiedCollections for repeatable quests")
+
+    -- (e) Disabling quest.completionSound cleanly silences chime
+    mockNow = 106.0
+    ns.Api.ProfileStore:Set("quest", "completionSound", false)
+    __FS_FIRE_EVENT("QUEST_TURNED_IN", 7004, 500, 120)
+    assertEq(#playedFiles, 3, "Disabling quest.completionSound must silence chime")
+    ns.Api.ProfileStore:Set("quest", "completionSound", true)
+
+    ns.Api.SafeAPI.CollectQuestLog = origCollect
+    ns.Api.GameAdapters.GetMonotonicTime = origGetMono
+    _G.PlaySoundFile = origPlaySoundFile
+end
+
+------------------------------------------------------------------------
+-- 7. Auto Buff Thank-You ("감사합니다!") & Lv<60 XP Buff Expiry Alerts
+------------------------------------------------------------------------
+do
+    local ag = ns.Features.AutoGreetingModule
+    local origNow = _G.__FS_MOCK.now
+    local origInGroup = _G.__FS_MOCK.inGroup
+    local origInRaid = _G.__FS_MOCK.inRaid
+    local origUnitNames = _G.__FS_MOCK.unitNames
+    local origAuraList = _G.__FS_MOCK.auraList
+    local origUnitLevel = _G.UnitLevel
+    local mockPlayerLevel = 24
+    _G.UnitLevel = function() return mockPlayerLevel end
+
+    -- (a) Auto buff thank-you sends "감사합니다!" in PARTY when in 5-man group
+    ns.Api.ProfileStore:Set("social", "autoThankBuff", true)
+    ag.state.cooldowns = {}
+    ag.state.aurasPrimed = true
+    ag.state.rosterSynced = true
+    ag.state.knownMembers = { ["영웅"] = true, ["힐러사제"] = true }
+    ag.state.seenAuras = {}
+    _G.__FS_MOCK.now = 5000
+    _G.__FS_MOCK.inGroup = true
+    _G.__FS_MOCK.inRaid = false
+    _G.__FS_MOCK.unitNames = { player = "영웅", party1 = "힐러사제" }
+    _G.__FS_MOCK.sentChats = {}
+    _G.__FS_MOCK.auraList = {
+        { spellId = 1243, name = "신의 권능: 인내", sourceUnit = "party1", duration = 1800 },
+    }
+    __FS_FIRE_EVENT("UNIT_AURA", "player")
+    assertEq(#_G.__FS_MOCK.sentChats, 1, "External buff in party must send thank-you chat")
+    assertEq(_G.__FS_MOCK.sentChats[1].channel, "PARTY", "Party buff thank-you uses PARTY channel")
+    assert(string.find(_G.__FS_MOCK.sentChats[1].msg, "감사합니다", 1, true) ~= nil,
+        "Thank-you chat must contain '감사합니다' (got=" .. tostring(_G.__FS_MOCK.sentChats[1].msg) .. ")")
+    assert(string.find(_G.__FS_MOCK.sentChats[1].msg, "신의 권능: 인내", 1, true) ~= nil,
+        "Thank-you chat includes buff name")
+
+    -- (b) Short combat HoT (<180s) must NOT trigger spammy thank-you
+    _G.__FS_MOCK.now = 5100
+    _G.__FS_MOCK.auraList = {
+        { spellId = 1243, name = "신의 권능: 인내", sourceUnit = "party1", duration = 1800 },
+        { spellId = 139,  name = "소생",             sourceUnit = "party1", duration = 15 },
+    }
+    __FS_FIRE_EVENT("UNIT_AURA", "player")
+    assertEq(#_G.__FS_MOCK.sentChats, 1, "Short HoT (<180s) must NOT trigger thank-you spam")
+
+    -- (c) Solo open-world external buff sends WHISPER to caster (hardware-event safe!)
+    _G.__FS_MOCK.now = 5200
+    _G.__FS_MOCK.inGroup = false
+    _G.__FS_MOCK.inRaid = false
+    _G.__FS_MOCK.unitNames = { player = "영웅", target = "지나가던법사" }
+    _G.__FS_MOCK.auraList = {
+        { spellId = 1459, name = "신비한 지능", sourceUnit = "target", duration = 1800 },
+    }
+    __FS_FIRE_EVENT("UNIT_AURA", "player")
+    assertEq(#_G.__FS_MOCK.sentChats, 2, "Solo open-world buff must send whisper thank-you")
+    assertEq(_G.__FS_MOCK.sentChats[2].channel, "WHISPER", "Solo open-world thank-you uses WHISPER (never blocked SAY)")
+    assertEq(_G.__FS_MOCK.sentChats[2].target, "지나가던법사", "Whisper targets buff caster")
+    assert(string.find(_G.__FS_MOCK.sentChats[2].msg, "감사합니다", 1, true) ~= nil, "Whisper contains '감사합니다'")
+
+    -- (c2) Inside raids, auto buff thank-you is suppressed (no mass-buff whisper/chat spam)
+    _G.__FS_MOCK.now = 5300
+    _G.__FS_MOCK.inGroup = true
+    _G.__FS_MOCK.inRaid = true
+    local okRaidBuff, rRaidBuff = ag:OnExternalBuffReceived("공대사제", "신의 권능: 인내")
+    assertEq(okRaidBuff, false, "Raid buff thank-you must be suppressed")
+    assertEq(rRaidBuff, "RAID_SUPPRESSED", "Raid buff returns RAID_SUPPRESSED")
+    assertEq(#_G.__FS_MOCK.sentChats, 2, "Raid suppression sends 0 chats")
+    _G.__FS_MOCK.inRaid = false
+
+    -- (d) Lv<60 XP Buff Expiry Alert (음식 "포만감", 침낭 "충분한 휴식")
+    local CAM = ns.Domain.CombatAlertModel
+    assertEq(CAM.IsXpBuffAura(433106, "충분한 휴식"), true, "Sleeping bag spell 433106 recognized as XP buff")
+    assertEq(CAM.IsXpBuffAura(0, "포만감"), true, "Food '포만감' recognized as XP buff")
+    assertEq(CAM.IsXpBuffAura(1243, "신의 권능: 인내"), false, "Ordinary stamina buff is NOT an XP buff")
+
+    local qem = ns.Features.QuestExtraModule
+    local xpSounds = {}
+    local origPlaySoundFile = _G.PlaySoundFile
+    _G.PlaySoundFile = function(path, ch)
+        xpSounds[#xpSounds + 1] = { path = path, channel = ch }
+        return true, 1
+    end
+    ns.Api.ProfileStore:Set("quest", "xpBuffExpiryAlert", true)
+    ns.Api.ProfileStore:Set("ui", "alertSoundKey", "dingdong")
+    qem.xpBuffPrimed = false
+    qem.activeXpBuffs = nil
+    qem.lastXpAlertAt = -999
+    mockPlayerLevel = 24
+    _G.__FS_MOCK.now = 6000
+    _G.__FS_MOCK.auraList = {
+        { spellId = 25694,  name = "포만감" },
+        { spellId = 433106, name = "충분한 휴식" },
+        { spellId = 1243,   name = "신의 권능: 인내" },
+    }
+    -- First scan primes baseline silently
+    local n0 = qem:CheckXpBuffExpiry()
+    assertEq(n0, 0, "Initial XP buff prime must not trigger alert")
+    assertEq(#xpSounds, 0, "Initial prime plays 0 sounds")
+
+    -- Ordinary buff disappearing triggers 0 XP alerts
+    _G.__FS_MOCK.auraList = {
+        { spellId = 25694,  name = "포만감" },
+        { spellId = 433106, name = "충분한 휴식" },
+    }
+    local nOrd = qem:CheckXpBuffExpiry()
+    assertEq(nOrd, 0, "Ordinary combat buff expiring must not trigger XP buff alert")
+
+    -- Food buff "포만감" disappearing at Lv.24 triggers alert + dingdong chime!
+    _G.__FS_MOCK.now = 6010
+    _G.__FS_MOCK.auraList = {
+        { spellId = 433106, name = "충분한 휴식" },
+    }
+    local nExp, expNames = qem:CheckXpBuffExpiry()
+    assertEq(nExp, 1, "Expiring food buff '포만감' at Lv.24 must trigger XP expiry alert")
+    assertEq(expNames[1], "포만감", "Expired buff name accurately reported")
+    assertEq(#xpSounds, 1, "XP buff expiry plays dingdong notification sound")
+    assert(string.find(xpSounds[1].path, "dingdong_75.ogg", 1, true) ~= nil, "XP expiry plays dingdong_75.ogg")
+
+    -- Secret/unreadable aura scan preserves activeXpBuffs (0 false alarms!)
+    _G.__FS_MOCK.auraList = { { spellId = FS_MakeSecret("s", "number"), name = "비밀" } }
+    local nSec, rSec = qem:CheckXpBuffExpiry()
+    assertEq(nSec, 0, "Secret aura scan must NOT trigger false expiry")
+    assertEq(rSec, "UNREADABLE", "Secret scan returns UNREADABLE")
+    assertEq(qem.activeXpBuffs["충분한 휴식"], true, "Secret scan preserves prior activeXpBuffs")
+
+    -- At Lv.60, XP buff expiry alert is completely silent
+    mockPlayerLevel = 60
+    _G.__FS_MOCK.auraList = {}
+    local n60, r60 = qem:CheckXpBuffExpiry()
+    assertEq(n60, 0, "Lv.60 player must receive 0 XP buff expiry alerts")
+    assertEq(r60, "MAX_LEVEL", "Lv.60 returns MAX_LEVEL")
+
+    _G.PlaySoundFile = origPlaySoundFile
+    _G.UnitLevel = origUnitLevel
+    _G.__FS_MOCK.now = origNow
+    _G.__FS_MOCK.inGroup = origInGroup
+    _G.__FS_MOCK.inRaid = origInRaid
+    _G.__FS_MOCK.unitNames = origUnitNames
+    _G.__FS_MOCK.auraList = origAuraList
+end
+
 print("OK: 29_faction_quests_home_and_db_refresh")

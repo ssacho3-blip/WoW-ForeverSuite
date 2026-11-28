@@ -67,7 +67,89 @@ function GameAdapters.GetPlayerZoneText()
     if z ~= UNAVAILABLE and type(z) == "string" and z ~= "" then
         return z
     end
+    if z == UNAVAILABLE then
+        local z2 = SafeAPI.SafeRead(_G.GetZoneText)
+        if z2 ~= UNAVAILABLE and type(z2) == "string" and z2 ~= "" then
+            return z2
+        end
+    end
     return ""
+end
+
+function GameAdapters.GetPlayerZoneContext()
+    local aliases, seen = {}, {}
+    local function addAlias(raw)
+        if raw ~= UNAVAILABLE and (not SafeAPI.IsSecret(raw)) and type(raw) == "string" and raw ~= "" and not seen[raw] then
+            seen[raw] = true
+            aliases[#aliases + 1] = raw
+        end
+    end
+
+    local realZ = SafeAPI.SafeRead(_G.GetRealZoneText)
+    local zoneZ = SafeAPI.SafeRead(_G.GetZoneText)
+    local subZ = SafeAPI.SafeRead(_G.GetSubZoneText)
+    addAlias(realZ)
+    addAlias(zoneZ)
+    addAlias(subZ)
+
+    local mapID, parentMapID = nil, nil
+    local zoneMapType = (_G.Enum and _G.Enum.UIMapType and _G.Enum.UIMapType.Zone) or 3
+    if C_Map and type(C_Map.GetBestMapForUnit) == "function" then
+        local mid = SafeAPI.SafeRead(C_Map.GetBestMapForUnit, "player")
+        if mid ~= UNAVAILABLE and type(mid) == "number" and mid > 0 then
+            mapID = mid
+            if type(C_Map.GetMapInfo) == "function" then
+                local info = SafeAPI.SafeRead(C_Map.GetMapInfo, mid)
+                if info ~= UNAVAILABLE and type(info) == "table" then
+                    addAlias(info.name)
+                    local pMid = (not SafeAPI.IsSecret(info.parentMapID)) and info.parentMapID or nil
+                    if type(pMid) == "number" and pMid > 0 and pMid ~= mid then
+                        local pInfo = SafeAPI.SafeRead(C_Map.GetMapInfo, pMid)
+                        -- Include parent map ONLY when parent is a Zone (Enum.UIMapType.Zone == 3), never Continent(2)/World(1)/Cosmic(0)
+                        if pInfo ~= UNAVAILABLE and type(pInfo) == "table"
+                            and (not SafeAPI.IsSecret(pInfo.mapType)) and pInfo.mapType == zoneMapType
+                        then
+                            parentMapID = pMid
+                            addAlias(pInfo.name)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local localQuestIDs = {}
+    local function collectMapPOIs(mid)
+        if not (mid and mid > 0 and _G.C_QuestLog and type(_G.C_QuestLog.GetQuestsOnMap) == "function") then
+            return
+        end
+        local rows = SafeAPI.SafeRead(_G.C_QuestLog.GetQuestsOnMap, mid)
+        if rows == UNAVAILABLE or type(rows) ~= "table" then
+            return
+        end
+        for i = 1, #rows do
+            local r = rows[i]
+            if type(r) == "table" and (not SafeAPI.IsSecret(r.questID)) and type(r.questID) == "number" and r.questID > 0 then
+                local isStart = (not SafeAPI.IsSecret(r.isQuestStart)) and (r.isQuestStart == true)
+                local depth = (not SafeAPI.IsSecret(r.childDepth)) and r.childDepth or 0
+                local rMap = (not SafeAPI.IsSecret(r.mapID)) and r.mapID or nil
+                if (not isStart) and (type(depth) ~= "number" or depth == 0) and (rMap == nil or rMap == mid) then
+                    localQuestIDs[r.questID] = true
+                end
+            end
+        end
+    end
+    collectMapPOIs(mapID)
+    collectMapPOIs(parentMapID)
+
+    local primary = aliases[1] or ""
+    return {
+        zone = primary,
+        aliases = aliases,
+        mapID = mapID,
+        parentMapID = parentMapID,
+        localQuestIDs = localQuestIDs,
+    }
 end
 
 function GameAdapters.RunAfter(delaySec, fn)
@@ -1190,12 +1272,23 @@ function GameAdapters.ScanNewExternalBuff(seenAuraIDs)
         local sid = aura.spellId
         local bName = aura.name
         local src = aura.sourceUnit
+        local dur = (not SafeAPI.IsSecret(aura.duration)) and aura.duration or nil
         if type(sid) == "number" and sid > 0 then
             current[sid] = true
-            if (not foundCaster) and (not seenAuraIDs[sid]) and type(src) == "string" and src ~= "" and not GameAdapters.IsUnitPlayer(src) then
-                local cName, st = GameAdapters.GetUnitNameSafe(src)
-                if st == "OK" and type(bName) == "string" and bName ~= "" then
-                    foundCaster, foundBuff = cName, bName
+            local durOk = (type(dur) ~= "number") or dur <= 0 or dur >= 180
+            if (not foundCaster) and (not seenAuraIDs[sid]) and durOk and type(src) == "string" and src ~= "" and not GameAdapters.IsUnitPlayer(src) then
+                local isPlayerCaster = true
+                if type(_G.UnitIsPlayer) == "function" then
+                    local up = SafeAPI.SafeRead(_G.UnitIsPlayer, src)
+                    if up ~= UNAVAILABLE and up == false then
+                        isPlayerCaster = false
+                    end
+                end
+                if isPlayerCaster then
+                    local cName, st = GameAdapters.GetUnitNameSafe(src)
+                    if st == "OK" and type(bName) == "string" and bName ~= "" then
+                        foundCaster, foundBuff = cName, bName
+                    end
                 end
             end
         end
@@ -1203,6 +1296,35 @@ function GameAdapters.ScanNewExternalBuff(seenAuraIDs)
     for k in pairs(seenAuraIDs) do seenAuraIDs[k] = nil end
     for k, v in pairs(current) do seenAuraIDs[k] = v end
     return foundCaster, foundBuff, "OK"
+end
+
+-- Secret-safe scan of all current player HELPFUL auras (Fail-Closed: returns nil, false on ANY unreadable/Secret aura)
+function GameAdapters.ScanPlayerHelpfulAuras()
+    if not (C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function") then
+        return nil, false
+    end
+    local out = {}
+    for i = 1, 40 do
+        local aura = SafeAPI.SafeRead(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+        if aura == UNAVAILABLE then
+            return nil, false
+        end
+        if type(aura) ~= "table" then
+            break
+        end
+        if SafeAPI.IsSecret(aura.spellId) or SafeAPI.IsSecret(aura.name) then
+            return nil, false
+        end
+        local sid = aura.spellId
+        local bName = aura.name
+        if type(bName) == "string" and bName ~= "" then
+            out[#out + 1] = {
+                spellId = (type(sid) == "number") and sid or 0,
+                name = bName,
+            }
+        end
+    end
+    return out, true
 end
 
 -- Returns (units, ok): ok=false when group size is unreadable while in group (Fail-Closed for F3).

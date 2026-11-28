@@ -7,12 +7,15 @@ ns.Domain = ns.Domain or {}
 
 local type = type
 local ipairs = ipairs
+local pairs = pairs
 local tostring = tostring
 local tonumber = tonumber
 local math_max = math.max
 local math_min = math.min
 local math_floor = math.floor
 local string_match = string.match
+local string_lower = string.lower
+local string_gsub = string.gsub
 local table_insert = table.insert
 local table_sort = table.sort
 
@@ -107,6 +110,45 @@ function QuestTrackerModel.ClampScrollOffset(offset, totalRows, maxVisible)
     return cur, maxScroll
 end
 
+function QuestTrackerModel.NormalizeZoneName(raw)
+    if type(raw) ~= "string" or raw == "" then
+        return ""
+    end
+    return string_gsub(string_lower(raw), "%s+", "")
+end
+
+function QuestTrackerModel.MatchesCurrentZone(q, ctx)
+    if type(q) ~= "table" or type(ctx) ~= "table" then
+        return false
+    end
+    if type(ctx.localQuestIDs) == "table" and type(q.questID) == "number" and ctx.localQuestIDs[q.questID] == true then
+        return true
+    end
+    local curMap = ctx.currentMapID
+    local parMap = ctx.parentMapID
+    if type(curMap) == "number" and curMap > 0 then
+        if (type(q.mapID) == "number" and q.mapID == curMap)
+            or (type(q.primaryMapID) == "number" and q.primaryMapID == curMap)
+        then
+            return true
+        end
+    end
+    if type(parMap) == "number" and parMap > 0 then
+        if (type(q.mapID) == "number" and q.mapID == parMap)
+            or (type(q.primaryMapID) == "number" and q.primaryMapID == parMap)
+        then
+            return true
+        end
+    end
+    if type(ctx.zoneNormSet) == "table" then
+        local qNorm = QuestTrackerModel.NormalizeZoneName(q.zone)
+        if qNorm ~= "" and ctx.zoneNormSet[qNorm] == true then
+            return true
+        end
+    end
+    return false
+end
+
 function QuestTrackerModel.BuildSnapshot(quests, opts)
     opts = type(opts) == "table" and opts or {}
     local superQID = (type(opts.superTrackedQuestID) == "number") and opts.superTrackedQuestID or 0
@@ -122,13 +164,48 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
     local maxVisible = (type(opts.maxVisibleRows) == "number" and opts.maxVisibleRows >= 1)
         and math_floor(opts.maxVisibleRows) or DEFAULT_MAX_VISIBLE_ROWS
 
+    local zoneNormSet = {}
+    local hasZoneSignal = false
+    local function addZoneNorm(raw)
+        local n = QuestTrackerModel.NormalizeZoneName(raw)
+        if n ~= "" then
+            zoneNormSet[n] = true
+            hasZoneSignal = true
+        end
+    end
+    addZoneNorm(currentZone)
+    if type(opts.currentZoneAliases) == "table" then
+        for _, al in ipairs(opts.currentZoneAliases) do
+            addZoneNorm(al)
+        end
+    end
+    local currentMapID = (type(opts.currentMapID) == "number" and opts.currentMapID > 0) and opts.currentMapID or nil
+    local parentMapID = (type(opts.parentMapID) == "number" and opts.parentMapID > 0) and opts.parentMapID or nil
+    local localQuestIDs = (type(opts.localQuestIDs) == "table") and opts.localQuestIDs or nil
+    if currentMapID or parentMapID then
+        hasZoneSignal = true
+    elseif localQuestIDs then
+        for _ in pairs(localQuestIDs) do
+            hasZoneSignal = true
+            break
+        end
+    end
+    local zoneCtx = {
+        zoneNormSet = zoneNormSet,
+        currentMapID = currentMapID,
+        parentMapID = parentMapID,
+        localQuestIDs = localQuestIDs,
+    }
+
     local filtered = {}
+    local questInCurZone = {}
     local totalAll = 0
     for _, q in ipairs(quests or {}) do
         if type(q) == "table" and type(q.questID) == "number" and q.questID > 0 then
             totalAll = totalAll + 1
-            local zone = (type(q.zone) == "string" and q.zone ~= "") and q.zone or "기타"
-            local zonePass = (not currentZoneOnly) or (currentZone == "") or (zone == currentZone)
+            local inCur = hasZoneSignal and QuestTrackerModel.MatchesCurrentZone(q, zoneCtx) or false
+            questInCurZone[q.questID] = inCur
+            local zonePass = (not currentZoneOnly) or (not hasZoneSignal) or inCur
             local watchPass = (not watchedOnly) or (q.isWatched == true) or (q.questID == superQID)
             if zonePass and watchPass then
                 table_insert(filtered, q)
@@ -151,8 +228,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
         else
             local az = (type(a.zone) == "string" and a.zone ~= "") and a.zone or "기타"
             local bz = (type(b.zone) == "string" and b.zone ~= "") and b.zone or "기타"
-            local aCur = (currentZone ~= "" and az == currentZone) and 1 or 0
-            local bCur = (currentZone ~= "" and bz == currentZone) and 1 or 0
+            local aCur = questInCurZone[a.questID] and 1 or 0
+            local bCur = questInCurZone[b.questID] and 1 or 0
             if aCur ~= bCur then
                 return aCur > bCur
             end
@@ -180,7 +257,7 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
         else
             gKey = "zone:" .. zone
             gLabel = zone
-            isCurZone = (currentZone ~= "" and zone == currentZone)
+            isCurZone = questInCurZone[q.questID] == true
         end
 
         local grp = groupMap[gKey]
@@ -194,6 +271,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
             }
             groupMap[gKey] = grp
             table_insert(groups, grp)
+        elseif isCurZone then
+            grp.isCurrentZone = true
         end
 
         local dockSlot = nil
@@ -315,11 +394,23 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
             })
         end
 
-        if #rows == 0 and not compactMode then
+        if #rows == 0 and (currentZoneOnly or not compactMode) then
+            local emptyTxt
+            if currentZoneOnly then
+                local zoneTag = (currentZone ~= "") and ("[" .. currentZone .. "] ") or ""
+                if totalAll > 0 then
+                    emptyTxt = zoneTag .. "퀘스트 없음 (전체 " .. tostring(totalAll) .. "개 · 클릭해 해제)"
+                else
+                    emptyTxt = zoneTag .. "현재 지역에 진행 중인 퀘스트가 없습니다."
+                end
+            else
+                emptyTxt = "진행 중인 퀘스트가 없습니다."
+            end
             table_insert(rows, {
                 kind = "empty",
-                text = currentZoneOnly and "현재 지역에 진행 중인 퀘스트가 없습니다." or "진행 중인 퀘스트가 없습니다.",
-                rightText = "",
+                text = emptyTxt,
+                rightText = (currentZoneOnly and totalAll > 0) and "전체 보기" or "",
+                clearZoneFilter = (currentZoneOnly and totalAll > 0),
                 visualState = "empty",
             })
         end
@@ -350,5 +441,7 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
         compactMode = compactMode,
         minimized = minimized,
         groupMode = groupMode,
+        currentZoneOnly = currentZoneOnly,
+        currentZone = currentZone,
     }
 end

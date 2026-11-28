@@ -78,20 +78,23 @@ enum Commands {
         #[arg(long)]
         backup_dir: Option<PathBuf>,
     },
-    /// Build verified 3-folder release ZIP + SHA-256 with size hard cap & Private/ leak guard
+    /// Build verified Core 3-folder ZIP + optional separate DataPack ZIP (+ SHA-256) with size hard caps & Private/ leak guard
     Package {
         /// Source root containing v2 addon folders (e.g. v2)
         #[arg(long)]
         source: PathBuf,
-        /// Output directory for release ZIP and SHA-256
+        /// Output directory for release ZIPs and SHA-256 files
         #[arg(long)]
         out: PathBuf,
-        /// Optional release tag (e.g. v6.0.0) enforced against ForeverSuite.toc Version
+        /// Optional release tag (e.g. v6.2.0) enforced against ForeverSuite.toc Version
         #[arg(long)]
         tag: Option<String>,
-        /// Maximum allowed uncompressed package size in MiB (default: 18)
+        /// Maximum allowed uncompressed Core package size in MiB (default: 18)
         #[arg(long, default_value_t = 18)]
         max_mb: u64,
+        /// Maximum allowed uncompressed DataPack package size in MiB (default: 30)
+        #[arg(long, default_value_t = 30)]
+        datapack_max_mb: u64,
     },
     /// Parse Blizzard Logs/taint.log and ForeverSuite SavedVariables diagnostics/GJ usage telemetry
     TaintReport {
@@ -189,7 +192,8 @@ fn main() -> Result<()> {
             out,
             tag,
             max_mb,
-        } => package::run_package(&source, &out, tag.as_deref(), max_mb),
+            datapack_max_mb,
+        } => package::run_package(&source, &out, tag.as_deref(), max_mb, datapack_max_mb),
         Commands::TaintReport {
             taint_log,
             saved_vars,

@@ -344,10 +344,23 @@ function SafeAPI.CollectQuestLog()
                     end
                 end
                 local isFailed = (not SafeAPI.IsSecret(info.isFailed)) and (info.isFailed == true)
+                local questMapID, primaryMapID = nil, nil
+                if type(_G.GetQuestUiMapID) == "function" then
+                    local mCur = SafeAPI.SafeRead(_G.GetQuestUiMapID, qid, true)
+                    if mCur ~= UNAVAILABLE and type(mCur) == "number" and mCur > 0 then
+                        questMapID = mCur
+                    end
+                    local mPri = SafeAPI.SafeRead(_G.GetQuestUiMapID, qid, false)
+                    if mPri ~= UNAVAILABLE and type(mPri) == "number" and mPri > 0 then
+                        primaryMapID = mPri
+                    end
+                end
                 quests[#quests + 1] = {
                     questID = qid,
                     title = ((not SafeAPI.IsSecret(info.title)) and type(info.title) == "string" and info.title) or ("퀘스트 #" .. tostring(qid)),
                     zone = curZone,
+                    mapID = questMapID,
+                    primaryMapID = primaryMapID,
                     level = ((not SafeAPI.IsSecret(info.level)) and type(info.level) == "number") and info.level or 0,
                     isComplete = isComplete,
                     isFailed = isFailed,

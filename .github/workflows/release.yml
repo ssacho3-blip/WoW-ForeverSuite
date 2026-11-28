@@ -62,7 +62,7 @@ jobs:
           ./tools/fsx/target/release/fsx check v2/ForeverSuite_Media
           ./tools/fsx/target/release/fsx test v2
 
-      - name: Build verified 3-folder release ZIP & SHA-256 (<= 18 MB hard cap)
+      - name: Build verified Core (<= 18 MB) & separate DataPack (<= 30 MB) release ZIPs & SHA-256
         env:
           TAG: ${{ steps.meta.outputs.tag }}
           VER: ${{ steps.meta.outputs.version }}
@@ -72,10 +72,13 @@ jobs:
             --source v2 \
             --out dist \
             --tag "$TAG" \
-            --max-mb 18
+            --max-mb 18 \
+            --datapack-max-mb 30
           test -s "dist/ForeverSuite-v${VER}.zip"
           test -s "dist/ForeverSuite-v${VER}.zip.sha256"
-          (cd dist && sha256sum -c "ForeverSuite-v${VER}.zip.sha256")
+          test -s "dist/ForeverSuite-DataPack-v${VER}.zip"
+          test -s "dist/ForeverSuite-DataPack-v${VER}.zip.sha256"
+          (cd dist && sha256sum -c "ForeverSuite-v${VER}.zip.sha256" && sha256sum -c "ForeverSuite-DataPack-v${VER}.zip.sha256")
 
       - name: Publish or update GitHub Release atomically (Draft -> Upload -> Verify Assets -> Publish)
         env:
@@ -87,15 +90,19 @@ jobs:
           set -euo pipefail
           ZIP_NAME="ForeverSuite-v${VER}.zip"
           SHA_NAME="ForeverSuite-v${VER}.zip.sha256"
+          DP_ZIP_NAME="ForeverSuite-DataPack-v${VER}.zip"
+          DP_SHA_NAME="ForeverSuite-DataPack-v${VER}.zip.sha256"
           ZIP_PATH="dist/${ZIP_NAME}"
           SHA_PATH="dist/${SHA_NAME}"
+          DP_ZIP_PATH="dist/${DP_ZIP_NAME}"
+          DP_SHA_PATH="dist/${DP_SHA_NAME}"
           TARGET_SHA=$(git rev-parse HEAD)
           if gh release view "$TAG" --repo "$REPO_SLUG" >/dev/null 2>&1; then
             # Move existing release to draft while replacing paired assets so partial failure never exposes mismatched ZIP/SHA
             gh release edit "$TAG" --repo "$REPO_SLUG" --draft=true
-            gh release upload "$TAG" "$ZIP_PATH" "$SHA_PATH" --repo "$REPO_SLUG" --clobber
+            gh release upload "$TAG" "$ZIP_PATH" "$SHA_PATH" "$DP_ZIP_PATH" "$DP_SHA_PATH" --repo "$REPO_SLUG" --clobber
           else
-            gh release create "$TAG" "$ZIP_PATH" "$SHA_PATH" \
+            gh release create "$TAG" "$ZIP_PATH" "$SHA_PATH" "$DP_ZIP_PATH" "$DP_SHA_PATH" \
               --repo "$REPO_SLUG" \
               --target "$TARGET_SHA" \
               --verify-tag \
@@ -103,11 +110,10 @@ jobs:
               --generate-notes \
               --draft
           fi
-          # Verify both paired assets exist with non-zero size before publishing live (separate commands for strict set -e)
-          ZIP_SIZE=$(gh release view "$TAG" --repo "$REPO_SLUG" --json assets --jq ".assets[] | select(.name == \"${ZIP_NAME}\") | .size")
-          SHA_SIZE=$(gh release view "$TAG" --repo "$REPO_SLUG" --json assets --jq ".assets[] | select(.name == \"${SHA_NAME}\") | .size")
-          test -n "$ZIP_SIZE"
-          [ "$ZIP_SIZE" -gt 0 ]
-          test -n "$SHA_SIZE"
-          [ "$SHA_SIZE" -gt 0 ]
+          # Verify all 4 paired assets exist with non-zero size before publishing live
+          for ASSET in "$ZIP_NAME" "$SHA_NAME" "$DP_ZIP_NAME" "$DP_SHA_NAME"; do
+            ASSET_SIZE=$(gh release view "$TAG" --repo "$REPO_SLUG" --json assets --jq ".assets[] | select(.name == \"${ASSET}\") | .size")
+            test -n "$ASSET_SIZE"
+            [ "$ASSET_SIZE" -gt 0 ]
+          done
           gh release edit "$TAG" --repo "$REPO_SLUG" --title "ForeverSuite ${TAG}" --draft=false --latest

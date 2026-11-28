@@ -27,10 +27,20 @@ jobs:
           ./tools/fsx/target/debug/fsx check v2/ForeverSuite_Data
           ./tools/fsx/target/debug/fsx test v2
           ./tools/fsx/target/debug/fsx install --source v2 --addons-dir /tmp --prune-legacy --dry-run
-          ./tools/fsx/target/debug/fsx package --source v2 --out /tmp/fsx-ci-dist --max-mb 18
-          rm -rf /tmp/fsx-ci-unpack && mkdir -p /tmp/fsx-ci-unpack
-          unzip -q /tmp/fsx-ci-dist/ForeverSuite-v*.zip -d /tmp/fsx-ci-unpack
+          ./tools/fsx/target/debug/fsx package --source v2 --out /tmp/fsx-ci-dist --max-mb 18 --datapack-max-mb 30
+          (cd /tmp/fsx-ci-dist && sha256sum -c ForeverSuite-v[0-9]*.zip.sha256 && sha256sum -c ForeverSuite-DataPack-v[0-9]*.zip.sha256)
+          rm -rf /tmp/fsx-ci-unpack /tmp/fsx-ci-dp && mkdir -p /tmp/fsx-ci-unpack /tmp/fsx-ci-dp
+          unzip -q /tmp/fsx-ci-dist/ForeverSuite-v[0-9]*.zip -d /tmp/fsx-ci-unpack
+          test "$(ls -1 /tmp/fsx-ci-unpack | wc -l)" -eq 3
           ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite
           ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite_Data
           ./tools/fsx/target/debug/fsx check /tmp/fsx-ci-unpack/ForeverSuite_Media
           ./tools/fsx/target/debug/fsx install --source /tmp/fsx-ci-unpack --addons-dir /tmp --dry-run
+          unzip -q /tmp/fsx-ci-dist/ForeverSuite-DataPack-v[0-9]*.zip -d /tmp/fsx-ci-dp
+          test "$(ls -1 /tmp/fsx-ci-dp | wc -l)" -eq 10
+          DP_COUNT=0
+          for d in /tmp/fsx-ci-dp/ForeverSuite_Data_*; do
+            ./tools/fsx/target/debug/fsx check "$d"
+            DP_COUNT=$((DP_COUNT + 1))
+          done
+          test "$DP_COUNT" -eq 10

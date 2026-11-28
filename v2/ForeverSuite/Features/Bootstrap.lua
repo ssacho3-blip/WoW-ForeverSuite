@@ -140,6 +140,24 @@ local DEFAULT_SCHEMAS = {
     },
     {
         section = "quest",
+        key = "completionSound",
+        type = "boolean",
+        default = true,
+        label = "퀘스트 완료·마무리 시 띵동 알림음 재생",
+        desc = "목표 달성 및 NPC 보고 완료 시 통합 알림음(기본: 띵동) 재생",
+        combatSafe = true,
+    },
+    {
+        section = "quest",
+        key = "xpBuffExpiryAlert",
+        type = "boolean",
+        default = true,
+        label = "60레벨 미만 경험치 버프 만료 알림 (음식·침낭 등)",
+        desc = "포만감·충분한 휴식(침낭)·경험치 버프가 사라지면 토스트+알림음 경고",
+        combatSafe = true,
+    },
+    {
+        section = "quest",
         key = "autoSuperTrack",
         type = "boolean",
         default = true,
@@ -327,9 +345,9 @@ local DEFAULT_SCHEMAS = {
         section = "social",
         key = "autoThankBuff",
         type = "boolean",
-        default = false,
-        label = "단일 버프 수신 시 /감사 자동 감정표현 (기본 OFF)",
-        desc = "비전투 및 비비밀 오라 확인 시에만 동작",
+        default = true,
+        label = "버프 수신 시 자동 '감사합니다!' 인사",
+        desc = "파티·던전 채팅 또는 필드 귓속말로 자동 감사 (60초 쿨다운 · 비전투)",
         combatSafe = true,
     },
     {
@@ -1169,6 +1187,10 @@ function Bootstrap:Init()
         directorInDialogue = true
         SyncDirectorState(nil, false)
     end)
+    ns.Api.EventBus:OnEvent("v6:qTurnedIn", "QUEST_TURNED_IN", function(_, questID)
+        if ns.Api.SafeAPI.IsSecret(questID) then return end
+        ns.Features.QuestExtraModule:OnQuestTurnedIn(questID)
+    end)
     ns.Api.EventBus:OnEvent("v6:qGreeting", "QUEST_GREETING", function()
         directorInDialogue = true
         SyncDirectorState(nil, false)
@@ -1229,6 +1251,7 @@ function Bootstrap:Init()
             ns.Features.CombatHudPack:RefreshShortBuffs()
             ns.Features.ProcCooldownHud:RefreshProcs()
             ns.Features.AutoGreetingModule:OnPlayerAuraChanged()
+            ns.Features.QuestExtraModule:CheckXpBuffExpiry()
         end
     end)
     ns.Api.EventBus:OnEvent("v2:power", "UNIT_POWER_UPDATE", function(_, unit)
@@ -1319,6 +1342,12 @@ function Bootstrap:Init()
         ns.Features.QuestExtraModule:CheckProximityAlerts()
         ns.Features.QuestExtraModule:SyncProximityTicker()
         RefreshHomeIfVisible()
+    end)
+    ns.Api.EventBus:OnEvent("v2:zoneSub", "ZONE_CHANGED", function()
+        ns.Features.QuestTrackerView:RefreshLive()
+    end)
+    ns.Api.EventBus:OnEvent("v2:zoneIndoors", "ZONE_CHANGED_INDOORS", function()
+        ns.Features.QuestTrackerView:RefreshLive()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
         if ns.UI and ns.UI.Motion and type(ns.UI.Motion.SnapAllForCombat) == "function" then

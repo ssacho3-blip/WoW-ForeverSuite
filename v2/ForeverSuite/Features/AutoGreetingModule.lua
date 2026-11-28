@@ -21,13 +21,14 @@ local AutoGreetingModule = {
 ns.Features.AutoGreetingModule = AutoGreetingModule
 
 function AutoGreetingModule:SetCustomMessage(kind, text)
-    if (kind ~= "join" and kind ~= "welcome") or type(text) ~= "string" then return false end
-    local key = (kind == "join") and "autoGreetJoinMsg" or "autoGreetWelcomeMsg"
+    if (kind ~= "join" and kind ~= "welcome" and kind ~= "buff") or type(text) ~= "string" then return false end
+    local key = (kind == "join") and "autoGreetJoinMsg" or ((kind == "welcome") and "autoGreetWelcomeMsg" or "autoGreetBuffMsg")
     return ns.Api.ProfileStore and ns.Api.ProfileStore:SetState(key, text) == true
 end
 
 function AutoGreetingModule:GetCustomMessage(kind)
-    local key = (kind == "join") and "autoGreetJoinMsg" or "autoGreetWelcomeMsg"
+    if kind ~= "join" and kind ~= "welcome" and kind ~= "buff" then return "" end
+    local key = (kind == "join") and "autoGreetJoinMsg" or ((kind == "welcome") and "autoGreetWelcomeMsg" or "autoGreetBuffMsg")
     local saved = ns.Api.ProfileStore and ns.Api.ProfileStore:GetState(key)
     if type(saved) == "string" and saved ~= "" then return saved end
     return ns.Domain.AutoGreetingModel.DEFAULTS[kind]
@@ -199,7 +200,7 @@ function AutoGreetingModule:OnPlayerAuraChanged()
 end
 
 function AutoGreetingModule:OnExternalBuffReceived(casterName, buffName)
-    -- Invariant I4: Default OFF; Fail-Closed on secret caster/buff, combat, chat lockdown, or missing clock
+    -- Fail-Closed on disabled, secret caster/buff, combat, chat lockdown, or missing clock
     if ns.Api.ProfileStore:Get("social", "autoThankBuff") ~= true then
         return false, "DISABLED"
     end
@@ -217,14 +218,38 @@ function AutoGreetingModule:OnExternalBuffReceived(casterName, buffName)
         enabled = true,
         inCombat = ns.Api.SafeAPI.InCombat(),
         chatLockdown = ns.Api.GameAdapters.IsChatMessagingLocked(),
-        rosterSynced = self.state.rosterSynced,
+        rosterSynced = (self.state.rosterSynced == true) or (self.state.aurasPrimed == true),
         targetKey = casterName,
         now = now,
     }, self.state)
     if not ok then
         return false, reason
     end
-    local sent, sStatus = ns.Api.GameAdapters.DoEmoteSafe("THANK", casterName)
+    local msg = ns.Domain.AutoGreetingModel.FormatTemplate(self:GetCustomMessage("buff"), {
+        name = casterName,
+        buffName = buffName,
+    })
+    -- Hardware-event-safe channel routing (zero non-hardware SAY/YELL):
+    -- Suppressed in raids | PARTY for party members | WHISPER directly to caster otherwise (fallback: /thank emote)
+    if ns.Api.GameAdapters.IsInRaidState() == true then
+        return false, "RAID_SUPPRESSED"
+    end
+    local inGroup = ns.Api.GameAdapters.IsInGroupState()
+    local isPartyMember = (inGroup == true)
+        and (type(self.state.knownMembers) == "table" and self.state.knownMembers[casterName] == true)
+    local channel, target
+    if isPartyMember then
+        channel, target = "PARTY", nil
+    else
+        channel, target = "WHISPER", casterName
+    end
+    local sent, sStatus = false, "EMPTY_MSG"
+    if msg ~= "" then
+        sent, sStatus = ns.Api.GameAdapters.SendChatSafe(msg, channel, target)
+    end
+    if not sent then
+        sent, sStatus = ns.Api.GameAdapters.DoEmoteSafe("THANK", casterName)
+    end
     if sent then
         self.state.cooldowns[key] = exp
     end

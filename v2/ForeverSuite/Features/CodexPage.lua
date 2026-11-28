@@ -40,7 +40,7 @@ end
 
 local STATUS_MESSAGES = {
     IN_COMBAT = "전투 중에는 도감 데이터팩을 불러올 수 없습니다. 비전투 후 다시 열어주세요.",
-    NOT_INSTALLED = "선택한 도감 데이터팩이 설치되어 있지 않습니다.",
+    NOT_INSTALLED = "확장 도감 데이터팩(ForeverSuite-DataPack)이 설치되어 있지 않습니다. 별도 다운로드 후 AddOns 폴더에 넣어주세요.",
     DISABLED = "선택한 도감 데이터팩이 애드온 목록에서 비활성화되어 있습니다.",
     LOAD_FAILED = "도감 데이터팩을 불러오지 못했습니다.",
 }

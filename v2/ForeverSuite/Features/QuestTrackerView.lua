@@ -285,6 +285,7 @@ function QuestTrackerView:SyncToolbarLabels()
     self.btnGroupMode:SetLabel(gm == "level" and "레벨" or "지역")
     self.btnGroupMode:SetActive(gm == "level")
     self.btnZoneFilter:SetActive(cz)
+    self.btnZoneFilter._tooltipText = cz and "현재 지역 퀘스트만 표시 중 (클릭하여 전체 보기)" or "현재 지역 퀘스트만 표시"
     self.btnLock:SetLabel(lk and "잠김" or "이동")
     self.btnLock:SetActive(lk)
     if self.container and type(self.container.SetMovable) == "function" then
@@ -316,9 +317,16 @@ end
 
 function QuestTrackerView:ToggleCurrentZoneFilter()
     local cur = GetSetting("currentZoneOnly", false) == true
-    if SetSetting("currentZoneOnly", not cur) then
-        self.scrollOffset = 0
+    local nextVal = not cur
+    local prevOff = self.scrollOffset
+    self.scrollOffset = 0
+    if nextVal and GetSetting("trackerMinimized", false) == true then
+        SetSetting("trackerMinimized", false)
+    end
+    if SetSetting("currentZoneOnly", nextVal) then
         self:RefreshLive()
+    else
+        self.scrollOffset = prevOff
     end
 end
 
@@ -481,6 +489,13 @@ function QuestTrackerView:OnRowClick(rowBtn, mouseBtn)
         return
     end
 
+    if item.kind == "empty" and item.clearZoneFilter == true then
+        self.scrollOffset = 0
+        SetSetting("currentZoneOnly", false)
+        self:RefreshLive()
+        return
+    end
+
     if item.kind == "header" and item.groupKey then
         local map = GetStateMap("collapsedGroups")
         if mouseBtn == "RightButton" then
@@ -613,7 +628,16 @@ function QuestTrackerView:BuildLiveOpts(extra)
         opts.superTrackedQuestID = ns.Api.SafeAPI.GetSuperTrackedQuestID()
     end
     if opts.currentZone == nil then
-        opts.currentZone = ns.Api.GameAdapters.GetPlayerZoneText()
+        if type(ns.Api.GameAdapters.GetPlayerZoneContext) == "function" then
+            local zCtx = ns.Api.GameAdapters.GetPlayerZoneContext()
+            opts.currentZone = zCtx.zone
+            if opts.currentZoneAliases == nil then opts.currentZoneAliases = zCtx.aliases end
+            if opts.currentMapID == nil then opts.currentMapID = zCtx.mapID end
+            if opts.parentMapID == nil then opts.parentMapID = zCtx.parentMapID end
+            if opts.localQuestIDs == nil then opts.localQuestIDs = zCtx.localQuestIDs end
+        else
+            opts.currentZone = ns.Api.GameAdapters.GetPlayerZoneText()
+        end
     end
     if opts.playerLevel == nil then
         opts.playerLevel = ns.Api.GameAdapters.GetPlayerLevel()
@@ -706,7 +730,8 @@ function QuestTrackerView:Render(quests, opts)
         if snap.hiddenCount > 0 then
             countTxt = countTxt .. "/" .. tostring(snap.totalQuestCount)
         end
-        self.titleLbl:SetText("★ 퀘스트 (" .. countTxt .. ")")
+        local hdrPrefix = snap.currentZoneOnly and "★ 현지역 (" or "★ 퀘스트 ("
+        self.titleLbl:SetText(hdrPrefix .. countTxt .. ")")
     end
 
     -- Fixed B6: Compute scrollbar visibility BEFORE anchoring rows so right inset clears the 10px scrollbar!
@@ -761,7 +786,9 @@ function QuestTrackerView:Render(quests, opts)
         else
             row._left:SetText(item.text or "")
             row._left:SetTextColor(theme.tc[1], theme.tc[2], theme.tc[3], 1)
-            row._right:SetText("")
+            row._right:SetText(item.rightText or "")
+            local rCol = item.clearZoneFilter and T.TEXT.GOLD or theme.rc
+            row._right:SetTextColor(rCol[1], rCol[2], rCol[3], 1)
         end
         row:Show()
         y = y + ROW_HEIGHT

@@ -34,8 +34,102 @@ local QuestExtraModule = {
     proximityTicker = nil,
     lastSyncSentAt = 0,
     lastGrowthLevel = nil,
+    lastCompletionSoundAt = -999,
+    xpBuffPrimed = false,
+    activeXpBuffs = nil,
+    lastXpAlertAt = -999,
 }
 ns.Features.QuestExtraModule = QuestExtraModule
+
+function QuestExtraModule:PrimeCompletedQuests()
+    local quests = ns.Api.SafeAPI.CollectQuestLog()
+    for _, q in ipairs(quests) do
+        if q.isComplete and type(q.questID) == "number" and q.questID > 0 then
+            self.notifiedCollections[q.questID] = true
+        end
+    end
+end
+
+function QuestExtraModule:PlayCompletionChime(forceBypassThrottle)
+    if ns.Api.ProfileStore:Get("quest", "completionSound") == false then
+        return false, "DISABLED"
+    end
+    local snd = ns.Api.ProfileStore:Get("ui", "alertSoundKey") or "dingdong"
+    if snd == "none" or snd == "" then
+        return false, "MUTED"
+    end
+    local now = ns.Api.GameAdapters.GetMonotonicTime() or 0
+    if (not forceBypassThrottle) and (now - (self.lastCompletionSoundAt or -999)) < 0.8 then
+        return false, "THROTTLED"
+    end
+    local ok = ns.Api.GameAdapters.PlayNotificationSound(snd, 75, "Master", false)
+    if ok then
+        self.lastCompletionSoundAt = now
+    end
+    return ok, snd
+end
+
+function QuestExtraModule:OnQuestTurnedIn(questID)
+    if ns.Api.SafeAPI.IsSecret(questID) then
+        return false, "SECRET"
+    end
+    if type(questID) == "number" and questID > 0 then
+        self.notifiedCollections[questID] = nil
+    end
+    return self:PlayCompletionChime(false)
+end
+
+-- Lv<60 XP Buff Expiry Alert (food "포만감", sleeping bag "충분한 휴식", Darkmoon "야호!", etc.)
+function QuestExtraModule:CheckXpBuffExpiry()
+    if ns.Api.ProfileStore:Get("quest", "xpBuffExpiryAlert") == false then
+        return 0, "DISABLED"
+    end
+    local lvl = ns.Api.GameAdapters.GetPlayerLevel()
+    if type(lvl) ~= "number" or lvl < 1 then
+        return 0, "LEVEL_UNKNOWN"
+    end
+    if lvl >= 60 then
+        self.xpBuffPrimed = false
+        self.activeXpBuffs = nil
+        return 0, "MAX_LEVEL"
+    end
+    local auras, readable = ns.Api.GameAdapters.ScanPlayerHelpfulAuras()
+    if not readable then
+        -- Fail-Closed: preserve prior activeXpBuffs across transient Secret/unreadable scans
+        return 0, "UNREADABLE"
+    end
+    local curMap = {}
+    for _, a in ipairs(auras) do
+        if ns.Domain.CombatAlertModel.IsXpBuffAura(a.spellId, a.name) then
+            curMap[a.name] = true
+        end
+    end
+    local isDeadOrGhost = ns.Api.GameAdapters.IsPlayerDeadOrGhost()
+    local expired, nextMap = ns.Domain.CombatAlertModel.DiffExpiredXpBuffs(
+        self.xpBuffPrimed and self.activeXpBuffs or nil,
+        curMap,
+        lvl,
+        isDeadOrGhost
+    )
+    self.activeXpBuffs = nextMap
+    self.xpBuffPrimed = true
+    if #expired == 0 then
+        return 0, "OK"
+    end
+    local names = table.concat(expired, ", ")
+    W.Toast("경험치 버프 만료! (Lv." .. tostring(lvl) .. ")", "[" .. names .. "] 버프가 사라졌습니다! 음식·침낭을 다시 챙기세요.", "WARN", 6.0)
+    ns.Api.SafeAPI.Print("[경험치 버프 알림] [" .. names .. "] 만료! (60레벨 미만 육성 중 - 음식/침낭 버프를 다시 적용하세요)")
+    local now = ns.Api.GameAdapters.GetMonotonicTime() or 0
+    if (now - (self.lastXpAlertAt or -999)) >= 1.5 then
+        local snd = ns.Api.ProfileStore:Get("ui", "alertSoundKey") or "dingdong"
+        if snd ~= "none" and snd ~= "" then
+            if ns.Api.GameAdapters.PlayNotificationSound(snd, 75, "Master", false) then
+                self.lastXpAlertAt = now
+            end
+        end
+    end
+    return #expired, expired
+end
 
 function QuestExtraModule:EnsureExtraData()
     if not ns.Api.SafeAPI.InCombat() then
@@ -45,22 +139,28 @@ function QuestExtraModule:EnsureExtraData()
     return type(packs) == "table" and packs or {}
 end
 
--- D6: Quest collection completion banner when active quest OR quest_collection bag drop items reach completion
+-- D6: Quest collection completion banner + "dingdong" chime when active quest OR quest_collection bag drop items reach completion
 function QuestExtraModule:CheckCollectionAlerts()
-    if ns.Api.ProfileStore:Get("quest", "collectionAlerts") == false then return 0 end
+    local showBanner = (ns.Api.ProfileStore:Get("quest", "collectionAlerts") ~= false)
+    local wantSound = (ns.Api.ProfileStore:Get("quest", "completionSound") ~= false)
+    if (not showBanner) and (not wantSound) then return 0 end
     local quests = ns.Api.SafeAPI.CollectQuestLog()
     local triggered = 0
+    local completedAny = false
     for _, q in ipairs(quests) do
         if q.isComplete and (not self.notifiedCollections[q.questID]) then
             self.notifiedCollections[q.questID] = true
             triggered = triggered + 1
-            W.Toast("퀘스트 수집 완료!", tostring(q.title) .. " - 보고할 준비가 되었습니다.", "SUCCESS", 4.5)
-            local snd = ns.Api.ProfileStore:Get("ui", "alertSoundKey") or "quest_complete"
-            if snd ~= "none" then
-                ns.Api.GameAdapters.PlayNotificationSound(snd, 75, "SFX")
+            completedAny = true
+            if showBanner then
+                W.Toast("퀘스트 수집 완료!", tostring(q.title) .. " - 보고할 준비가 되었습니다.", "SUCCESS", 4.5)
             end
         end
     end
+    if completedAny and wantSound then
+        self:PlayCompletionChime(false)
+    end
+    if not showBanner then return triggered end
     -- Also inspect ForeverSuite_Data_QuestExtra quest_collection items (63 curated dungeon/world collection drops)
     local packs = self:EnsureExtraData()
     local colRows = packs.quest_collection and packs.quest_collection.entries
@@ -242,6 +342,8 @@ end
 function QuestExtraModule:Init()
     if self.initialized then return true end
     self.initialized = true
+    self:PrimeCompletedQuests()
+    self:CheckXpBuffExpiry()
     self.prefixRegistered = ns.Api.GameAdapters.RegisterAddonPrefixSafe(SYNC_PREFIX)
     ns.Api.EventBus:OnEvent("v4:addonMsg", "CHAT_MSG_ADDON", function(_, prefix, msg, dist, sender)
         QuestExtraModule:OnAddonMessage(prefix, msg, dist, sender)
