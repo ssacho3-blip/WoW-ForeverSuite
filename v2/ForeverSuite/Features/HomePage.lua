@@ -22,6 +22,8 @@ local HomePage = {
     statCards = {},
     briefDungeonLbl = nil,
     briefTipLbl = nil,
+    bridgeStatusLbl = nil,
+    helpBtn = nil,
     quickTiles = {},
 }
 ns.Features.HomePage = HomePage
@@ -58,14 +60,14 @@ function HomePage:Build(parent)
     heroIcon:SetPoint("LEFT", hero, "LEFT", 14, 0)
     self.heroIcon = heroIcon
 
-    local heroTitle = W.Label(hero, "★ ForeverSuite " .. tostring(ns.Api.SafeAPI.GetAddonVersion() or "6.0.0"), "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    local heroTitle = W.Label(hero, "★ ForeverSuite " .. tostring(ns.Api.SafeAPI.GetAddonVersion() or "6.1.0"), "title", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
     heroTitle:SetPoint("TOPLEFT", hero, "TOPLEFT", 14 + T.ICON.LG + 12, -11)
-    heroTitle:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -148, -11)
+    heroTitle:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -276, -11)
     self.heroTitle = heroTitle
 
     local heroSub = W.Label(hero, "", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = false })
     heroSub:SetPoint("TOPLEFT", hero, "TOPLEFT", 14 + T.ICON.LG + 12, -39)
-    heroSub:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -148, -39)
+    heroSub:SetPoint("TOPRIGHT", hero, "TOPRIGHT", -276, -39)
     self.heroSub = heroSub
 
     local hudBtn = W.Button(hero, "HUD 배치 편집", 120, 26, function()
@@ -77,6 +79,10 @@ function HomePage:Build(parent)
         end
     end, true)
     hudBtn:SetPoint("RIGHT", hero, "RIGHT", -12, 0)
+
+    local helpBtn = W.HelpPill(hero, "상단 통합 검색으로 모든 기능·설정·도감을 즉시 찾고, 우측 [HUD 배치 편집]으로 화면 요소를 자유롭게 배치할 수 있습니다.")
+    helpBtn:SetPoint("RIGHT", hudBtn, "LEFT", -8, 0)
+    self.helpBtn = helpBtn
 
     -- 2. Four Live KPI StatCards (row at y = -76, height = 74; exact 765px = 4*186 + 3*7)
     self.statCards = {}
@@ -123,6 +129,14 @@ function HomePage:Build(parent)
     briefTip:SetPoint("TOPLEFT", tipCaption, "BOTTOMLEFT", 0, -4)
     briefTip:SetWidth(286)
     self.briefTipLbl = briefTip
+
+    local bridgeCaption = W.Label(leftCard, "v6 외부 브리지 · 부캐 전문 쿨다운", "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
+    bridgeCaption:SetPoint("TOPLEFT", leftCard, "TOPLEFT", 12, -204)
+
+    local bridgeStatus = W.Label(leftCard, "집계 없음", "small", T.TEXT.SECONDARY, { justifyH = "LEFT", wordWrap = true })
+    bridgeStatus:SetPoint("TOPLEFT", bridgeCaption, "BOTTOMLEFT", 0, -4)
+    bridgeStatus:SetWidth(286)
+    self.bridgeStatusLbl = bridgeStatus
 
     local openDunBtn = W.Button(leftCard, "던전 도감 열기", 136, 26, function()
         ns.UI.CommandHub:SelectPage("dungeons")
@@ -254,4 +268,27 @@ function HomePage:OnShow()
 
     self.briefDungeonLbl:SetText(ov.recommendedDungeon)
     self.briefTipLbl:SetText(ov.recommendedTip)
+
+    if self.bridgeStatusLbl then
+        local bridgeText = "[불가] UNAVAILABLE"
+        if ns.Bridges and ns.Bridges.BridgeHost and type(ns.Bridges.BridgeHost.GetSummary) == "function" then
+            local okB, sum = pcall(ns.Bridges.BridgeHost.GetSummary, ns.Bridges.BridgeHost)
+            if okB and type(sum) == "table" then
+                local linked = 0
+                for i = 1, #sum do
+                    if sum[i].state ~= "SELF" then linked = linked + 1 end
+                end
+                bridgeText = (linked > 0) and ("외부 전문 앱 " .. tostring(linked) .. "종 연동 중") or "단독 기동 모드 (외부 앱 미감지)"
+            end
+        end
+        local cdMap = ns.Api and ns.Api.ProfileStore and ns.Api.ProfileStore:GetState("altCooldowns")
+        local cdText = "부캐 쿨다운: 집계 없음"
+        if type(cdMap) == "table" and ns.Domain and ns.Domain.AltCooldownModel and type(ns.Domain.AltCooldownModel.CountReady) == "function" then
+            local readyCnt, totalCnt = ns.Domain.AltCooldownModel.CountReady(cdMap, ns.Api.GameAdapters.GetServerTimeSafe and ns.Api.GameAdapters.GetServerTimeSafe() or 0)
+            if type(totalCnt) == "number" and totalCnt > 0 then
+                cdText = "부캐 쿨다운: 완료 " .. tostring(readyCnt or 0) .. "/" .. tostring(totalCnt) .. "건"
+            end
+        end
+        self.bridgeStatusLbl:SetText(bridgeText .. " · " .. cdText)
+    end
 end

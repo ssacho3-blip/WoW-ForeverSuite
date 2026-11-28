@@ -8,6 +8,7 @@ ns.UI = ns.UI or {}
 
 local W = ns.UI.Widgets
 local T = ns.UI.Tokens
+local Motion = ns.UI.Motion
 local ipairs = ipairs
 local pairs = pairs
 local tostring = tostring
@@ -834,7 +835,7 @@ function W.DetailPanel(parent, width, height, opts)
     return panel
 end
 
--- 22. GroupedTabRail: 4-group purpose-driven navigation rail with gold active indicator & optional badges
+-- 22. GroupedTabRail: 4-group purpose-driven navigation rail with 150ms sliding gold active indicator & optional badges
 function W.GroupedTabRail(parent, width, groups, onSelect)
     local rail = CreateFrame("Frame", nil, parent)
     rail:SetWidth(width or 168)
@@ -842,9 +843,18 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
     rail._buttons = {}
     rail._byId = {}
     rail._activeId = nil
+    rail._indicatorY = -26
+
+    local sliderInd = rail:CreateTexture(nil, "OVERLAY", nil, 3)
+    sliderInd:SetSize(3, 18)
+    sliderInd:SetPoint("TOPLEFT", rail, "TOPLEFT", 5, -26)
+    sliderInd:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 1)
+    sliderInd:Hide()
+    rail._activeIndicator = sliderInd
 
     function rail:SetActive(id)
         self._activeId = id
+        local targetY = nil
         for _, item in ipairs(self._buttons) do
             local active = (item.id == id)
             local bg = active and T.SURFACE.GOLD_ACTIVE or { 0, 0, 0, 0 }
@@ -858,7 +868,28 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
                     pcall(item.icon.SetVertexColor, item.icon, 0.78, 0.75, 0.70, 0.85)
                 end
             end
-            if active then item.accent:Show() else item.accent:Hide() end
+            if active then
+                item.accent:Show()
+                targetY = item.yPos
+            else
+                item.accent:Hide()
+            end
+        end
+        if targetY ~= nil and self._activeIndicator then
+            local destY = targetY - 4
+            local fromY = self._indicatorY or destY
+            self._activeIndicator:Show()
+            if Motion and type(Motion.Tween) == "function" and math.abs(destY - fromY) > 0.5 then
+                Motion.Tween(self, "tabIndicatorY", fromY, destY, 0.15, function(curY)
+                    self._indicatorY = curY
+                    self._activeIndicator:ClearAllPoints()
+                    self._activeIndicator:SetPoint("TOPLEFT", self, "TOPLEFT", 5, curY)
+                end)
+            else
+                self._indicatorY = destY
+                self._activeIndicator:ClearAllPoints()
+                self._activeIndicator:SetPoint("TOPLEFT", self, "TOPLEFT", 5, destY)
+            end
         end
     end
 
@@ -948,7 +979,7 @@ function W.GroupedTabRail(parent, width, groups, onSelect)
                 if onSelect then onSelect(def.id) end
             end)
 
-            local rec = { id = def.id, btn = btn, accent = accent, badge = badge, icon = iconTex }
+            local rec = { id = def.id, btn = btn, accent = accent, badge = badge, icon = iconTex, yPos = y }
             table_insert(rail._buttons, rec)
             rail._byId[def.id] = rec
             y = y - 28

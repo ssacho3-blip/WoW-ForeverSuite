@@ -472,6 +472,12 @@ function QuestTrackerView:OnRowClick(rowBtn, mouseBtn)
         return
     end
 
+    if item.kind == "overflow" then
+        SetSetting("compactMode", false)
+        self:RefreshLive()
+        return
+    end
+
     if item.kind == "header" and item.groupKey then
         local map = GetStateMap("collapsedGroups")
         if mouseBtn == "RightButton" then
@@ -617,6 +623,9 @@ function QuestTrackerView:BuildLiveOpts(extra)
     end
     if opts.minimized == nil then
         opts.minimized = GetSetting("trackerMinimized", false) == true
+    end
+    if opts.compactMode == nil then
+        opts.compactMode = GetSetting("compactMode", false) == true
     end
     if opts.collapsedGroups == nil then
         opts.collapsedGroups = GetStateMap("collapsedGroups")

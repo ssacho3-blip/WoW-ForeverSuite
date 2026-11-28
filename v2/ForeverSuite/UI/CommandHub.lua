@@ -8,6 +8,7 @@ ns.UI = ns.UI or {}
 
 local W = ns.UI.Widgets
 local T = ns.UI.Tokens
+local Motion = ns.UI.Motion
 local pairs = pairs
 local ipairs = ipairs
 local tostring = tostring
@@ -680,10 +681,18 @@ end
 function CommandHub:Toggle()
     local win = self:EnsureWindow()
     if win:IsShown() then
-        win:Hide()
+        if Motion and type(Motion.InstantHide) == "function" then
+            Motion.InstantHide(win)
+        else
+            win:Hide()
+        end
     else
         self:FitScaleToViewport(win)
-        win:Show()
+        if Motion and type(Motion.FadeIn) == "function" then
+            Motion.FadeIn(win, 0.15)
+        else
+            win:Show()
+        end
         local active = self.activePageId and self.pages[self.activePageId] or nil
         if active and type(active.OnShow) == "function" then
             active:OnShow()

@@ -78,11 +78,25 @@
       "md5": "32a91c8e3807b3bd71dc885b82ff6199",
       "width": 64
     },
+    "FS-Round.tga": {
+      "aa_pixels": 316,
+      "bytes": 16402,
+      "height": 64,
+      "md5": "602d3fc27b2089d17390389361004631",
+      "width": 64
+    },
     "FS-Scrim-Radial.tga": {
       "bytes": 262188,
       "height": 256,
       "md5": "8db5427e3ee67a469eff0a53de8ff451",
       "width": 256
+    },
+    "FS-SoftInk.tga": {
+      "bytes": 1048594,
+      "height": 512,
+      "md5": "502657c70c3c56748230984cdb1fd11e",
+      "tile": true,
+      "width": 512
     },
     "FS-StatusBar-Border.tga": {
       "bytes": 65580,
@@ -112,6 +126,6 @@
       "width": 512
     }
   },
-  "count": 16,
-  "version": "5.0.0"
+  "count": 18,
+  "version": "6.1.0"
 }

@@ -1,8 +1,8 @@
 ## Interface: 16001, 120105
 ## Title: |cffd4af37Forever|rSuite
-## Notes: WoW Forever 1.60.1 Zero-Taint · 단일 연출자 OS 셸 + 외부 전문 앱 편입 (v6.0)
+## Notes: WoW Forever 1.60.1 Zero-Taint · 단일 연출자 OS 셸 + 외부 전문 앱 편입 (v6.1)
 ## Author: Youngseo Cho
-## Version: 6.0.0
+## Version: 6.1.0
 ## SavedVariables: ForeverSuiteV2DB, ForeverSuiteDB
 ## SavedVariablesPerCharacter: ForeverSuiteV2CharDB, ForeverSuiteCharDB
 ## OptionalDeps: Baganator, Syndicator, Auctionator, DialogueUI, Spoken, Platynator, ForeverTotems, RareScanner, LibSharedMedia-3.0, ForeverSuite_Media, ForeverSuite_Media_Assets, ForeverSuite_Fonts_Global, ForeverSuite_Data
@@ -64,9 +64,12 @@ Bridges/Spoken.lua
 Bridges/Platynator.lua
 UI/PixelUtil.lua
 UI/Tokens.lua
+UI/Draw.lua
+UI/Motion.lua
 UI/NineSlice.lua
 UI/Widgets.lua
 UI/CompositeWidgets.lua
+UI/VirtualList.lua
 UI/HudLayout.lua
 UI/Director.lua
 UI/CommandHub.lua

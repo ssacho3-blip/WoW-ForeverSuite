@@ -6,10 +6,12 @@ ns.Features = ns.Features or {}
 
 local W = ns.UI.Widgets
 local T = ns.UI.Tokens
+local Draw = ns.UI.Draw
 
 local StatusPillHud = {
     card = nil,
     label = nil,
+    segments = nil,
     baselineMoney = nil,
 }
 ns.Features.StatusPillHud = StatusPillHud
@@ -18,8 +20,13 @@ function StatusPillHud:Init()
     if self.card then
         return self.card
     end
-    local card = W.HudFloating(nil, 336, 24, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
-    card:SetRibbon({ 0.038, 0.034, 0.046 }, 0.62, 0, 0)
+    local card = W.HudFloating(nil, 336, 22, "ForeverSuiteV2StatusPill", T.ELEVATION.L0_HUD)
+    if Draw and type(Draw.CreateRoundedBorder) == "function" then
+        Draw.CreateRoundedBorder(card, 11, T.BORDER.HUD_GLASS, { sublevel = -5 })
+    end
+    if Draw and type(Draw.CreateRoundedFill) == "function" then
+        Draw.CreateRoundedFill(card, 11, T.SURFACE.HUD_GLASS, { sublevel = -4 })
+    end
     card:EnableMouse(true)
     card:SetScript("OnMouseUp", function(_, mouseBtn)
         if ns.UI.HudLayout and ns.UI.HudLayout.unlocked then return end
@@ -29,10 +36,38 @@ function StatusPillHud:Init()
             ns.UI.CommandHub:JumpTo("ledger")
         end
     end)
+
+    -- Live visible 3-Segment Compact Capsule Readout (Bags | Durability | Gold · Realm)
+    local seg1 = W.Label(card, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
+    seg1:SetPoint("LEFT", card, "LEFT", 12, 0)
+    seg1:SetWidth(94)
+
+    local div1 = card:CreateTexture(nil, "ARTWORK")
+    div1:SetSize(T.PixelSize(card, 1), 12)
+    div1:SetPoint("LEFT", seg1, "RIGHT", 4, 0)
+    div1:SetColorTexture(T.BORDER.HAIRLINE[1], T.BORDER.HAIRLINE[2], T.BORDER.HAIRLINE[3], 0.55)
+
+    local seg2 = W.Label(card, "", "small", T.TEXT.PRIMARY, { justifyH = "CENTER", wordWrap = false, outline = "OUTLINE" })
+    seg2:SetPoint("LEFT", div1, "RIGHT", 4, 0)
+    seg2:SetWidth(76)
+
+    local div2 = card:CreateTexture(nil, "ARTWORK")
+    div2:SetSize(T.PixelSize(card, 1), 12)
+    div2:SetPoint("LEFT", seg2, "RIGHT", 4, 0)
+    div2:SetColorTexture(T.BORDER.HAIRLINE[1], T.BORDER.HAIRLINE[2], T.BORDER.HAIRLINE[3], 0.55)
+
+    local seg3 = W.Label(card, "", "small", T.TEXT.GOLD, { justifyH = "RIGHT", wordWrap = false, outline = "OUTLINE" })
+    seg3:SetPoint("LEFT", div2, "RIGHT", 4, 0)
+    seg3:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+
+    -- Hidden full-string mirror for backwards API/test compatibility (never overlaps live 3-segment readout)
     local lbl = W.Label(card, "", "mono", T.TEXT.PRIMARY, { outline = "OUTLINE" })
     lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
+    lbl:Hide()
     self.card = card
     self.label = lbl
+    self.segments = { seg1, seg2, seg3 }
+    self.dividers = { div1, div2 }
 
     ns.UI.HudLayout:Register("statusPill", card, {
         point = "TOPRIGHT",
@@ -89,12 +124,19 @@ function StatusPillHud:Refresh(freeSlots, sessionDeltaCopper, durPct)
     local moneyTxt = (type(sessionDeltaCopper) == "number") and ns.Domain.LedgerModel.FormatCopper(sessionDeltaCopper) or "골드 집계 없음"
     local realm = ns.Api.SafeAPI.GetCanonicalRealm()
     self.label:SetText(bagTxt .. " · " .. durTxt .. " · " .. moneyTxt .. " · " .. realm)
+    if self.segments then
+        self.segments[1]:SetText(bagTxt)
+        self.segments[2]:SetText(durTxt)
+        self.segments[3]:SetText(moneyTxt .. " · " .. realm)
+    end
     if self.card then
-        if type(self.card.SetRibbon) == "function" then
+        if self.card._fsRoundedFill then
             if lowDur then
-                self.card:SetRibbon({ 0.34, 0.07, 0.07 }, 0.72, 0, 0)
+                self.card._fsRoundedFill:SetColor({ 0.34, 0.07, 0.07, 0.85 })
+                W.SetBorderColor(self.card, T.SEMANTIC.DANGER)
             else
-                self.card:SetRibbon({ 0.038, 0.034, 0.046 }, 0.62, 0, 0)
+                self.card._fsRoundedFill:SetColor(T.SURFACE.HUD_GLASS)
+                W.SetBorderColor(self.card, T.BORDER.HUD_GLASS)
             end
         end
         self.label:SetTextColor(T.TEXT.PRIMARY[1], T.TEXT.PRIMARY[2], T.TEXT.PRIMARY[3], 1)

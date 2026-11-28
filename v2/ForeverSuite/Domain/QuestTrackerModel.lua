@@ -117,6 +117,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
     local collapsedGroups = (type(opts.collapsedGroups) == "table") and opts.collapsedGroups or {}
     local collapsedQuests = (type(opts.collapsedQuests) == "table") and opts.collapsedQuests or {}
     local minimized = opts.minimized == true
+    local compactMode = opts.compactMode == true
+    local compactLimit = (type(opts.compactLimit) == "number" and opts.compactLimit >= 1) and math_floor(opts.compactLimit) or 3
     local maxVisible = (type(opts.maxVisibleRows) == "number" and opts.maxVisibleRows >= 1)
         and math_floor(opts.maxVisibleRows) or DEFAULT_MAX_VISIBLE_ROWS
 
@@ -211,89 +213,109 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
     end
 
     local rows = {}
+    local overflowQuestCount = 0
     if not minimized then
+        local emittedQuests = 0
         for _, grp in ipairs(groups) do
-            local marker = grp.isCollapsed and "▶ " or "▼ "
-            table_insert(rows, {
-                kind = "header",
-                groupKey = grp.key,
-                text = marker .. grp.label,
-                rightText = "(" .. tostring(#grp.quests) .. ")",
-                isCurrentZone = grp.isCurrentZone,
-                isCollapsed = grp.isCollapsed,
-                visualState = grp.isCurrentZone and "group_current" or "group_other",
-            })
+            if compactMode and emittedQuests >= compactLimit then
+                overflowQuestCount = overflowQuestCount + #grp.quests
+            else
+                local marker = grp.isCollapsed and "▶ " or "▼ "
+                table_insert(rows, {
+                    kind = "header",
+                    groupKey = grp.key,
+                    text = marker .. grp.label,
+                    rightText = "(" .. tostring(#grp.quests) .. ")",
+                    isCurrentZone = grp.isCurrentZone,
+                    isCollapsed = grp.isCollapsed,
+                    visualState = grp.isCurrentZone and "group_current" or "group_other",
+                })
 
-            if not grp.isCollapsed then
-                for _, item in ipairs(grp.quests) do
-                    local q = item.quest
-                    local dockSlot = item.dockSlot
-                    local prefix = ""
-                    if dockSlot then
-                        prefix = "[" .. tostring(dockSlot) .. "] "
-                    end
-                    if q.isForever then
-                        prefix = prefix .. "[∞ 포에버] "
-                    end
-                    local isSuper = (q.questID == superQID)
-                    local isComplete = q.isComplete == true
-                    local isFailed = q.isFailed == true
-                    local qCollapsed = collapsedQuests[q.questID] == true
-                    local vState = isSuper and "quest_super"
-                        or (isComplete and "quest_complete"
-                        or (isFailed and "quest_failed" or "quest_active"))
+                if not grp.isCollapsed then
+                    for _, item in ipairs(grp.quests) do
+                        if compactMode and emittedQuests >= compactLimit then
+                            overflowQuestCount = overflowQuestCount + 1
+                        else
+                            emittedQuests = emittedQuests + 1
+                            local q = item.quest
+                            local dockSlot = item.dockSlot
+                            local prefix = ""
+                            if dockSlot then
+                                prefix = "[" .. tostring(dockSlot) .. "] "
+                            end
+                            if q.isForever then
+                                prefix = prefix .. "[∞ 포에버] "
+                            end
+                            local isSuper = (q.questID == superQID)
+                            local isComplete = q.isComplete == true
+                            local isFailed = q.isFailed == true
+                            local qCollapsed = collapsedQuests[q.questID] == true
+                            local vState = isSuper and "quest_super"
+                                or (isComplete and "quest_complete"
+                                or (isFailed and "quest_failed" or "quest_active"))
 
-                    local objs = type(q.objectives) == "table" and q.objectives or {}
-                    local lvNum = (type(q.level) == "number" and q.level > 0) and math_floor(q.level) or 0
-                    local rightTag = isComplete and "완료" or (isFailed and "실패" or (lvNum > 0 and ("Lv." .. tostring(lvNum)) or ""))
-                    local playerLv = tonumber(opts.playerLevel) or 0
-                    local diffTone, diffColor = QuestTrackerModel.GetClassicDifficulty(lvNum, playerLv)
+                            local objs = type(q.objectives) == "table" and q.objectives or {}
+                            local lvNum = (type(q.level) == "number" and q.level > 0) and math_floor(q.level) or 0
+                            local rightTag = isComplete and "완료" or (isFailed and "실패" or (lvNum > 0 and ("Lv." .. tostring(lvNum)) or ""))
+                            local playerLv = tonumber(opts.playerLevel) or 0
+                            local diffTone, diffColor = QuestTrackerModel.GetClassicDifficulty(lvNum, playerLv)
 
-                    table_insert(rows, {
-                        kind = "quest",
-                        questID = q.questID,
-                        title = prefix .. (q.title or ("퀘스트 #" .. tostring(q.questID))),
-                        rawTitle = q.title or ("퀘스트 #" .. tostring(q.questID)),
-                        zone = item.zone,
-                        level = lvNum,
-                        difficultyTone = diffTone,
-                        difficultyColor = diffColor,
-                        rightText = rightTag,
-                        isComplete = isComplete,
-                        isFailed = isFailed,
-                        isSuperTracked = isSuper,
-                        isWatched = q.isWatched == true,
-                        isCollapsed = qCollapsed,
-                        dockSlot = dockSlot,
-                        itemLink = q.itemLink,
-                        objectives = objs,
-                        visualState = vState,
-                    })
-
-                    if not qCollapsed then
-                        for _, obj in ipairs(objs) do
-                            local oState = DetectObjectiveState(obj)
                             table_insert(rows, {
-                                kind = "objective",
+                                kind = "quest",
                                 questID = q.questID,
+                                title = prefix .. (q.title or ("퀘스트 #" .. tostring(q.questID))),
                                 rawTitle = q.title or ("퀘스트 #" .. tostring(q.questID)),
                                 zone = item.zone,
                                 level = lvNum,
+                                difficultyTone = diffTone,
+                                difficultyColor = diffColor,
+                                rightText = rightTag,
                                 isComplete = isComplete,
                                 isFailed = isFailed,
+                                isSuperTracked = isSuper,
                                 isWatched = q.isWatched == true,
-                                text = tostring(obj.text or ""),
-                                finished = obj.finished == true,
+                                isCollapsed = qCollapsed,
+                                dockSlot = dockSlot,
+                                itemLink = q.itemLink,
                                 objectives = objs,
-                                visualState = oState,
+                                visualState = vState,
                             })
+
+                            if not qCollapsed then
+                                for _, obj in ipairs(objs) do
+                                    local oState = DetectObjectiveState(obj)
+                                    table_insert(rows, {
+                                        kind = "objective",
+                                        questID = q.questID,
+                                        rawTitle = q.title or ("퀘스트 #" .. tostring(q.questID)),
+                                        zone = item.zone,
+                                        level = lvNum,
+                                        isComplete = isComplete,
+                                        isFailed = isFailed,
+                                        isWatched = q.isWatched == true,
+                                        text = tostring(obj.text or ""),
+                                        finished = obj.finished == true,
+                                        objectives = objs,
+                                        visualState = oState,
+                                    })
+                                end
+                            end
                         end
                     end
                 end
             end
         end
 
-        if #rows == 0 then
+        if compactMode and overflowQuestCount > 0 then
+            table_insert(rows, {
+                kind = "overflow",
+                text = "+" .. tostring(overflowQuestCount) .. "개 퀘스트 더 있음 (클릭하여 전체 보기)",
+                rightText = "+" .. tostring(overflowQuestCount),
+                visualState = "empty",
+            })
+        end
+
+        if #rows == 0 and not compactMode then
             table_insert(rows, {
                 kind = "empty",
                 text = currentZoneOnly and "현재 지역에 진행 중인 퀘스트가 없습니다." or "진행 중인 퀘스트가 없습니다.",
@@ -324,6 +346,8 @@ function QuestTrackerModel.BuildSnapshot(quests, opts)
         questCount = #filtered,
         totalQuestCount = totalAll,
         hiddenCount = math_max(0, totalAll - #filtered),
+        overflowQuestCount = overflowQuestCount,
+        compactMode = compactMode,
         minimized = minimized,
         groupMode = groupMode,
     }

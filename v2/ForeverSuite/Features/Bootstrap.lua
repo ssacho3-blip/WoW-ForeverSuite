@@ -673,12 +673,54 @@ local DEFAULT_SCHEMAS = {
         type = "enum",
         default = "gold",
         label = "ForeverSuite 통합 UI 테마 (즉시 전환 · 리로드 불필요)",
-        desc = "클래식 골드 RPG (갓존스·DialogueUI풍) ↔ 클린 다크 미니멀 (ElvUI·Baganator풍)",
+        desc = "Forever Gold (갓존스·DialogueUI풍) / Midnight Dark (클린 다크)",
         combatSafe = true,
         options = {
-            { value = "gold", label = "클래식 골드 RPG", width = 118 },
-            { value = "dark", label = "클린 다크 미니멀", width = 118 },
+            { value = "gold", label = "Forever Gold", width = 110 },
+            { value = "dark", label = "Midnight Dark", width = 114 },
         },
+    },
+    {
+        section = "ui",
+        key = "textureBrightness",
+        type = "number",
+        default = 0.78,
+        min = 0.35,
+        max = 1.00,
+        step = 0.05,
+        label = "UI 표면 질감 밝기 (InkUV 0.35 ~ 1.00)",
+        desc = "차콜·가죽 표면 밝기를 모니터 환경에 맞춰 미세 조절합니다",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "goldBrightness",
+        type = "number",
+        default = 0.88,
+        min = 0.40,
+        max = 1.00,
+        step = 0.05,
+        label = "UI 골드 테두리·강조 밝기 (0.40 ~ 1.00)",
+        desc = "금장 테두리와 강조선 밝기 (본문 골드 대비 7:1 이상 자동 보정)",
+        combatSafe = true,
+    },
+    {
+        section = "ui",
+        key = "reducedMotion",
+        type = "boolean",
+        default = false,
+        label = "모션 줄이기 (Reduced Motion · 모든 전환 0ms 즉시 적용)",
+        desc = "창 페이드인과 탭 슬라이드 애니메이션을 비활성화합니다",
+        combatSafe = true,
+    },
+    {
+        section = "quest",
+        key = "compactMode",
+        type = "boolean",
+        default = false,
+        label = "퀘스트 추적기 3+1 축약 모드 (중요 3개 + 나머지 요약)",
+        desc = "화면 시야 확보를 위해 상위 3개 퀘스트와 +N 요약만 표시합니다",
+        combatSafe = true,
     },
 }
 
@@ -788,6 +830,15 @@ function Bootstrap:Init()
 
     if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetTheme) == "function" then
         ns.UI.Tokens.SetTheme(ns.Api.ProfileStore:Get("ui", "uiTheme") or "gold")
+        if type(ns.UI.Tokens.SetBrightness) == "function" then
+            ns.UI.Tokens.SetBrightness(
+                ns.Api.ProfileStore:Get("ui", "textureBrightness"),
+                ns.Api.ProfileStore:Get("ui", "goldBrightness")
+            )
+        end
+    end
+    if ns.UI and ns.UI.Motion and type(ns.UI.Motion.SetReducedMotion) == "function" then
+        ns.UI.Motion.SetReducedMotion(ns.Api.ProfileStore:Get("ui", "reducedMotion") == true)
     end
 
     -- Register L2 Command Hub workspace pages (v3.0 4-Group Unified Hub; Home is default landing)
@@ -823,7 +874,7 @@ function Bootstrap:Init()
         if sec == "quest" and key == "defaultTrackerMode" then
             ns.Api.ProfileStore:SetState("userExplicitTrackerMode", true)
             ApplyTrackerModeSafely(val)
-        elseif sec == "quest" and (key == "groupMode" or key == "currentZoneOnly" or key == "trackerMinimized" or key == "trackerLocked") then
+        elseif sec == "quest" and (key == "groupMode" or key == "currentZoneOnly" or key == "trackerMinimized" or key == "trackerLocked" or key == "compactMode") then
             ns.Features.QuestTrackerView:RefreshLive()
         elseif sec == "quest" and key == "combatFade" then
             ns.Features.QuestTrackerView:UpdateCombatVisuals()
@@ -832,6 +883,17 @@ function Bootstrap:Init()
         elseif sec == "ui" and key == "uiTheme" then
             if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetTheme) == "function" then
                 ns.UI.Tokens.SetTheme(val)
+            end
+        elseif sec == "ui" and (key == "textureBrightness" or key == "goldBrightness") then
+            if ns.UI and ns.UI.Tokens and type(ns.UI.Tokens.SetBrightness) == "function" then
+                ns.UI.Tokens.SetBrightness(
+                    ns.Api.ProfileStore:Get("ui", "textureBrightness"),
+                    ns.Api.ProfileStore:Get("ui", "goldBrightness")
+                )
+            end
+        elseif sec == "ui" and key == "reducedMotion" then
+            if ns.UI and ns.UI.Motion and type(ns.UI.Motion.SetReducedMotion) == "function" then
+                ns.UI.Motion.SetReducedMotion(val == true)
             end
         elseif sec == "ui" and key == "showStatusPill" then
             ns.Features.StatusPillHud:ApplyVisibility()
@@ -1202,6 +1264,9 @@ function Bootstrap:Init()
         ns.Features.QuestExtraModule:SyncProximityTicker()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
+        if ns.UI and ns.UI.Motion and type(ns.UI.Motion.SnapAllForCombat) == "function" then
+            ns.UI.Motion.SnapAllForCombat()
+        end
         if ns.UI.HudLayout and ns.UI.HudLayout:IsUnlocked() then
             ns.UI.HudLayout:SetUnlocked(false)
         end

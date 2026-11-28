@@ -21,7 +21,7 @@ local MEDIA_ROOT = ResolveMediaRoot()
 local UI_ROOT = MEDIA_ROOT .. "UI\\"
 
 local Media = {
-    version = "6.0.0",
+    version = "6.1.0",
     fonts = {
         bodyPath = BASE_FONT,
         monoPath = MONO_FONT,
@@ -32,6 +32,8 @@ local Media = {
         frameDark = UI_ROOT .. "FS-Frame-Dark.tga",
         frameSmall = UI_ROOT .. "FS-Frame-Small.tga",
         frameSmallDark = UI_ROOT .. "FS-Frame-Small-Dark.tga",
+        roundDisc = UI_ROOT .. "FS-Round.tga",
+        softInk = UI_ROOT .. "FS-SoftInk.tga",
         buttonNormal = UI_ROOT .. "FS-Button-Normal.tga",
         buttonBrass = UI_ROOT .. "FS-Button-Brass.tga",
         buttonCrimson = UI_ROOT .. "FS-Button-Crimson.tga",

@@ -51,6 +51,7 @@ local CodexPage = {
     group = "combat",
     host = nil,
     rowPool = {},
+    virtualList = nil,
     visibleRows = 0,
     activePack = "fishing",
     rewardModeFilter = "all",
@@ -411,6 +412,13 @@ function CodexPage:Build(parent)
     for i = 1, PAGE_SIZE do
         self:EnsureRow(i):Hide()
     end
+    -- Honest backend descriptor: CodexPage uses a pre-allocated 0-alloc paged pool (PAGE_SIZE=13)
+    self.virtualList = {
+        GetBackend = function()
+            return "pool"
+        end,
+        GetVisibleRow = function(_, idx) return CodexPage.rowPool[idx] end,
+    }
 
     local rewBar = W.PillBar(parent, {
         { value = "all",        label = "전체 보상", width = 76 },

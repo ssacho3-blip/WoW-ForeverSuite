@@ -14,6 +14,34 @@ local table_insert = table.insert
 local SettingsSchemaModel = {}
 ns.Domain.SettingsSchemaModel = SettingsSchemaModel
 
+function SettingsSchemaModel.ValidateSliderSchema(item)
+    if type(item) ~= "table" then return false end
+    local lo, hi, st = item.min, item.max, item.step
+    if type(lo) ~= "number" or type(hi) ~= "number" or type(st) ~= "number" then
+        return false
+    end
+    if lo ~= lo or hi ~= hi or st ~= st then
+        return false
+    end
+    return (lo < hi) and (st > 0)
+end
+
+function SettingsSchemaModel.ClampSliderValue(item, rawVal)
+    if not SettingsSchemaModel.ValidateSliderSchema(item) then
+        return nil
+    end
+    local v = rawVal
+    if type(v) ~= "number" or v ~= v then
+        v = item.default
+    end
+    if type(v) ~= "number" or v ~= v then
+        v = item.min
+    end
+    if v < item.min then v = item.min end
+    if v > item.max then v = item.max end
+    return v
+end
+
 function SettingsSchemaModel.BuildDefaults(schemas)
     local out = {}
     for _, item in ipairs(schemas or {}) do

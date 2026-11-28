@@ -9,6 +9,8 @@ ns.UI = ns.UI or {}
 
 local T = ns.UI.Tokens
 local NS = ns.UI.NineSlice
+local Draw = ns.UI.Draw
+local Motion = ns.UI.Motion
 local ipairs = ipairs
 local tostring = tostring
 local math_min = math.min
@@ -59,48 +61,63 @@ end
 
 local function PaintBox(frame, bgColor, borderColor, opts)
     opts = type(opts) == "table" and opts or {}
-    local bg = frame:CreateTexture(nil, "BACKGROUND", nil, opts.bgSublevel or -2)
-    bg:SetAllPoints(frame)
-    if opts.gradient and (bgColor[4] or 1) > 0.05 then
-        PaintGradientBg(bg, bgColor, opts.loMult or 0.82, opts.hiMult or 1.22)
+    if opts.radius and Draw and type(Draw.CreateRoundedFill) == "function" then
+        local rf = Draw.CreateRoundedFill(frame, opts.radius, bgColor, { sublevel = opts.bgSublevel or -3 })
+        frame._fsBg = rf and rf.midBand or frame:CreateTexture(nil, "BACKGROUND", nil, opts.bgSublevel or -2)
     else
-        bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+        local bg = frame:CreateTexture(nil, "BACKGROUND", nil, opts.bgSublevel or -2)
+        bg:SetAllPoints(frame)
+        if opts.gradient and (bgColor[4] or 1) > 0.05 then
+            PaintGradientBg(bg, bgColor, opts.loMult or 0.82, opts.hiMult or 1.22)
+        else
+            bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+        end
+        frame._fsBg = bg
     end
-    frame._fsBg = bg
 
     if borderColor then
-        local px = T.PixelSize(frame, 1)
-        local bAlpha = borderColor[4] or 1
-        local top = frame:CreateTexture(nil, "BORDER")
-        top:SetHeight(px)
-        top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-        top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        top:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
+        if opts.radius and Draw and type(Draw.CreateRoundedBorder) == "function" then
+            Draw.CreateRoundedBorder(frame, opts.radius, borderColor, { sublevel = (opts.bgSublevel or -3) - 1 })
+        elseif Draw and type(Draw.CreateHairline) == "function" then
+            Draw.CreateHairline(frame, borderColor)
+        else
+            local px = T.PixelSize(frame, 1)
+            local bAlpha = borderColor[4] or 1
+            local top = frame:CreateTexture(nil, "BORDER")
+            top:SetHeight(px)
+            top:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+            top:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+            top:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
 
-        local bottom = frame:CreateTexture(nil, "BORDER")
-        bottom:SetHeight(px)
-        bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-        bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        bottom:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
+            local bottom = frame:CreateTexture(nil, "BORDER")
+            bottom:SetHeight(px)
+            bottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+            bottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+            bottom:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
 
-        local left = frame:CreateTexture(nil, "BORDER")
-        left:SetWidth(px)
-        left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-        left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-        left:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
+            local left = frame:CreateTexture(nil, "BORDER")
+            left:SetWidth(px)
+            left:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+            left:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+            left:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
 
-        local right = frame:CreateTexture(nil, "BORDER")
-        right:SetWidth(px)
-        right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        right:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
+            local right = frame:CreateTexture(nil, "BORDER")
+            right:SetWidth(px)
+            right:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+            right:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+            right:SetColorTexture(borderColor[1], borderColor[2], borderColor[3], bAlpha)
 
-        frame._fsBorders = { top, bottom, left, right }
+            frame._fsBorders = { top, bottom, left, right }
+        end
     end
 end
 
 function Widgets.SetBorderColor(frame, col)
     if not (frame and col) then
+        return
+    end
+    if frame.__fsHairline and type(frame.__fsHairline.SetColor) == "function" then
+        frame.__fsHairline:SetColor(col)
         return
     end
     if frame._fsBorders then
@@ -379,6 +396,12 @@ function Widgets.Label(parent, text, role, color, opts)
     if type(fs.SetShadowOffset) == "function" then
         fs:SetShadowOffset(1, -1)
     end
+    if type(fs.SetSpacing) == "function" then
+        local isHeading = (role == "title" or role == "heading")
+        local defaultSp = isHeading and ((T.SPACING and T.SPACING.TITLE) or 2) or ((T.SPACING and T.SPACING.BODY) or 3)
+        local sp = (type(opts) == "table" and type(opts.spacing) == "number") and opts.spacing or defaultSp
+        pcall(fs.SetSpacing, fs, sp)
+    end
     if type(opts) == "table" then
         if opts.justifyH and type(fs.SetJustifyH) == "function" then
             fs:SetJustifyH(opts.justifyH)
@@ -394,6 +417,197 @@ function Widgets.Label(parent, text, role, color, opts)
         end
     end
     return fs
+end
+
+-- Explicit non-hooked Korean text shrink-to-fit (<= 4 iterations, min font floor, overflow flag; ZERO hooksecurefunc)
+function Widgets.SetTextFit(fs, maxW, maxFont, minFont, maxIters)
+    if not fs or fs._fsFitting then
+        return maxFont or 13, 0, false
+    end
+    fs._fsFitting = true
+    local capW = tonumber(maxW) or (type(fs.GetWidth) == "function" and fs:GetWidth()) or 160
+    if capW <= 0 then capW = 160 end
+    local hi = tonumber(maxFont) or 14
+    local lo = tonumber(minFont) or 10
+    if lo > hi then lo = hi end
+    local limit = math_min(4, math_max(1, tonumber(maxIters) or 4))
+
+    local path, _, flags = "Fonts\\2002.TTF", hi, ""
+    if type(fs.GetFont) == "function" then
+        local okF, p, _, fl = pcall(fs.GetFont, fs)
+        if okF and type(p) == "string" and p ~= "" then
+            path = p
+            flags = fl or ""
+        end
+    end
+
+    local curSz = hi
+    local iters = 0
+    local overflowed = false
+    for i = 1, limit do
+        iters = i
+        if type(fs.SetFont) == "function" then
+            pcall(fs.SetFont, fs, path, curSz, flags)
+        end
+        local sw = (type(fs.GetStringWidth) == "function" and fs:GetStringWidth()) or 0
+        if sw <= capW then
+            overflowed = false
+            break
+        end
+        if curSz <= lo or i == limit then
+            overflowed = (sw > capW)
+            break
+        end
+        curSz = math_max(lo, curSz - 1)
+    end
+    fs._fsFitting = nil
+    return curSz, iters, overflowed
+end
+
+-- BasaltButton (GodJohnson 3px left gold bar for Priority vs distinct checkbox+fill for Toggle)
+function Widgets.BasaltButton(parent, label, width, height, onClick, opts)
+    opts = type(opts) == "table" and opts or {}
+    local variant = (opts.variant == "toggle") and "toggle" or "priority"
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(width or 140, height or 28)
+    btn._variant = variant
+    btn._checked = opts.checked == true
+
+    local baseBg = (variant == "priority") and T.SURFACE.ELEVATED or T.SURFACE.CARD
+    local baseBd = (variant == "priority") and T.BORDER.GOLD_SOFT or T.BORDER.HAIRLINE
+    PaintBox(btn, baseBg, baseBd, { radius = (T.RADIUS and T.RADIUS.BUTTON) or 4 })
+    btn._overlayAlpha = 0
+
+    local function ApplyRoundedOverlay(self, alpha)
+        self._overlayAlpha = alpha or 0
+        local bg = (self._variant == "priority") and T.SURFACE.ELEVATED or T.SURFACE.CARD
+        local blended = (self._overlayAlpha > 0 and Draw and type(Draw.AlphaComposite) == "function")
+            and Draw.AlphaComposite({ 1, 1, 1, self._overlayAlpha }, bg) or bg
+        if self._fsRoundedFill then
+            self._fsRoundedFill:SetColor(blended)
+        elseif self._fsBg then
+            self._fsBg:SetColorTexture(blended[1], blended[2], blended[3], blended[4] or 1)
+        end
+    end
+
+    local textLeft = 10
+    if variant == "priority" then
+        local bar = btn:CreateTexture(nil, "ARTWORK", nil, 3)
+        bar:SetWidth(3)
+        bar:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -2)
+        bar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 2)
+        bar:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], 0.96)
+        btn._goldBar = bar
+        textLeft = 12
+    else
+        local cb = CreateFrame("Frame", nil, btn)
+        cb:SetSize(14, 14)
+        cb:SetPoint("LEFT", btn, "LEFT", 8, 0)
+        PaintBox(cb, btn._checked and T.SURFACE.GOLD_TINT or T.SURFACE.SUNKEN, btn._checked and T.BORDER.GOLD or T.BORDER.HAIRLINE)
+        local ck = cb:CreateTexture(nil, "OVERLAY")
+        ck:SetSize(15, 15)
+        ck:SetPoint("CENTER", cb, "CENTER", 1, 1)
+        if type(ck.SetTexture) == "function" then
+            pcall(ck.SetTexture, ck, (T.MEDIA and T.MEDIA.CHECKMARK) or "Interface\\Buttons\\UI-CheckBox-Check")
+        end
+        if type(ck.SetVertexColor) == "function" then
+            pcall(ck.SetVertexColor, ck, T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], 1)
+        end
+        if not btn._checked then ck:Hide() end
+        btn._checkBox = cb
+        btn._checkMark = ck
+        textLeft = 28
+    end
+
+    local lbl = Widgets.Label(btn, label or "", "small",
+        (variant == "priority") and T.TEXT.GOLD or T.TEXT.PRIMARY,
+        { justifyH = "LEFT", wordWrap = false, outline = (variant == "priority") and "OUTLINE" or nil }
+    )
+    lbl:SetPoint("LEFT", btn, "LEFT", textLeft, 0)
+    lbl:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    btn._label = lbl
+
+    function btn:SetChecked(flag)
+        if self._variant ~= "toggle" then return end
+        self._checked = flag == true
+        if self._checkMark then
+            if self._checked then self._checkMark:Show() else self._checkMark:Hide() end
+        end
+        if self._checkBox then
+            Widgets.SetBorderColor(self._checkBox, self._checked and T.BORDER.GOLD or T.BORDER.HAIRLINE)
+            if self._checkBox._fsBg then
+                local c = self._checked and T.SURFACE.GOLD_TINT or T.SURFACE.SUNKEN
+                self._checkBox._fsBg:SetColorTexture(c[1], c[2], c[3], c[4] or 0.95)
+            end
+        end
+        ApplyRoundedOverlay(self, self._checked and (T.OVERLAY and T.OVERLAY.SELECTED or 0.12) or 0)
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        ApplyRoundedOverlay(self, (T.OVERLAY and T.OVERLAY.HOVER) or 0.06)
+        Widgets.SetBorderColor(self, T.BORDER.GOLD)
+        if self._goldBar and Motion and type(Motion.Tween) == "function" then
+            Motion.Tween(self, "goldBarAlpha", 0.72, 1.0, 0.15, function(a)
+                self._goldBar:SetColorTexture(T.BORDER.GOLD[1], T.BORDER.GOLD[2], T.BORDER.GOLD[3], a)
+            end)
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        local baseA = (self._variant == "toggle" and self._checked) and ((T.OVERLAY and T.OVERLAY.SELECTED) or 0.12) or 0
+        ApplyRoundedOverlay(self, baseA)
+        Widgets.SetBorderColor(self, (self._variant == "priority") and T.BORDER.GOLD_SOFT or T.BORDER.HAIRLINE)
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        ApplyRoundedOverlay(self, (T.OVERLAY and T.OVERLAY.PRESSED) or 0.18)
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        ApplyRoundedOverlay(self, (T.OVERLAY and T.OVERLAY.HOVER) or 0.06)
+    end)
+    btn:SetScript("OnClick", function(self, mouseBtn)
+        if self._variant == "toggle" then
+            self:SetChecked(not self._checked)
+        end
+        if onClick then onClick(self, mouseBtn, self._checked) end
+    end)
+    return btn
+end
+
+-- Contextual Korean onboarding pill button (GodJohnson "처음이라면 · 도움말" pattern)
+function Widgets.HelpPill(parent, helpText, onClick)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(124, 22)
+    btn._helpText = tostring(helpText or "ForeverSuite 기능 안내")
+    PaintBox(btn, T.SURFACE.ELEVATED, T.BORDER.GOLD_SOFT, { radius = (T.RADIUS and T.RADIUS.PILL) or 11 })
+    local lbl = Widgets.Label(btn, "처음이라면 · 도움말", "small", T.TEXT.GOLD, { justifyH = "CENTER", wordWrap = false })
+    lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    btn._label = lbl
+
+    btn:SetScript("OnEnter", function(self)
+        Widgets.SetBorderColor(self, T.BORDER.GOLD)
+        if _G.GameTooltip and type(_G.GameTooltip.SetOwner) == "function" then
+            pcall(function()
+                _G.GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine("처음이라면 · 도움말", T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3])
+                _G.GameTooltip:AddLine(self._helpText, T.TEXT.PRIMARY[1], T.TEXT.PRIMARY[2], T.TEXT.PRIMARY[3], true)
+                _G.GameTooltip:Show()
+            end)
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        Widgets.SetBorderColor(self, T.BORDER.GOLD_SOFT)
+        if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then
+            pcall(_G.GameTooltip.Hide, _G.GameTooltip)
+        end
+    end)
+    btn:SetScript("OnClick", function(self)
+        if type(onClick) == "function" then
+            onClick(self)
+        else
+            Widgets.Toast("처음이라면 · 도움말", self._helpText, "INFO", 5.0)
+        end
+    end)
+    return btn
 end
 
 -- 1. Window (L2 sculpted 9-slice window with real baked 16px outer drop shadow & instant theme switching)
@@ -413,6 +627,12 @@ function Widgets.Window(name, width, height, titleText)
         NS.Apply(f, NS.WindowPresetForTheme(), { layer = "BACKGROUND", sublevel = -6 })
     end
     PaintBox(f, T.SURFACE.CANVAS, nil, { bgSublevel = -5 })
+    if Draw and type(Draw.ApplyInkUV) == "function" then
+        Draw.ApplyInkUV(f, f, T.SURFACE.INK_TINT)
+    end
+    if Draw and type(Draw.CreateSurfaceRim) == "function" then
+        Draw.CreateSurfaceRim(f, T.BORDER.GOLD)
+    end
 
     local header = CreateFrame("Frame", nil, f)
     header:SetHeight(40)
@@ -454,6 +674,12 @@ function Widgets.Window(name, width, height, titleText)
             if title then
                 title:SetTextColor(T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], 1)
             end
+            if f._fsSurfaceRim and f._fsSurfaceRim.__fsHairline then
+                f._fsSurfaceRim.__fsHairline:SetColor(T.BORDER.GOLD)
+            end
+            if Draw and type(Draw.RefreshInkTint) == "function" then
+                Draw.RefreshInkTint(f, T.SURFACE.INK_TINT)
+            end
         end)
     end
 
@@ -477,13 +703,25 @@ function Widgets.PopupCard(parent, width, height, name, strata)
         NS.Apply(f, NS.PopupPresetForTheme(), { layer = "BACKGROUND", sublevel = -6 })
     end
     PaintBox(f, T.SURFACE.CANVAS, nil, { bgSublevel = -5 })
-    if T and type(T.RegisterThemeListener) == "function" then
-        T.RegisterThemeListener(function(themeId)
-            if f._fsNineSlice and NS then
-                f._fsNineSlice:SetPreset(NS.PopupPresetForTheme(themeId))
+    if Draw and type(Draw.ApplyInkUV) == "function" then
+        Draw.ApplyInkUV(f, f, T.SURFACE.INK_TINT)
+    end
+    if Draw and type(Draw.CreateSurfaceRim) == "function" then
+        Draw.CreateSurfaceRim(f, T.BORDER.GOLD_SOFT)
+    end
+    if T and type(T.RegisterSurface) == "function" then
+        T.RegisterSurface(f, function(self, themeId)
+            if self._fsNineSlice and NS then
+                self._fsNineSlice:SetPreset(NS.PopupPresetForTheme(themeId))
             end
-            if f._fsBg then
-                f._fsBg:SetColorTexture(T.SURFACE.CANVAS[1], T.SURFACE.CANVAS[2], T.SURFACE.CANVAS[3], T.SURFACE.CANVAS[4])
+            if self._fsBg then
+                self._fsBg:SetColorTexture(T.SURFACE.CANVAS[1], T.SURFACE.CANVAS[2], T.SURFACE.CANVAS[3], T.SURFACE.CANVAS[4])
+            end
+            if self._fsSurfaceRim and self._fsSurfaceRim.__fsHairline then
+                self._fsSurfaceRim.__fsHairline:SetColor(T.BORDER.GOLD_SOFT)
+            end
+            if Draw and type(Draw.RefreshInkTint) == "function" then
+                Draw.RefreshInkTint(self, T.SURFACE.INK_TINT)
             end
         end)
     end
@@ -491,7 +729,7 @@ function Widgets.PopupCard(parent, width, height, name, strata)
     return f
 end
 
--- 2. Card (L1 Quiet Surface: flat recessed obsidian + crisp 1px hairline + subtle top sheen; ZERO UI-Tooltip-Border!)
+-- 2. Card (L1 Quiet Surface: rounded 7-tex obsidian + seamless InkUV + rounded 1px __fsHairline; ZERO UI-Tooltip-Border!)
 function Widgets.Card(parent, width, height, name, strata)
     local f = CreateFrame("Frame", name, parent or _G.UIParent)
     if width and height then
@@ -500,20 +738,28 @@ function Widgets.Card(parent, width, height, name, strata)
     if strata then
         f:SetFrameStrata(strata)
     end
-    PaintBox(f, T.SURFACE.CARD, T.BORDER.HAIRLINE, { gradient = true, loMult = 0.90, hiMult = 1.08 })
+    PaintBox(f, T.SURFACE.CARD, T.BORDER.HAIRLINE, { radius = (T.RADIUS and T.RADIUS.PANEL) or 6 })
+    if Draw and type(Draw.ApplyInkUV) == "function" then
+        Draw.ApplyInkUV(f, parent, T.SURFACE.INK_TINT)
+    end
     local topSheen = f:CreateTexture(nil, "ARTWORK")
     topSheen:SetHeight(T.PixelSize(f, 1))
-    topSheen:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
-    topSheen:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
+    topSheen:SetPoint("TOPLEFT", f, "TOPLEFT", 6, -1)
+    topSheen:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -1)
     topSheen:SetColorTexture(0.96, 0.88, 0.68, 0.12)
     f._fsTopSheen = topSheen
     f._fsSurfaceLevel = "L1_QUIET"
-    if T and type(T.RegisterThemeListener) == "function" then
-        T.RegisterThemeListener(function()
-            if f._fsBg then
-                PaintGradientBg(f._fsBg, T.SURFACE.CARD, 0.90, 1.08)
+    if T and type(T.RegisterSurface) == "function" then
+        T.RegisterSurface(f, function(self)
+            if self._fsRoundedFill then
+                self._fsRoundedFill:SetColor(T.SURFACE.CARD)
+            elseif self._fsBg then
+                PaintGradientBg(self._fsBg, T.SURFACE.CARD, 0.90, 1.08)
             end
-            Widgets.SetBorderColor(f, T.BORDER.HAIRLINE)
+            Widgets.SetBorderColor(self, T.BORDER.HAIRLINE)
+            if Draw and type(Draw.RefreshInkTint) == "function" then
+                Draw.RefreshInkTint(self, T.SURFACE.INK_TINT)
+            end
         end)
     end
     return f
@@ -710,51 +956,83 @@ function Widgets.SectionHeader(parent, text)
     return holder
 end
 
--- 5. Button (Forged obsidian/gold metallic gradient bevel + top sheen + tactile press feedback; fixed B1!)
+-- 5. Button (v6.1 Rounded 4px forged button + true rounded alpha-composited hover/press + live theme refresh)
 function Widgets.Button(parent, label, width, height, onClick, isGoldAccent)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width or 96, height or 26)
     btn._isGoldAccent = isGoldAccent and true or false
+    btn._overlayAlpha = 0
     local function GetBaseBg()
         return btn._isGoldAccent and T.SURFACE.GOLD_TINT or T.SURFACE.ELEVATED
     end
     local function GetBaseBorder()
         return btn._isGoldAccent and T.BORDER.GOLD or T.BORDER.HAIRLINE
     end
-    PaintBox(btn, GetBaseBg(), GetBaseBorder(), { gradient = true, loMult = 0.78, hiMult = 1.26 })
-    local sheen = btn:CreateTexture(nil, "ARTWORK")
+    PaintBox(btn, GetBaseBg(), GetBaseBorder(), { radius = (T.RADIUS and T.RADIUS.BUTTON) or 4 })
+    local sheen = btn:CreateTexture(nil, "ARTWORK", nil, 2)
     sheen:SetHeight(T.PixelSize(btn, 1))
-    sheen:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
-    sheen:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -1, -1)
+    sheen:SetPoint("TOPLEFT", btn, "TOPLEFT", 4, -1)
+    sheen:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -4, -1)
     sheen:SetColorTexture(1, 0.92, 0.68, isGoldAccent and 0.42 or 0.18)
     local lbl = Widgets.Label(btn, label, "small", isGoldAccent and T.TEXT.GOLD or T.TEXT.PRIMARY)
     lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
     btn._label = lbl
     btn._sheen = sheen
 
+    local function ApplyFillWithOverlay(self, alpha)
+        self._overlayAlpha = alpha or 0
+        local bg = GetBaseBg()
+        local col = (self._overlayAlpha > 0 and Draw and type(Draw.AlphaComposite) == "function")
+            and Draw.AlphaComposite({ 1, 1, 1, self._overlayAlpha }, bg) or bg
+        if self._fsRoundedFill then
+            self._fsRoundedFill:SetColor(col)
+        elseif self._fsBg then
+            PaintGradientBg(self._fsBg, col, 0.78, 1.26)
+        end
+    end
+
+    local function SyncBase(self)
+        ApplyFillWithOverlay(self, 0)
+        Widgets.SetBorderColor(self, GetBaseBorder())
+        if self._label then
+            local tc = self._isGoldAccent and T.TEXT.GOLD or T.TEXT.PRIMARY
+            self._label:SetTextColor(tc[1], tc[2], tc[3], tc[4] or 1)
+        end
+        if self._sheen then
+            self._sheen:SetColorTexture(1, 0.92, 0.68, self._isGoldAccent and 0.42 or 0.18)
+        end
+    end
+
+    function btn:SetAccent(flag)
+        self._isGoldAccent = flag and true or false
+        SyncBase(self)
+    end
+
     btn:SetScript("OnEnter", function(self)
-        PaintGradientBg(self._fsBg, T.SURFACE.HOVER, 0.84, 1.24)
+        ApplyFillWithOverlay(self, (T.OVERLAY and T.OVERLAY.HOVER) or 0.06)
         Widgets.SetBorderColor(self, T.BORDER.GOLD)
     end)
     btn:SetScript("OnLeave", function(self)
-        PaintGradientBg(self._fsBg, GetBaseBg(), 0.78, 1.26)
-        Widgets.SetBorderColor(self, GetBaseBorder())
+        SyncBase(self)
         self._label:ClearAllPoints()
         self._label:SetPoint("CENTER", self, "CENTER", 0, 0)
     end)
     btn:SetScript("OnMouseDown", function(self)
-        PaintGradientBg(self._fsBg, T.SURFACE.SUNKEN, 0.85, 1.05)
+        ApplyFillWithOverlay(self, (T.OVERLAY and T.OVERLAY.PRESSED) or 0.18)
         self._label:ClearAllPoints()
         self._label:SetPoint("CENTER", self, "CENTER", 0, -1)
     end)
     btn:SetScript("OnMouseUp", function(self)
-        PaintGradientBg(self._fsBg, T.SURFACE.HOVER, 0.84, 1.24)
+        ApplyFillWithOverlay(self, (T.OVERLAY and T.OVERLAY.HOVER) or 0.06)
         self._label:ClearAllPoints()
         self._label:SetPoint("CENTER", self, "CENTER", 0, 0)
     end)
     btn:SetScript("OnClick", function(self, mouseBtn)
         if onClick then onClick(self, mouseBtn) end
     end)
+    if T and type(T.RegisterSurface) == "function" then
+        T.RegisterSurface(btn, SyncBase)
+    end
     return btn
 end
 

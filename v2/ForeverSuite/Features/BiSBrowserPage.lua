@@ -32,6 +32,7 @@ local BiSBrowserPage = {
     slotPillGroup = nil,
     specPillBar = nil,
     rows = {},
+    virtualList = nil,
     scrollBar = nil,
     emptyState = nil,
     selectedRec = nil,
@@ -202,16 +203,21 @@ function BiSBrowserPage:RenderDetail(equippedInfoMap)
 end
 
 function BiSBrowserPage:Render(query)
-    if not (self.host and self.rows[1]) then return end
+    if not (self.host and (self.rows[1] or self.virtualList)) then return end
     self.lastQuery = query or ""
+    self._lastRenderErr = nil
     local ok, st = ns.Api.SafeAPI.LoadDataPack("ForeverSuite_Data_BiS")
     local pack = _G.ForeverSuiteData and _G.ForeverSuiteData.packs and _G.ForeverSuiteData.packs.bis
     if not (ok and type(pack) == "table" and type(pack.entries) == "table") then
-        for i = 1, VISIBLE_ROWS do
-            self.rows[i]._rec = nil
-            self.rows[i]:Hide()
+        if self.virtualList then
+            self.virtualList:SetData({})
+        else
+            for i = 1, VISIBLE_ROWS do
+                self.rows[i]._rec = nil
+                self.rows[i]:Hide()
+            end
+            if self.scrollBar then self.scrollBar:SetMetrics(0, VISIBLE_ROWS, 0) end
         end
-        if self.scrollBar then self.scrollBar:SetMetrics(0, VISIBLE_ROWS, 0) end
         self.selectedRec = nil
         self:RenderDetail(nil)
         if self.emptyState then
@@ -245,11 +251,15 @@ function BiSBrowserPage:Render(query)
     self.scrollOffset = math_max(0, math_min(maxOff, self.scrollOffset))
 
     if total == 0 then
-        for i = 1, VISIBLE_ROWS do
-            self.rows[i]._rec = nil
-            self.rows[i]:Hide()
+        if self.virtualList then
+            self.virtualList:SetData({})
+        else
+            for i = 1, VISIBLE_ROWS do
+                self.rows[i]._rec = nil
+                self.rows[i]:Hide()
+            end
+            if self.scrollBar then self.scrollBar:SetMetrics(0, VISIBLE_ROWS, 0) end
         end
-        if self.scrollBar then self.scrollBar:SetMetrics(0, VISIBLE_ROWS, 0) end
         if self.emptyState then
             self.emptyState:SetMessage("조건에 맞는 BiS 장비가 없습니다", "필터를 '전체'로 바꾸거나 업그레이드 전용 옵션을 해제해 보세요.")
             self.emptyState:Show()
@@ -277,44 +287,62 @@ function BiSBrowserPage:Render(query)
             end
         end
         self.selectedRec = resolved or list[1]
-        for i = 1, VISIBLE_ROWS do
-            local row = self.rows[i]
-            local rec = list[self.scrollOffset + i]
-            if rec then
-                local it = rec.item
-                row._rec = rec
-                local qCol = QualityColor(it.quality)
-                local bCol = ToneColor(rec.tone)
-                local iconTex = (type(it.itemID) == "number") and ns.Api.GameAdapters.GetItemIconSafe(it.itemID) or nil
-                local isSel = (self.selectedRec and self.selectedRec.item == it)
-                row:SetData({
-                    icon = iconTex,
-                    borderCol = qCol,
-                    title = tostring(it.title),
-                    subtitle = "[" .. tostring(it.slot or "장비") .. "]" .. ((type(it.acq) == "string" and it.acq ~= "") and (" · " .. it.acq) or ""),
-                    titleCol = qCol,
-                    rightText = (rec.specGrade and ("[" .. rec.specGrade .. "] ") or "") .. tostring(rec.badge or ""),
-                    rightCol = bCol,
-                    selected = isSel,
-                    sepCol = T.BORDER.SUBTLE,
-                })
-                row:Show()
-            else
-                row._rec = nil
-                row:Hide()
+        self._lastRenderErr = nil
+        if self.virtualList then
+            -- Single source of truth via public VirtualList API (surfaces native ScrollBox errors honestly)
+            local _, setErr = self.virtualList:SetData(list, { offset = self.scrollOffset })
+            if setErr then
+                self._lastRenderErr = tostring(setErr)
+                if self.emptyState then
+                    self.emptyState:SetMessage("BiS 목록 렌더링 오류", self._lastRenderErr)
+                    self.emptyState:Show()
+                end
             end
-        end
-        if self.scrollBar then
-            self.scrollBar:SetMetrics(self.scrollOffset, VISIBLE_ROWS, total)
+            self.scrollOffset = self.virtualList:GetScrollOffset()
+        else
+            for i = 1, VISIBLE_ROWS do
+                local row = self.rows[i]
+                local rec = list[self.scrollOffset + i]
+                if rec then
+                    local it = rec.item
+                    row._rec = rec
+                    local qCol = QualityColor(it.quality)
+                    local bCol = ToneColor(rec.tone)
+                    local iconTex = (type(it.itemID) == "number") and ns.Api.GameAdapters.GetItemIconSafe(it.itemID) or nil
+                    local isSel = (self.selectedRec and self.selectedRec.item == it)
+                    row:SetData({
+                        icon = iconTex,
+                        borderCol = qCol,
+                        title = tostring(it.title),
+                        subtitle = "[" .. tostring(it.slot or "장비") .. "]" .. ((type(it.acq) == "string" and it.acq ~= "") and (" · " .. it.acq) or ""),
+                        titleCol = qCol,
+                        rightText = (rec.specGrade and ("[" .. rec.specGrade .. "] ") or "") .. tostring(rec.badge or ""),
+                        rightCol = bCol,
+                        selected = isSel,
+                        sepCol = T.BORDER.SUBTLE,
+                    })
+                    row:Show()
+                else
+                    row._rec = nil
+                    row:Hide()
+                end
+            end
+            if self.scrollBar then
+                self.scrollBar:SetMetrics(self.scrollOffset, VISIBLE_ROWS, total)
+            end
         end
         self:RenderDetail(equippedInfo)
     end
 
     if self.statusLbl then
-        self.statusLbl:SetText(
-            "BiS 후보 " .. tostring(total) .. "건 (부위: " .. tostring(self.slotFilter)
-            .. (self.upgradeOnly and " · 업그레이드 전용" or "") .. " · Shift+클릭 채팅 링크)"
-        )
+        if self._lastRenderErr then
+            self.statusLbl:SetText("BiS 목록 갱신 실패: " .. tostring(self._lastRenderErr))
+        else
+            self.statusLbl:SetText(
+                "BiS 후보 " .. tostring(total) .. "건 (부위: " .. tostring(self.slotFilter)
+                .. (self.upgradeOnly and " · 업그레이드 전용" or "") .. " · Shift+클릭 채팅 링크)"
+            )
+        end
     end
 end
 
@@ -381,39 +409,99 @@ function BiSBrowserPage:Build(parent)
     local leftPane = W.Card(parent, 424, 419)
     leftPane:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -listTopY)
     leftPane:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 24)
-    if type(leftPane.EnableMouseWheel) == "function" then
-        leftPane:EnableMouseWheel(true)
-        leftPane:SetScript("OnMouseWheel", function(_, delta)
-            if not delta or delta == 0 then return end
-            BiSBrowserPage.scrollOffset = BiSBrowserPage.scrollOffset + (delta > 0 and -3 or 3)
+
+    -- Wave 3: VirtualList (1.60.1 native ScrollBox pilot with zero-taint pool fallback)
+    local VL = ns.UI.VirtualList
+    if VL and type(VL.Create) == "function" then
+        self.virtualList = VL.Create(leftPane, {
+            rowHeight = 32,
+            rowGap = 2,
+            visibleCount = VISIBLE_ROWS,
+            padLeft = 4,
+            padRight = 14,
+            padTop = 6,
+            padBottom = 6,
+            onScroll = function(newOff)
+                BiSBrowserPage.scrollOffset = newOff
+            end,
+            createRow = function(host)
+                local row = W.IconRow(host, 32, function(btn)
+                    local rec = btn._rec
+                    if not (rec and rec.item) then return end
+                    if ns.Api.GameAdapters.IsShiftDown() and type(rec.item.itemID) == "number" then
+                        ns.Api.GameAdapters.InsertItemChatLink(rec.item.itemID, rec.item.title)
+                        return
+                    end
+                    BiSBrowserPage.selectedRec = rec
+                    BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
+                end)
+                row:SetTooltipHandler(ShowBiSTooltip, HideBiSTooltip)
+                return row
+            end,
+            bindRow = function(row, rec)
+                if not rec or not rec.item then return end
+                local it = rec.item
+                row._rec = rec
+                local qCol = QualityColor(it.quality)
+                local bCol = ToneColor(rec.tone)
+                local iconTex = (type(it.itemID) == "number") and ns.Api.GameAdapters.GetItemIconSafe(it.itemID) or nil
+                local isSel = (BiSBrowserPage.selectedRec and BiSBrowserPage.selectedRec.item == it)
+                row:SetData({
+                    icon = iconTex,
+                    borderCol = qCol,
+                    title = tostring(it.title),
+                    subtitle = "[" .. tostring(it.slot or "장비") .. "]" .. ((type(it.acq) == "string" and it.acq ~= "") and (" · " .. it.acq) or ""),
+                    titleCol = qCol,
+                    rightText = (rec.specGrade and ("[" .. rec.specGrade .. "] ") or "") .. tostring(rec.badge or ""),
+                    rightCol = bCol,
+                    selected = isSel,
+                    sepCol = T.BORDER.SUBTLE,
+                })
+                row:SetTooltipHandler(ShowBiSTooltip, HideBiSTooltip)
+            end,
+            resetRow = function(row)
+                row._rec = nil
+                row._payload = nil
+                row._onTooltipEnter = nil
+                row._onTooltipLeave = nil
+            end,
+        })
+        self.rows = self.virtualList._rows
+        self.scrollBar = self.virtualList._scrollBar
+    end
+    if not self.virtualList then
+        if type(leftPane.EnableMouseWheel) == "function" then
+            leftPane:EnableMouseWheel(true)
+            leftPane:SetScript("OnMouseWheel", function(_, delta)
+                if not delta or delta == 0 then return end
+                BiSBrowserPage.scrollOffset = BiSBrowserPage.scrollOffset + (delta > 0 and -3 or 3)
+                BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
+            end)
+        end
+        for i = 1, VISIBLE_ROWS do
+            local row = W.IconRow(leftPane, 32, function(btn)
+                local rec = btn._rec
+                if not (rec and rec.item) then return end
+                if ns.Api.GameAdapters.IsShiftDown() and type(rec.item.itemID) == "number" then
+                    ns.Api.GameAdapters.InsertItemChatLink(rec.item.itemID, rec.item.title)
+                    return
+                end
+                BiSBrowserPage.selectedRec = rec
+                BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
+            end)
+            row:SetTooltipHandler(ShowBiSTooltip, HideBiSTooltip)
+            row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 4, -(6 + (i - 1) * 34))
+            row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -14, -(6 + (i - 1) * 34))
+            self.rows[i] = row
+        end
+        local sb = W.ScrollBar(leftPane, 404, function(newOff)
+            BiSBrowserPage.scrollOffset = newOff
             BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
         end)
+        sb:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -3, -6)
+        sb:SetPoint("BOTTOMRIGHT", leftPane, "BOTTOMRIGHT", -3, 6)
+        self.scrollBar = sb
     end
-
-    for i = 1, VISIBLE_ROWS do
-        local row = W.IconRow(leftPane, 32, function(btn)
-            local rec = btn._rec
-            if not (rec and rec.item) then return end
-            if ns.Api.GameAdapters.IsShiftDown() and type(rec.item.itemID) == "number" then
-                ns.Api.GameAdapters.InsertItemChatLink(rec.item.itemID, rec.item.title)
-                return
-            end
-            BiSBrowserPage.selectedRec = rec
-            BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
-        end)
-        row:SetTooltipHandler(ShowBiSTooltip, HideBiSTooltip)
-        row:SetPoint("TOPLEFT", leftPane, "TOPLEFT", 4, -(6 + (i - 1) * 34))
-        row:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -14, -(6 + (i - 1) * 34))
-        self.rows[i] = row
-    end
-
-    local sb = W.ScrollBar(leftPane, 404, function(newOff)
-        BiSBrowserPage.scrollOffset = newOff
-        BiSBrowserPage:Render(BiSBrowserPage.lastQuery)
-    end)
-    sb:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -3, -6)
-    sb:SetPoint("BOTTOMRIGHT", leftPane, "BOTTOMRIGHT", -3, 6)
-    self.scrollBar = sb
 
     local empty = W.EmptyState(leftPane, { title = "BiS 장비 없음", desc = "" })
     empty:SetAllPoints(leftPane)

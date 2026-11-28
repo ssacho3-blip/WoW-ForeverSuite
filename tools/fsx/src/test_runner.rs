@@ -446,10 +446,47 @@ local function MakeMockRegion(kind, parent)
     function r:SetColorTexture(r1, g1, b1, a1) self._color = { r1, g1, b1, a1 } end
     function r:SetTexture(path) self._texture = path end
     function r:SetTexCoord(...) self._texCoord = { ... } end
+    function r:GetTexCoord()
+        if self._texCoord then return unpack(self._texCoord) end
+        return 0, 1, 0, 1
+    end
     function r:SetVertexColor(r1, g1, b1, a1) self._vertexColor = { r1, g1, b1, a1 } end
+    function r:SetGradient(orient, c1, c2) self._gradient = { orient, c1, c2 } end
+    function r:SetBlendMode(m) self._blendMode = m end
+    function r:SetSnapToPixelGrid(v) self._snapToPixelGrid = v end
+    function r:SetTexelSnappingBias(v) self._texelBias = v end
     function r:SetText(t) self._text = tostring(t or "") end
     function r:GetText() return self._text end
     function r:SetTextColor(r1, g1, b1, a1) self._textColor = { r1, g1, b1, a1 } end
+    function r:SetSpacing(sp) self._spacing = sp end
+    function r:GetSpacing() return self._spacing or 0 end
+    function r:SetFont(path, size, flags) self._fontPath, self._fontSize, self._fontFlags = path, size, flags; return true end
+    function r:GetFont()
+        if self._fontPath then return self._fontPath, self._fontSize or 13, self._fontFlags or "" end
+        local fo = self._fontObject and _G[self._fontObject]
+        if type(fo) == "table" and type(fo.GetFont) == "function" then
+            local p, s, fl = fo:GetFont()
+            if p then return p, s or 13, fl or "" end
+        end
+        return "Fonts\\2002.TTF", self._fontSize or 13, self._fontFlags or ""
+    end
+    function r:GetStringWidth()
+        local s = tostring(self._text or "")
+        local sz = self._fontSize or 13
+        return #s * (sz * 0.45)
+    end
+    function r:GetStringHeight()
+        local s = tostring(self._text or "")
+        local sz = self._fontSize or 13
+        local sp = self._spacing or 0
+        local w = (self._width and self._width > 0) and self._width or 9999
+        local lines = 1
+        if self._wordWrap ~= false and w < 9999 then
+            local lineW = #s * (sz * 0.45)
+            lines = math.max(1, math.ceil(lineW / w))
+        end
+        return lines * (sz + sp)
+    end
     function r:SetJustifyH(j) self._justifyH = j end
     function r:SetJustifyV(j) self._justifyV = j end
     function r:SetWordWrap(w) self._wordWrap = w end
@@ -462,6 +499,8 @@ local function MakeMockRegion(kind, parent)
     function r:IsShown() return self._shown end
     function r:SetAlpha(a) self._alpha = a end
     function r:GetAlpha() return self._alpha end
+    function r:SetScale(s) self._scale = s end
+    function r:GetScale() return self._scale or 1.0 end
     function r:GetLeft() return self._rect and self._rect.left or nil end
     function r:GetRight() return self._rect and (self._rect.left + self._rect.width) or nil end
     function r:GetBottom() return self._rect and self._rect.bottom or nil end
@@ -487,12 +526,20 @@ local function MakeMockFrame(frameType, name, parent, template)
     function f:GetName() return self._name end
     function f:GetParent() return self._parent end
     function f:SetFrameStrata(s) self._strata = s end
+    function f:GetFrameStrata() return self._strata end
     function f:SetFrameLevel(l) self._level = l end
+    function f:GetFrameLevel() return self._level or 1 end
     function f:GetEffectiveScale() return self._scale end
     function f:SetClampedToScreen(v) self._clamped = v end
+    function f:SetClipsChildren(v) self._clipsChildren = v end
     function f:SetMovable(v) self._movable = v end
     function f:EnableMouse(v) self._mouse = v end
+    function f:IsMouseEnabled() return self._mouse == true end
     function f:EnableMouseWheel(v) self._mouseWheel = v end
+    function f:SetEnabled(v) self._enabled = (v ~= false) end
+    function f:IsEnabled() return self._enabled ~= false end
+    function f:Disable() self._enabled = false end
+    function f:Enable() self._enabled = true end
     function f:RegisterForDrag(...) self._dragButtons = { ... } end
     function f:StartMoving() self._moving = true end
     function f:StopMovingOrSizing() self._moving = false end
@@ -511,6 +558,7 @@ local function MakeMockFrame(frameType, name, parent, template)
     end
     function f:UnregisterEvent(ev) self._events[ev] = nil end
     function f:SetScript(ev, fn) self._scripts[ev] = fn end
+    function f:GetScript(ev) return self._scripts[ev] end
     function f:HookScript(ev, fn)
         self._hooks[ev] = self._hooks[ev] or {}
         table.insert(self._hooks[ev], fn)
@@ -520,6 +568,42 @@ local function MakeMockFrame(frameType, name, parent, template)
         if self._hooks[ev] then
             for _, h in ipairs(self._hooks[ev]) do h(self, ...) end
         end
+    end
+    function f:CreateAnimationGroup()
+        local ag = { _owner = self, _anims = {}, _scripts = {}, _playing = false }
+        function ag:CreateAnimation(kind)
+            local a = { _kind = kind, _duration = 0, _from = 0, _to = 1, _smoothing = "NONE" }
+            function a:SetDuration(d) self._duration = d end
+            function a:GetDuration() return self._duration end
+            function a:SetFromAlpha(v) self._from = v end
+            function a:SetToAlpha(v) self._to = v end
+            function a:SetSmoothing(s) self._smoothing = s end
+            function a:SetOrder(o) self._order = o end
+            function a:SetOffset(dx, dy) self._dx, self._dy = dx, dy end
+            table.insert(self._anims, a)
+            return a
+        end
+        function ag:SetScript(ev, fn) self._scripts[ev] = fn end
+        function ag:Play()
+            self._playing = true
+            self._playCount = (self._playCount or 0) + 1
+        end
+        function ag:Stop() self._playing = false end
+        function ag:IsPlaying() return self._playing == true end
+        function ag:Finish()
+            self._playing = false
+            for _, a in ipairs(self._anims) do
+                if a._kind == "Alpha" and a._to ~= nil then
+                    self._owner:SetAlpha(a._to)
+                end
+            end
+            if self._scripts["OnFinished"] then
+                self._scripts["OnFinished"](self)
+            end
+        end
+        self._animGroups = self._animGroups or {}
+        table.insert(self._animGroups, ag)
+        return ag
     end
     function f:CreateTexture(_, layer)
         local t = MakeMockRegion("Texture", self)
@@ -539,7 +623,15 @@ local function MakeMockFrame(frameType, name, parent, template)
     function f:HighlightText() self._highlighted = true end
     function f:SetMultiLine(v) self._multiLine = v end
     function f:SetMaxLetters(n) self._maxLetters = n end
-    function f:IsVisible() return self._shown == true end
+    function f:IsVisible()
+        local cur = self
+        while cur do
+            if cur._shown ~= true then return false end
+            cur = cur._parent
+        end
+        return true
+    end
+    function f:IsMouseOver() return self._mouseOver == true end
     function f:SetMinMaxValues(a, b) self._min, self._max = a, b end
     function f:SetValueStep(s) self._step = s end
     function f:SetObeyStepOnDrag(v) self._obeyStep = v end
@@ -614,6 +706,7 @@ end
 function GameTooltip:AddDoubleLine(left, right, r, g, b)
     table.insert(self._lines, { left = left, right = right, r = r, g = g, b = b })
 end
+function GameTooltip:IsOwned(owner) return self._owner == owner end
 function GameTooltip:ClearLines() self._lines = {} end
 function GameTooltip:SetHyperlink(link) self._hyperlink = link end
 

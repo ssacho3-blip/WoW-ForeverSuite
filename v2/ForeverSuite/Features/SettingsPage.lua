@@ -154,6 +154,11 @@ function SettingsPage:SyncControlsFromStore()
             entry.main:SetChecked(val)
         elseif entry.kind == "enum" and type(entry.main.SetValue) == "function" then
             entry.main:SetValue(val)
+        elseif entry.kind == "number" and entry.main._slider and type(entry.main._slider.SetValue) == "function" then
+            local clamped = ns.Domain.SettingsSchemaModel.ClampSliderValue(entry.schema, val)
+            if clamped ~= nil then
+                entry.main._slider:SetValue(clamped)
+            end
         end
     end
     self:RenderList(self.lastQuery)
@@ -293,6 +298,26 @@ function SettingsPage:Build(parent)
                 combatTag = combatTag,
                 height = descLbl and 58 or 48,
             }
+        elseif item.type == "number" and ns.Domain.SettingsSchemaModel.ValidateSliderSchema(item) then
+            local cur = ns.Domain.SettingsSchemaModel.ClampSliderValue(item, ns.Api.ProfileStore:Get(item.section, item.key))
+            local sl = W.Slider(parent, item.label, item.min, item.max, item.step, cur, function(v)
+                local c = ns.Domain.SettingsSchemaModel.ClampSliderValue(item, v)
+                if c ~= nil then
+                    local prev = ns.Api.ProfileStore:Get(item.section, item.key)
+                    local eps = math.min(0.005, (item.step or 0.01) * 0.25)
+                    if type(prev) ~= "number" or math.abs(c - prev) >= eps then
+                        ns.Api.ProfileStore:Set(item.section, item.key, c)
+                    end
+                end
+            end)
+            self.builtItems[#self.builtItems + 1] = {
+                schema = item,
+                kind = "number",
+                main = sl,
+                descLbl = descLbl,
+                combatTag = combatTag,
+                height = descLbl and 56 or 44,
+            }
         end
     end
 
@@ -391,6 +416,18 @@ function SettingsPage:RenderList(query)
                     entry.descLbl:ClearAllPoints()
                     entry.descLbl:SetPoint("TOPLEFT", self.host, "TOPLEFT", 6, -(y + 44))
                     entry.descLbl:SetPoint("TOPRIGHT", self.host, "TOPRIGHT", rightMargin, -(y + 44))
+                    entry.descLbl:SetText(HighlightMatch(entry.schema.desc))
+                    entry.descLbl:Show()
+                end
+            elseif entry.kind == "number" then
+                entry.main:ClearAllPoints()
+                entry.main:SetPoint("TOPLEFT", self.host, "TOPLEFT", 4, -y)
+                entry.main:SetPoint("TOPRIGHT", self.host, "TOPRIGHT", rightMargin, -y)
+                entry.main:Show()
+                if entry.descLbl then
+                    entry.descLbl:ClearAllPoints()
+                    entry.descLbl:SetPoint("TOPLEFT", self.host, "TOPLEFT", 6, -(y + 40))
+                    entry.descLbl:SetPoint("TOPRIGHT", self.host, "TOPRIGHT", rightMargin, -(y + 40))
                     entry.descLbl:SetText(HighlightMatch(entry.schema.desc))
                     entry.descLbl:Show()
                 end

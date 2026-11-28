@@ -1,18 +1,25 @@
 -- Module: Features/SetupWizard.lua
--- Responsibility: Idempotent 3-step /fs setup wizard (Step 1: device/bridge scan, Step 2: non-destructive theme/LSM
---                 alignment with default-OFF external ImportString, Step 3: 4.5s Director live preview) + /fs setup undo.
+-- Responsibility: ForeverSuite v6.1.0 Idempotent 3-Step /fs setup wizard with rich Stepper Header (1/3 · 2/3 · 3/3),
+--                 structured visual info cards (zero raw \n dump), and fixed footer [이전]/[실행]/[다음]/[닫기].
 -- Layer: Features
 local _, ns = ...
 ns.Features = ns.Features or {}
 
 local W = ns.UI.Widgets
 local T = ns.UI.Tokens
+local Motion = ns.UI.Motion
 local tostring = tostring
 local table_concat = table.concat
 
 local SetupWizard = {
     frame = nil,
-    bodyLbl = nil,
+    stepperBadges = nil,
+    stepTitleLbl = nil,
+    infoCards = nil,
+    prevBtn = nil,
+    actionBtn = nil,
+    nextBtn = nil,
+    closeBtn = nil,
     step = 1,
     optImportExternal = false,
     lastStep2Result = nil,
@@ -41,7 +48,6 @@ function SetupWizard:ApplyStep2(opts)
     opts = type(opts) == "table" and opts or {}
     SnapshotForUndo()
 
-    -- Register curated Korean fonts into LibSharedMedia-3.0 ONLY if ForeverSuite_Media_Assets addon exists on disk
     local lsmCount = 0
     local hasFontAssets = (ns.Api.AddonProbe and type(ns.Api.AddonProbe.Exists) == "function"
         and ns.Api.AddonProbe.Exists("ForeverSuite_Media_Assets")) and true or false
@@ -55,7 +61,6 @@ function SetupWizard:ApplyStep2(opts)
         end
     end
 
-    -- External ImportString is strictly opt-in (default OFF) so existing user bag/nameplate themes are never clobbered
     local allowExt = (opts.importExternal == true) or (self.optImportExternal == true)
     if allowExt and type(opts.baganatorPreset) == "string" and ns.Bridges and ns.Bridges.Baganator then
         ns.Bridges.Baganator:ImportPreset(opts.baganatorPreset)
@@ -91,42 +96,126 @@ function SetupWizard:Undo()
     return true, "UNDONE"
 end
 
-function SetupWizard:Open(stepNum)
-    self.step = tonumber(stepNum) or 1
-    if not self.frame then
-        local win = W.PopupCard(_G.UIParent, 380, 230, "ForeverSuiteSetupWizard", T.ELEVATION.L3_OVERLAY)
-        win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
-        local title = W.Label(win, "★ ForeverSuite v6 초기 연출 마법사 (/fs setup)", "heading", T.TEXT.GOLD)
-        title:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -12)
+local function EnsureWizardUI()
+    if SetupWizard.frame then return SetupWizard.frame end
 
-        local body = W.Label(win, "", "small", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = true })
-        body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
-        body:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -14, 42)
+    local win = W.PopupCard(_G.UIParent, 440, 296, "ForeverSuiteSetupWizard", T.ELEVATION.L3_OVERLAY)
+    win:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 40)
 
-        local bPrev = W.Button(win, "1. 환경감지", 92, 24, function() SetupWizard:Open(1) end)
-        bPrev:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 14, 10)
-        local bAlign = W.Button(win, "2. 테마정렬", 92, 24, function()
+    local title = W.Label(win, "★ ForeverSuite v6.1 초기 연출 마법사", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    title:SetPoint("TOPLEFT", win, "TOPLEFT", 16, -14)
+
+    -- 3-Step Stepper Badges (1/3 · 2/3 · 3/3)
+    local badges = {}
+    local stepTags = { "1/3", "2/3", "3/3" }
+    for i = 1, 3 do
+        local b = W.Badge(win, stepTags[i], "INFO")
+        b:SetSize(44, 20)
+        b:SetPoint("TOPRIGHT", win, "TOPRIGHT", -(16 + (3 - i) * 50), -12)
+        badges[i] = b
+    end
+    SetupWizard.stepperBadges = badges
+
+    local stepTitle = W.Label(win, "", "body", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false })
+    stepTitle:SetPoint("TOPLEFT", win, "TOPLEFT", 16, -44)
+    stepTitle:SetPoint("TOPRIGHT", win, "TOPRIGHT", -16, -44)
+    SetupWizard.stepTitleLbl = stepTitle
+
+    -- 3 Structured Info Cards (zero raw \n text dump!)
+    local infoCards = {}
+    for i = 1, 3 do
+        local c = W.Card(win, 408, 52)
+        c:SetPoint("TOPLEFT", win, "TOPLEFT", 16, -(72 + (i - 1) * 58))
+        local cap = W.Label(c, "", "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
+        cap:SetPoint("TOPLEFT", c, "TOPLEFT", 10, -8)
+        cap:SetPoint("TOPRIGHT", c, "TOPRIGHT", -10, -8)
+        local val = W.Label(c, "", "body", T.TEXT.PRIMARY, { justifyH = "LEFT", wordWrap = false })
+        val:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", 10, 8)
+        val:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 8)
+        c._cap = cap
+        c._val = val
+        infoCards[i] = c
+    end
+    SetupWizard.infoCards = infoCards
+
+    -- Fixed Footer Bar (anchors NEVER change across steps)
+    local bPrev = W.Button(win, "이전", 72, 26, function()
+        if SetupWizard.step > 1 then
+            SetupWizard:Open(SetupWizard.step - 1)
+        end
+    end)
+    bPrev:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 16, 14)
+
+    local bAction = W.BasaltButton(win, "테마 정렬 적용", 148, 26, function()
+        if SetupWizard.step == 2 then
             SetupWizard:ApplyStep2({})
             SetupWizard:Open(2)
-        end)
-        bAlign:SetPoint("LEFT", bPrev, "RIGHT", 6, 0)
-        local bDemo = W.Button(win, "3. 연출시연", 92, 24, function()
-            SetupWizard:Open(3)
+        elseif SetupWizard.step == 3 then
             if ns.UI and ns.UI.Director then
                 ns.UI.Director:RunSetupPreview()
             end
-        end)
-        bDemo:SetPoint("LEFT", bAlign, "RIGHT", 6, 0)
-        local bClose = W.Button(win, "닫기", 52, 24, function() win:Hide() end)
-        bClose:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -14, 10)
+        else
+            SetupWizard:Open(2)
+        end
+    end, { variant = "priority" })
+    bAction:SetPoint("LEFT", bPrev, "RIGHT", 8, 0)
 
-        self.frame = win
-        self.bodyLbl = body
+    local bNext = W.Button(win, "다음", 72, 26, function()
+        if SetupWizard.step < 3 then
+            SetupWizard:Open(SetupWizard.step + 1)
+        else
+            if Motion and type(Motion.InstantHide) == "function" then
+                Motion.InstantHide(win)
+            else
+                win:Hide()
+            end
+        end
+    end, true)
+    bNext:SetPoint("LEFT", bAction, "RIGHT", 8, 0)
+
+    local bClose = W.Button(win, "닫기", 64, 26, function()
+        if Motion and type(Motion.InstantHide) == "function" then
+            Motion.InstantHide(win)
+        else
+            win:Hide()
+        end
+    end)
+    bClose:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -16, 14)
+
+    SetupWizard.prevBtn = bPrev
+    SetupWizard.actionBtn = bAction
+    SetupWizard.nextBtn = bNext
+    SetupWizard.closeBtn = bClose
+    SetupWizard.frame = win
+    return win
+end
+
+function SetupWizard:Open(stepNum)
+    local s = tonumber(stepNum) or 1
+    if s < 1 then s = 1 end
+    if s > 3 then s = 3 end
+    self.step = s
+    EnsureWizardUI()
+
+    for i = 1, 3 do
+        local b = self.stepperBadges[i]
+        local isAct = (i == self.step)
+        W.SetBorderColor(b, isAct and T.BORDER.GOLD or T.BORDER.SUBTLE)
+        if b._label then
+            local tc = isAct and T.TEXT.GOLD or T.TEXT.MUTED
+            b._label:SetTextColor(tc[1], tc[2], tc[3], 1)
+        end
     end
+
+    if type(self.prevBtn.SetEnabled) == "function" then
+        self.prevBtn:SetEnabled(self.step > 1)
+    end
+    self.prevBtn:SetAlpha((self.step > 1) and 1.0 or 0.45)
 
     local devKey = ns.Api.ProfileStore:GetDeviceKey()
     local tier = ns.UI.PixelUtil and ns.UI.PixelUtil.GetDisplayTier() or "FHD"
-    local text
+    local summaryText
+
     if self.step == 1 then
         local summary = (ns.Bridges and ns.Bridges.BridgeHost) and ns.Bridges.BridgeHost:GetSummary() or {}
         local active = {}
@@ -135,40 +224,59 @@ function SetupWizard:Open(stepNum)
                 active[#active + 1] = summary[i].target .. "(" .. summary[i].state .. ")"
             end
         end
-        text = table_concat({
-            "[Step 1/3] 기기 & 외부 공존 자동 감지",
-            "기기 키: " .. tostring(devKey) .. "  |  해상도 티어: " .. tostring(tier),
-            "감지된 외부 전문 앱: " .. (#active > 0 and table_concat(active, ", ") or "단독 기동 모드"),
-        }, "\n")
+        local extStr = (#active > 0) and table_concat(active, ", ") or "단독 기동 모드"
+        self.stepTitleLbl:SetText("[Step 1/3] 기기 해상도 및 외부 공존 자동 감지")
+        self.infoCards[1]._cap:SetText("감지된 기기 격리 키 (3-Tier SavedVariables)")
+        self.infoCards[1]._val:SetText(tostring(devKey))
+        self.infoCards[2]._cap:SetText("디스플레이 해상도 티어")
+        self.infoCards[2]._val:SetText(tostring(tier) .. " · 4px 격자 & 물리 1px 스냅 활성")
+        self.infoCards[3]._cap:SetText("감지된 외부 전문 앱 브리지")
+        self.infoCards[3]._val:SetText(extStr)
+        self.actionBtn._label:SetText("2단계로 이동")
+        self.nextBtn._label:SetText("다음")
+        summaryText = "[Step 1/3] 기기: " .. tostring(devKey) .. " | 티어: " .. tostring(tier) .. " | 외부 앱: " .. extStr
     elseif self.step == 2 then
         local r = self.lastStep2Result
         local statusLine
         if type(r) == "table" and r.ok == false then
-            statusLine = "· 적용 보류: " .. tostring(r.reason) .. " (전투 종료 후 다시 실행하세요)"
+            statusLine = "적용 보류 (" .. tostring(r.reason) .. " · 전투 종료 후 실행)"
         elseif type(r) == "table" and r.lsmCount > 0 then
-            statusLine = "· LibSharedMedia-3.0 한글 폰트 등록 완료 (" .. tostring(r.lsmCount) .. "종)"
+            statusLine = "LibSharedMedia-3.0 한글 폰트 " .. tostring(r.lsmCount) .. "종 등록 완료"
         else
-            statusLine = "· LSM 폰트 미등록 (ForeverSuite_Media_Assets 또는 LSM 미로드)"
+            statusLine = "대기 중 (ForeverSuite_Media_Assets 또는 LSM 확인)"
         end
         local snapLine = (type(ns.Api.ProfileStore:GetState("_setupUndoSnapshot")) == "table")
-            and "· 원복 스냅샷 저장됨 - 언제든 /fs setup undo 로 1클릭 복원 가능"
-            or "· 아직 적용 전 (2. 테마정렬 클릭 시 원복 스냅샷 자동 생성)"
-        text = table_concat({
-            "[Step 2/3] 비파괴 테마 & LSM 공통 폰트 정렬",
-            statusLine,
-            "· 외부 Baganator/Platynator 프리셋 덮어쓰기: 기본 OFF (사용자 동의 시에만 적용)",
-            snapLine,
-        }, "\n")
+            and "원복 스냅샷 저장됨 (/fs setup undo 로 1클릭 복원)"
+            or "적용 클릭 시 원복 스냅샷을 자동 생성합니다"
+        self.stepTitleLbl:SetText("[Step 2/3] 비파괴 테마 & LSM 공통 폰트 정렬")
+        self.infoCards[1]._cap:SetText("한글 공통 폰트 등록 상태")
+        self.infoCards[1]._val:SetText(statusLine)
+        self.infoCards[2]._cap:SetText("외부 애드온 프리셋 보호 정책")
+        self.infoCards[2]._val:SetText("Baganator/Platynator 덮어쓰기 기본 OFF (비파괴)")
+        self.infoCards[3]._cap:SetText("1클릭 롤백 스냅샷")
+        self.infoCards[3]._val:SetText(snapLine)
+        self.actionBtn._label:SetText("테마·폰트 정렬 적용")
+        self.nextBtn._label:SetText("다음")
+        summaryText = "[Step 2/3] " .. statusLine .. " | " .. snapLine
     else
-        text = table_concat({
-            "[Step 3/3] Director 5-State 라이브 연출 시연 (4.5초)",
-            "EXPLORATION -> FISHING -> COMBAT 상태 전환을 실시간 확인합니다 (전투 시 즉시 중단).",
-            "HUD 위치 변경 시 현재 기기 키(" .. tostring(devKey) .. ") 슬롯으로 자동 격리 저장됩니다.",
-        }, "\n")
+        self.stepTitleLbl:SetText("[Step 3/3] Director 5-State 라이브 연출 시연 (4.5초)")
+        self.infoCards[1]._cap:SetText("실시간 5-State 시연 시퀀스")
+        self.infoCards[1]._val:SetText("EXPLORATION -> FISHING -> COMBAT (전투 시 즉시 중단)")
+        self.infoCards[2]._cap:SetText("기기별 레이아웃 자동 격리")
+        self.infoCards[2]._val:SetText("현재 기기 키(" .. tostring(devKey) .. ") 슬롯에 저장")
+        self.infoCards[3]._cap:SetText("모션 & 접근성 설정")
+        self.infoCards[3]._val:SetText("전투 중 0ms 스냅 · 설정에서 모션 줄이기 토글 지원")
+        self.actionBtn._label:SetText("4.5초 연출 시연")
+        self.nextBtn._label:SetText("완료")
+        summaryText = "[Step 3/3] Director 5-State 라이브 연출 시연 (" .. tostring(devKey) .. ")"
     end
-    self.bodyLbl:SetText(text)
-    self.frame:Show()
-    return text
+
+    if Motion and type(Motion.FadeIn) == "function" then
+        Motion.FadeIn(self.frame, 0.15)
+    else
+        self.frame:Show()
+    end
+    return summaryText
 end
 
 function SetupWizard:HandleCommand(arg)
