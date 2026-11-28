@@ -58,6 +58,19 @@ local function StyleDockSecureButton(btn, labelText, accentGold)
     btn._fsLabel = lbl
 end
 
+local function ResolveFishingSpellName()
+    if ns.Api and ns.Api.GameAdapters then
+        if type(ns.Api.GameAdapters.GetFishingSpellNameSafe) == "function" then
+            return ns.Api.GameAdapters.GetFishingSpellNameSafe()
+        end
+        if type(ns.Api.GameAdapters.GetSpellName) == "function" then
+            local n = ns.Api.GameAdapters.GetSpellName(7620)
+            if type(n) == "string" and n ~= "" then return n end
+        end
+    end
+    return "낚시"
+end
+
 function FishingCastButton:EnsureDockButtons()
     if self.dockCastBtn and self.dockLureBtn then
         return self.dockCastBtn, self.dockLureBtn
@@ -65,18 +78,24 @@ function FishingCastButton:EnsureDockButtons()
     if type(_G.CreateFrame) ~= "function" then
         return nil, nil
     end
-    local spellName = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetSpellName(7620)) or "낚시"
+    local spellName = ResolveFishingSpellName()
 
     if not self.dockCastBtn then
         local cbtn = CreateFrame("Button", "ForeverSuiteFishingDockCastBtn", _G.UIParent, "SecureActionButtonTemplate,SecureHandlerStateTemplate")
         if cbtn then
             cbtn:SetSize(134, 24)
             if type(cbtn.RegisterForClicks) == "function" then
-                pcall(cbtn.RegisterForClicks, cbtn, "AnyUp")
+                pcall(cbtn.RegisterForClicks, cbtn, "LeftButtonUp", "RightButtonUp")
             end
             if type(cbtn.SetAttribute) == "function" then
+                -- CRITICAL for WoW 1.60.1 (ActionButtonUseKeyDown=1 default): force release-click so clicks NEVER silently drop!
+                pcall(cbtn.SetAttribute, cbtn, "useOnKeyDown", false)
                 pcall(cbtn.SetAttribute, cbtn, "type", "spell")
                 pcall(cbtn.SetAttribute, cbtn, "spell", spellName)
+                pcall(cbtn.SetAttribute, cbtn, "type1", "spell")
+                pcall(cbtn.SetAttribute, cbtn, "spell1", spellName)
+                pcall(cbtn.SetAttribute, cbtn, "type2", "macro")
+                pcall(cbtn.SetAttribute, cbtn, "macrotext2", "")
                 pcall(cbtn.SetAttribute, cbtn, "fsVisible", false)
                 pcall(cbtn.SetAttribute, cbtn, "_onstate-combat", "if newstate == 1 then self:Hide() elseif self:GetAttribute('fsVisible') then self:Show() end")
             end
@@ -84,6 +103,21 @@ function FishingCastButton:EnsureDockButtons()
                 pcall(_G.RegisterStateDriver, cbtn, "combat", "[combat] 1; 0")
             end
             StyleDockSecureButton(cbtn, "★ 낚시 시전", true)
+            if type(cbtn.SetScript) == "function" then
+                pcall(cbtn.SetScript, cbtn, "OnEnter", function(selfBtn)
+                    if _G.GameTooltip and type(_G.GameTooltip.SetOwner) == "function" then
+                        _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                        _G.GameTooltip:SetText("★ 원클릭 낚시 시전", 0.98, 0.86, 0.44)
+                        _G.GameTooltip:AddLine("좌클릭: 즉시 낚시 시전", 0.92, 0.94, 0.96, true)
+                        _G.GameTooltip:AddLine("우클릭: 가방 최고 미끼 자동 적용", 0.56, 0.94, 0.66, true)
+                        _G.GameTooltip:AddLine("팁: 물 위 빈 곳 더블 우클릭으로도 자동 시전!", 0.72, 0.84, 0.98, true)
+                        _G.GameTooltip:Show()
+                    end
+                end)
+                pcall(cbtn.SetScript, cbtn, "OnLeave", function()
+                    if _G.GameTooltip and type(_G.GameTooltip.Hide) == "function" then _G.GameTooltip:Hide() end
+                end)
+            end
             if type(cbtn.Hide) == "function" then cbtn:Hide() end
         end
         self.dockCastBtn = cbtn
@@ -94,9 +128,10 @@ function FishingCastButton:EnsureDockButtons()
         if lbtn then
             lbtn:SetSize(134, 24)
             if type(lbtn.RegisterForClicks) == "function" then
-                pcall(lbtn.RegisterForClicks, lbtn, "AnyUp")
+                pcall(lbtn.RegisterForClicks, lbtn, "LeftButtonUp", "RightButtonUp")
             end
             if type(lbtn.SetAttribute) == "function" then
+                pcall(lbtn.SetAttribute, lbtn, "useOnKeyDown", false)
                 pcall(lbtn.SetAttribute, lbtn, "type", "macro")
                 pcall(lbtn.SetAttribute, lbtn, "macrotext", "")
                 pcall(lbtn.SetAttribute, lbtn, "fsVisible", false)
@@ -138,17 +173,24 @@ function FishingCastButton:SyncDock(anchorFrame, visible, lureInfo)
         return true, "HIDDEN"
     end
 
-    local spellName = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetSpellName(7620)) or "낚시"
+    local spellName = ResolveFishingSpellName()
     local strata = (type(self.dockAnchor.GetFrameStrata) == "function" and self.dockAnchor:GetFrameStrata()) or "MEDIUM"
     local lvl = ((type(self.dockAnchor.GetFrameLevel) == "function" and self.dockAnchor:GetFrameLevel()) or 10) + 5
+    local lureMacro = (type(lureInfo) == "table" and type(lureInfo.itemID) == "number")
+        and ("/use item:" .. tostring(lureInfo.itemID) .. "\n/use 16") or ""
 
     cbtn:ClearAllPoints()
     cbtn:SetPoint("BOTTOMLEFT", self.dockAnchor, "BOTTOMLEFT", 8, 8)
     if type(cbtn.SetFrameStrata) == "function" then cbtn:SetFrameStrata(strata) end
     if type(cbtn.SetFrameLevel) == "function" then cbtn:SetFrameLevel(lvl) end
     if type(cbtn.SetAttribute) == "function" then
+        pcall(cbtn.SetAttribute, cbtn, "useOnKeyDown", false)
         pcall(cbtn.SetAttribute, cbtn, "type", "spell")
         pcall(cbtn.SetAttribute, cbtn, "spell", spellName)
+        pcall(cbtn.SetAttribute, cbtn, "type1", "spell")
+        pcall(cbtn.SetAttribute, cbtn, "spell1", spellName)
+        pcall(cbtn.SetAttribute, cbtn, "type2", "macro")
+        pcall(cbtn.SetAttribute, cbtn, "macrotext2", lureMacro)
         pcall(cbtn.SetAttribute, cbtn, "fsVisible", true)
     end
     cbtn:Show()
@@ -158,13 +200,13 @@ function FishingCastButton:SyncDock(anchorFrame, visible, lureInfo)
     if type(lbtn.SetFrameStrata) == "function" then lbtn:SetFrameStrata(strata) end
     if type(lbtn.SetFrameLevel) == "function" then lbtn:SetFrameLevel(lvl) end
     if type(lbtn.SetAttribute) == "function" then
+        pcall(lbtn.SetAttribute, lbtn, "useOnKeyDown", false)
         pcall(lbtn.SetAttribute, lbtn, "fsVisible", true)
     end
-    if type(lureInfo) == "table" and type(lureInfo.itemID) == "number" then
-        local macro = "/use item:" .. tostring(lureInfo.itemID) .. "\n/use 16"
+    if lureMacro ~= "" then
         if type(lbtn.SetAttribute) == "function" then
             pcall(lbtn.SetAttribute, lbtn, "type", "macro")
-            pcall(lbtn.SetAttribute, lbtn, "macrotext", macro)
+            pcall(lbtn.SetAttribute, lbtn, "macrotext", lureMacro)
         end
         if lbtn._fsLabel then
             lbtn._fsLabel:SetText("미끼 +" .. tostring(lureInfo.bonus or 0) .. " (" .. tostring(lureInfo.count or 1) .. ")")
@@ -200,7 +242,7 @@ function FishingCastButton:OnWorldMouseUp(mouseBtn)
     local now = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetMonotonicTime()) or 0
     local downAt, dx0, dy0 = self.lastDownAt, self.lastDownX, self.lastDownY
     self.lastDownAt, self.lastDownX, self.lastDownY = 0, nil, nil
-    if downAt <= 0 or (now - downAt) > 0.22 then
+    if downAt <= 0 or (now - downAt) > 0.35 then
         return false, "HELD_OR_SLOW"
     end
     if type(dx0) == "number" and type(dy0) == "number"
@@ -208,7 +250,7 @@ function FishingCastButton:OnWorldMouseUp(mouseBtn)
     then
         local ux, uy = ns.Api.GameAdapters.GetCursorScreenPosition()
         if type(ux) == "number" and type(uy) == "number" then
-            if math.abs(ux - dx0) > 6 or math.abs(uy - dy0) > 6 then
+            if math.abs(ux - dx0) > 8 or math.abs(uy - dy0) > 8 then
                 return false, "DRAGGED"
             end
         end
@@ -221,8 +263,13 @@ function FishingCastButton:EnsureButton()
     if type(_G.CreateFrame) ~= "function" then return nil end
     local btn = CreateFrame("Button", "ForeverSuiteSecureFishingBtn", _G.UIParent, "SecureActionButtonTemplate,SecureHandlerStateTemplate")
     if btn then
-        local spellName = (ns.Api and ns.Api.GameAdapters and ns.Api.GameAdapters.GetSpellName(7620)) or "낚시"
+        local spellName = ResolveFishingSpellName()
+        if type(btn.RegisterForClicks) == "function" then
+            -- Register AnyUp only + useOnKeyDown=false so PostClick NEVER disarms on key-down before release casts!
+            pcall(btn.RegisterForClicks, btn, "AnyUp")
+        end
         if type(btn.SetAttribute) == "function" then
+            pcall(btn.SetAttribute, btn, "useOnKeyDown", false)
             pcall(btn.SetAttribute, btn, "type", "spell")
             pcall(btn.SetAttribute, btn, "spell", spellName)
             -- Restricted Blizzard combat state driver: clears override bindings atomically BEFORE combat lockdown!
@@ -294,11 +341,11 @@ function FishingCastButton:OnWorldRightClick()
     else
         return false, "UNSUPPORTED"
     end
-    self.armedUntil = now + 0.35
+    self.armedUntil = now + 0.48
     self.clearTimerGen = self.clearTimerGen + 1
     local gen = self.clearTimerGen
     if ns.Api and ns.Api.GameAdapters and type(ns.Api.GameAdapters.RunAfter) == "function" then
-        ns.Api.GameAdapters.RunAfter(0.38, function()
+        ns.Api.GameAdapters.RunAfter(0.50, function()
             if FishingCastButton.clearTimerGen == gen then
                 FishingCastButton:DisarmNow()
             end

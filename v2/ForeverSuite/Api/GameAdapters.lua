@@ -303,6 +303,45 @@ function GameAdapters.GetPlayerHealth()
     return hp, hpMax
 end
 
+local KNOWN_FISHING_POLE_IDS = {
+    [6256] = true,  -- 낚싯대 (Fishing Pole)
+    [6365] = true,  -- 튼튼한 낚싯대 (Strong Fishing Pole)
+    [6366] = true,  -- 검은나무 낚싯대 (Darkwood Fishing Pole)
+    [6367] = true,  -- 커다란 철제 낚싯대 (Big Iron Fishing Pole)
+    [12225] = true, -- 블럼프 가문의 낚싯대 (Blump Family Fishing Pole)
+    [19022] = true, -- 내트 페이글의 최고급 낚싯대 FC-5000 (Nat Pagle's Extreme Angler FC-5000)
+    [19970] = true, -- 아케이나이트 낚싯대 (Arcanite Fishing Pole)
+    [25978] = true, -- 세스의 흑연 낚싯대 (Seth's Graphite Fishing Pole)
+    [44050] = true, -- 칼루아크 명품 낚싯대 (Mastercraft Kalu'ak Fishing Pole)
+    [45858] = true, -- 내트의 행운 낚싯대 (Nat's Lucky Fishing Pole)
+}
+
+local function IsFishingPoleItemID(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then
+        return false
+    end
+    if KNOWN_FISHING_POLE_IDS[itemID] then
+        return true
+    end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, _, _, _, _, _, _, itemSubType, _, _, _, _, classID, subClassID = pcall(C_Item.GetItemInfo, itemID)
+        if ok then
+            if (not SafeAPI.IsSecret(classID)) and (not SafeAPI.IsSecret(subClassID))
+                and classID == 2 and subClassID == 20
+            then
+                return true
+            end
+            if (not SafeAPI.IsSecret(itemSubType)) and type(itemSubType) == "string" then
+                local low = string.lower(itemSubType)
+                if string.find(low, "fishing", 1, true) or string.find(itemSubType, "낚싯대", 1, true) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 function GameAdapters.IsFishingPoleEquipped()
     if type(_G.GetInventoryItemID) ~= "function" then
         return false
@@ -311,13 +350,7 @@ function GameAdapters.IsFishingPoleEquipped()
     if itemID == UNAVAILABLE or type(itemID) ~= "number" then
         return false
     end
-    if C_Item and type(C_Item.GetItemInfo) == "function" then
-        local ok, _, _, _, _, _, _, _, _, _, _, _, classID, subClassID = pcall(C_Item.GetItemInfo, itemID)
-        if ok and (not SafeAPI.IsSecret(classID)) and (not SafeAPI.IsSecret(subClassID)) then
-            return classID == 2 and subClassID == 20
-        end
-    end
-    return false
+    return IsFishingPoleItemID(itemID)
 end
 
 function GameAdapters.GetZoneLayerID(unit)
@@ -1331,6 +1364,17 @@ function GameAdapters.GetPlayerFaction()
     return nil
 end
 
+function GameAdapters.GetPlayerRaceLocalized()
+    if type(_G.UnitRace) ~= "function" then return nil, nil end
+    local ok, loc, eng = pcall(_G.UnitRace, "player")
+    if ok then
+        loc = (not SafeAPI.IsSecret(loc) and type(loc) == "string" and loc ~= "") and loc or nil
+        eng = (not SafeAPI.IsSecret(eng) and type(eng) == "string" and eng ~= "") and eng or nil
+        return loc, eng
+    end
+    return nil, nil
+end
+
 -- KPI-10: Secret-safe Combo Points reader (Rogue / Feral Druid)
 function GameAdapters.GetComboPointsSafe()
     if type(_G.UnitPower) == "function" then
@@ -2011,13 +2055,8 @@ function GameAdapters.FindFishingPoleInBags()
     local items = GameAdapters.ScanBagItems()
     for i = 1, #items do
         local it = items[i]
-        if type(it.itemID) == "number" and not it.isLocked and C_Item and type(C_Item.GetItemInfo) == "function" then
-            local ok, _, _, _, _, _, _, _, _, _, _, _, classID, subClassID = pcall(C_Item.GetItemInfo, it.itemID)
-            if ok and (not SafeAPI.IsSecret(classID)) and (not SafeAPI.IsSecret(subClassID))
-                and classID == 2 and subClassID == 20
-            then
-                return { itemID = it.itemID, name = it.name, bag = it.bag, slot = it.slot }
-            end
+        if type(it.itemID) == "number" and not it.isLocked and IsFishingPoleItemID(it.itemID) then
+            return { itemID = it.itemID, name = it.name, bag = it.bag, slot = it.slot }
         end
     end
     return nil
@@ -2093,6 +2132,54 @@ function GameAdapters.SetFishingSoundBoostSafe(enable)
         end
         return true, "BOOST_OFF"
     end
+end
+
+local FISHING_INTERACT_CVARS = {
+    { name = "SoftTargetInteract", target = "3" },
+    { name = "SoftTargetInteractArc", target = "2" },
+    { name = "SoftTargetInteractRange", target = "30" },
+    { name = "SoftTargetIconGameObject", target = "1" },
+}
+
+function GameAdapters.SetFishingOneKeyInteractSafe(enable)
+    if SafeAPI.InCombat() then
+        return false, "IN_COMBAT"
+    end
+    local ps = ns.Api and ns.Api.ProfileStore
+    if enable then
+        for i = 1, #FISHING_INTERACT_CVARS do
+            local spec = FISHING_INTERACT_CVARS[i]
+            local cur = GameAdapters.GetCVarRaw(spec.name)
+            if cur ~= nil and ps and type(ps.RecordCvarJournal) == "function" then
+                ps:RecordCvarJournal(spec.name, tostring(cur))
+            end
+            GameAdapters.SetCVarSafe(spec.name, spec.target)
+        end
+        return true, "INTERACT_ON"
+    else
+        local journal = ps and ps.db and ps.db.v2 and ps.db.v2.state and ps.db.v2.state.cvarRestoreJournal
+        for i = 1, #FISHING_INTERACT_CVARS do
+            local spec = FISHING_INTERACT_CVARS[i]
+            local orig = type(journal) == "table" and journal[spec.name] or nil
+            if orig ~= nil then
+                if GameAdapters.SetCVarSafe(spec.name, orig) and ps and type(ps.ClearCvarJournal) == "function" then
+                    ps:ClearCvarJournal(spec.name)
+                end
+            end
+        end
+        return true, "INTERACT_OFF"
+    end
+end
+
+function GameAdapters.GetFishingSpellNameSafe()
+    local ids = { 7620, 7731, 7732, 18248, 33095 }
+    for i = 1, #ids do
+        local name = GameAdapters.GetSpellName(ids[i])
+        if type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+    return "낚시"
 end
 
 -- A7: Safe OOC ActionBar snapshot & restore + EditMode export/import + Chat window layout

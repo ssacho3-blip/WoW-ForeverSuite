@@ -47,7 +47,7 @@ ForeverSuite_RegisterPack("quest_routes", 2, { title = "퀘스트 대화 루트�
 {action="loot",count=1,itemID=2007,kind="interact",note="채집·열기",questID=95748,title="트롤의 전설 3부"},
 {action="loot",count=1,itemID=281046,kind="interact",note="채집·열기",questID=96139,title="까마귀 언덕 고서"},
 {action="talk",count=1,itemID=0,kind="interact",note="대화",questID=96392,title="파르센의 천리안 사용"},
-{action="loot",count=8,itemID=274289,kind="interact",note="채집·열기 / 채집·열기 / 채집·열기",questID=96403,title="드워프 가보"},
+{action="loot",count=8,itemID=274289,kind="interact",note="채집·열기 / 채집·열기",questID=96403,title="드워프 가보"},
 {action="loot",count=1,itemID=275713,kind="interact",note="채집·열기",questID=96822,title="약탈병의 활"},
 {action="loot",count=1,itemID=275716,kind="interact",note="채집·열기",questID=96822,title="약탈병의 전투도끼"},
 {action="loot",count=1,itemID=275717,kind="interact",note="채집·열기",questID=96822,title="공격대 방패"},

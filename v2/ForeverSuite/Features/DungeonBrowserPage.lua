@@ -28,6 +28,8 @@ local DungeonBrowserPage = {
     raidFilter = "all",
     activeTab = "overview", -- overview | map | bosses | quests | steps | report
     questFilter = "all", -- all | AVAILABLE | IN_LOG | COMPLETED
+    questFaction = "auto", -- auto | Horde | Alliance | All
+    questFactionBar = nil,
     selectedDungeon = nil,
     selectedBoss = nil,
     mapPageIdx = 1,
@@ -307,6 +309,7 @@ function DungeonBrowserPage:RenderRight()
     self.overviewBody:Hide()
     if self.overviewMetaCard then self.overviewMetaCard:Hide() end
     if self.questFilterBar then self.questFilterBar:Hide() end
+    if self.questFactionBar then self.questFactionBar:Hide() end
     if self.mapPanel then self.mapPanel:Hide() end
     if self.emptyState then self.emptyState:Hide() end
     self.entranceBtn:Hide()
@@ -491,6 +494,12 @@ function DungeonBrowserPage:RenderRight()
 
     elseif self.activeTab == "quests" then
         if self.questFilterBar then self.questFilterBar:Show() end
+        if self.questFactionBar then self.questFactionBar:Show() end
+        local effFac = self.questFaction
+        if effFac == "auto" or not effFac then
+            local det = ns.Api.GameAdapters.GetPlayerFaction()
+            effFac = (det == "Horde" or det == "Alliance") and det or "All"
+        end
         local allQ = packs.dungeon_quests and packs.dungeon_quests.entries or {}
         local statusMap = { completed = {}, inLog = {} }
         for _, q in ipairs(allQ) do
@@ -502,9 +511,10 @@ function DungeonBrowserPage:RenderRight()
                 end
             end
         end
-        local qRows, counts = ns.Domain.DungeonBrowserModel.BuildQuestReadiness(allQ, d, statusMap)
+        local qRows, counts = ns.Domain.DungeonBrowserModel.BuildQuestReadiness(allQ, d, statusMap, effFac)
+        local facLbl = (effFac == "Horde") and "호드" or ((effFac == "Alliance") and "얼라" or "전체")
         self.rightSub:SetText(
-            "준비 현황: 완료 " .. tostring(counts.completed) .. " · 진행중 " .. tostring(counts.inLog)
+            "[" .. facLbl .. "] 완료 " .. tostring(counts.completed) .. " · 진행중 " .. tostring(counts.inLog)
             .. " · 수락가능 " .. tostring(counts.available) .. " · 선행필요 " .. tostring(counts.prereq)
         )
         local qf = self.questFilter or "all"
@@ -519,9 +529,10 @@ function DungeonBrowserPage:RenderRight()
                 elseif qr.state == "IN_LOG" then tag, col, glyph = "[진행] ", T.TEXT.GOLD, "?"
                 elseif qr.state == "PREREQ_NEEDED" then tag, col, glyph = "[선행필요] ", T.SEMANTIC.DANGER, "×"
                 else tag, col, glyph = "[미수락] ", T.TEXT.PRIMARY, "!" end
+                local fBadge = (q.faction == "Horde") and "[호드]" or ((q.faction == "Alliance") and "[얼라]" or "[공용]")
                 rowsToShow[#rowsToShow + 1] = {
                     title = tag .. tostring(q.title) .. (q.inside and " (내부)" or ""),
-                    subtitle = (q.npc and q.npc ~= "") and ("NPC: " .. tostring(q.npc)) or nil,
+                    subtitle = fBadge .. ((q.npc and q.npc ~= "") and (" · NPC: " .. tostring(q.npc)) or ""),
                     right = (q.level and q.level > 0 and ("Lv." .. tostring(q.level)) or "") .. (q.mapID and " · /way" or ""),
                     color = col,
                     glyph = glyph,
@@ -544,10 +555,15 @@ function DungeonBrowserPage:RenderRight()
         end
 
     elseif self.activeTab == "steps" then
+        local det = ns.Api.GameAdapters.GetPlayerFaction()
+        local effFac = (self.questFaction == "Horde" or self.questFaction == "Alliance" or self.questFaction == "All")
+            and self.questFaction or ((det == "Horde" or det == "Alliance") and det or "All")
         local allQ = packs.dungeon_quests and packs.dungeon_quests.entries or {}
         local qSet, compSet = {}, {}
         for _, q in ipairs(allQ) do
-            if q.dungeonKey == d.id or q.dungeonName == d.title then
+            if (q.dungeonKey == d.id or q.dungeonName == d.title)
+                and ns.Domain.DungeonBrowserModel.MatchesQuestFaction(q.faction, effFac)
+            then
                 qSet[q.questID] = true
                 compSet[q.questID] = ns.Api.GameAdapters.IsQuestCompleted(q.questID)
             end
@@ -817,21 +833,36 @@ function DungeonBrowserPage:Build(parent)
     self.overviewMetaCard = metaCard
     self.overviewMetaLabels = { m1, m2, m3 }
 
-    -- Quests status filter pill bar
+    -- Quests status filter pill bar + Horde/Alliance faction pill bar
     local qfBar = W.PillBar(rightPane, {
-        { value = "all",       label = "전체",  width = 50 },
-        { value = "AVAILABLE", label = "미수락", width = 60 },
-        { value = "IN_LOG",    label = "진행중", width = 60 },
-        { value = "COMPLETED", label = "완료",  width = 50 },
+        { value = "all",       label = "전체",   width = 48 },
+        { value = "AVAILABLE", label = "미수락", width = 56 },
+        { value = "IN_LOG",    label = "진행중", width = 56 },
+        { value = "COMPLETED", label = "완료",   width = 48 },
     }, self.questFilter, function(v)
         DungeonBrowserPage.questFilter = v
         DungeonBrowserPage.rightOffset = 0
         DungeonBrowserPage:RenderRight()
     end)
     qfBar:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 10, -50)
-    qfBar:SetWidth(260)
+    qfBar:SetWidth(232)
     qfBar:Hide()
     self.questFilterBar = qfBar
+
+    local qFacBar = W.PillBar(rightPane, {
+        { value = "auto",     label = "내 진영", width = 58 },
+        { value = "Horde",    label = "호드",    width = 44 },
+        { value = "Alliance", label = "얼라",    width = 44 },
+        { value = "All",      label = "전체",    width = 44 },
+    }, self.questFaction, function(v)
+        DungeonBrowserPage.questFaction = v
+        DungeonBrowserPage.rightOffset = 0
+        DungeonBrowserPage:RenderRight()
+    end)
+    qFacBar:SetPoint("TOPRIGHT", rightPane, "TOPRIGHT", -10, -50)
+    qFacBar:SetWidth(224)
+    qFacBar:Hide()
+    self.questFactionBar = qFacBar
 
     self.overviewBody = W.ScrollText(rightPane, 502, 332, { lineHeight = 18 })
     self.overviewBody:SetPoint("TOPLEFT", rightPane, "TOPLEFT", 10, -90)

@@ -26,6 +26,7 @@ local FishingCardHud = {
     bodyLbl = nil,
     fishRows = nil,
     pinBtn = nil,
+    oneKeyBtn = nil,
     soundBtn = nil,
     closeBtn = nil,
     swapBtn = nil,
@@ -35,6 +36,7 @@ local FishingCardHud = {
     pinned = false,
     dismissedForPole = false,
     soundBoost = false,
+    oneKeyInteract = false,
     sessionCatches = 0,
 }
 ns.Features.FishingCardHud = FishingCardHud
@@ -82,15 +84,20 @@ function FishingCardHud:Init()
     end, "낚시 도우미 닫기", { ghost = true })
     closeBtn:SetPoint("RIGHT", hdr, "RIGHT", -4, 0)
 
-    local soundBtn = W.MiniButton(hdr, "음향", 36, 18, function()
+    local soundBtn = W.MiniButton(hdr, "음향", 34, 18, function()
         FishingCardHud:ToggleSoundBoost()
     end, "낚시 입질 효과음 강조 ON/OFF (비전투 안전 복원)", { ghost = true })
     soundBtn:SetPoint("RIGHT", closeBtn, "LEFT", -3, 0)
 
-    local pinBtn = W.MiniButton(hdr, "고정", 36, 18, function()
+    local oneKeyBtn = W.MiniButton(hdr, "원키", 34, 18, function()
+        FishingCardHud:ToggleOneKeyInteract()
+    end, "상호작용 키(F 등) 1타로 찌 낚아채기 ON/OFF (SoftTargetInteract)", { ghost = true })
+    oneKeyBtn:SetPoint("RIGHT", soundBtn, "LEFT", -3, 0)
+
+    local pinBtn = W.MiniButton(hdr, "고정", 34, 18, function()
         FishingCardHud:TogglePin()
     end, "낚싯대 미착용 시에도 낚시 창 항상 표시", { ghost = true })
-    pinBtn:SetPoint("RIGHT", soundBtn, "LEFT", -3, 0)
+    pinBtn:SetPoint("RIGHT", oneKeyBtn, "LEFT", -3, 0)
 
     local title = W.Label(hdr, "★ 낚시 도우미", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = false, outline = "OUTLINE" })
     title:SetPoint("LEFT", hdr, "LEFT", 8, 0)
@@ -141,6 +148,7 @@ function FishingCardHud:Init()
     self.bodyLbl = body
     self.fishRows = fishRows
     self.pinBtn = pinBtn
+    self.oneKeyBtn = oneKeyBtn
     self.soundBtn = soundBtn
     self.closeBtn = closeBtn
     self.swapBtn = swapBtn
@@ -189,6 +197,9 @@ function FishingCardHud:Close()
     if self.soundBoost then
         self:ToggleSoundBoost(false)
     end
+    if self.oneKeyInteract then
+        self:ToggleOneKeyInteract(false)
+    end
     StopTicker()
     self.visible = false
     if self.card then
@@ -204,6 +215,21 @@ function FishingCardHud:Toggle()
         return self:Close()
     end
     return self:Open()
+end
+
+function FishingCardHud:ToggleOneKeyInteract(forceVal)
+    local want = (forceVal ~= nil) and (forceVal == true) or (not self.oneKeyInteract)
+    local ok, reason = ns.Api.GameAdapters.SetFishingOneKeyInteractSafe(want)
+    if not ok then
+        ns.Api.SafeAPI.Print("전투 중에는 원키 상호작용 낚시를 전환할 수 없습니다 (" .. tostring(reason) .. ").")
+        return false, reason
+    end
+    self.oneKeyInteract = want
+    ns.Api.SafeAPI.Print(want
+        and "원키 찌 낚아채기 ON (입질 시 상호작용 키 1타로 즉시 획득 · 창 닫으면 자동 복원)"
+        or "원키 찌 낚아채기 OFF (원래 SoftTarget 설정 복원)")
+    self:Refresh()
+    return true, reason
 end
 
 function FishingCardHud:ToggleSoundBoost(forceVal)
@@ -302,6 +328,8 @@ function FishingCardHud:HandleCommand(raw)
         self:SwapFishingPole()
     elseif arg == "sound" then
         self:ToggleSoundBoost()
+    elseif arg == "onekey" or arg == "interact" then
+        self:ToggleOneKeyInteract()
     else
         self:Toggle()
     end
@@ -362,6 +390,9 @@ function FishingCardHud:Refresh()
 
     if self.pinBtn and self.pinBtn._label then
         self.pinBtn._label:SetText(self.pinned and "고정*" or "고정")
+    end
+    if self.oneKeyBtn and self.oneKeyBtn._label then
+        self.oneKeyBtn._label:SetText(self.oneKeyInteract and "원키*" or "원키")
     end
     if self.soundBtn and self.soundBtn._label then
         self.soundBtn._label:SetText(self.soundBoost and "음향*" or "음향")

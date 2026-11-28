@@ -1,7 +1,7 @@
 {
   "generator": "fsx 0.1.0",
-  "source_zip": "GodJohnson-5.312.zip",
-  "source_zip_sha256": "7db1f80a3eb92714c2402081d18eb3f4fcc1b2084b8f02ae4a0dd38ce63eb73b",
+  "source_zip": "GodJohnson-5.344.zip",
+  "source_zip_sha256": "166000f5c1c6001f4c822190bcbd4fecc8f641d6c2c9417225f6526afbfd6f15",
   "packs": [
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -36,7 +36,7 @@
       "output_count": 35,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "f0c99f20e7a55816f6fa33769c0f67b5932ae3c036385591e86f275d5aca30d4"
+      "output_sha256": "b8d854d1b369b83bf6ac41e2f315d31831444b603b08391b8a29c5bd6fe9cc23"
     },
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -176,7 +176,7 @@
       "output_count": 1008,
       "skipped_count": 0,
       "shards": 3,
-      "output_sha256": "4869efdfb2503a78d66b38ddce1c319ece0e19cab5d770b855c82c5f00bd0f93"
+      "output_sha256": "b335f2d897a343cad1a5327a8ba015af5a24b9b67c2869383aa344d1de0feada"
     },
     {
       "addon_name": "ForeverSuite_Data_Dungeon",
@@ -298,7 +298,7 @@
       "output_count": 13,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "b9c022a35b76f25b7298d5b5ba03009b802e035c35f7958fef0de924ed55aed3"
+      "output_sha256": "7b6a3808b3fc56e399f0513de87d11b1911e08483be0de0f68819c1498608a71"
     },
     {
       "addon_name": "ForeverSuite_Data_Profession",
@@ -493,7 +493,7 @@
       "output_count": 44,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "a6ffd8c56af6b1fe8404e210cf445b758309b7efb6cbf9cbfa7aff647759c9bc"
+      "output_sha256": "3f47df24d8cbda9b8ff58b66c0d44864590aa1a523ad673b22964095c8292216"
     },
     {
       "addon_name": "ForeverSuite_Data_Atlas",
@@ -552,11 +552,11 @@
       "source_files": [
         "GodJohnsonGoldBorder/MapQuestStartData.lua"
       ],
-      "input_count": 3609,
-      "output_count": 3609,
+      "input_count": 3709,
+      "output_count": 3709,
       "skipped_count": 0,
       "shards": 9,
-      "output_sha256": "fa6ff22b563ed781e81a547f28ce2b36be04c9c61779722bf06184ae016cf751"
+      "output_sha256": "25f0d48eac2ec9855eca80f373e57e0c900fa4212f4658ac5e2c9ea7049e3ba0"
     },
     {
       "addon_name": "ForeverSuite_Data_Items",
@@ -603,7 +603,7 @@
       "output_count": 541,
       "skipped_count": 0,
       "shards": 2,
-      "output_sha256": "c3b7e8f1311ad0dce752c34a88b89a9a51f91d7c865e1ef1822093ccc0b08e06"
+      "output_sha256": "c57c7c5c72409f1a105e892f0051491f869b55f4320378fccf3c389d955da82a"
     },
     {
       "addon_name": "ForeverSuite_Data_QuestExtra",
@@ -712,11 +712,11 @@
         "Media/Notifications",
         "Media/Fonts"
       ],
-      "input_count": 247,
-      "output_count": 247,
+      "input_count": 310,
+      "output_count": 310,
       "skipped_count": 0,
       "shards": 1,
-      "output_sha256": "8e2487637cd882bedf70e805d57cb0aed1696f8c60e21bc62681aabd57ddd916"
+      "output_sha256": "42ae93bf2d165b12b7d02296633fe1084d7dfb5b6f36b653abf5b0fb5630c7f3"
     }
   ]
 }

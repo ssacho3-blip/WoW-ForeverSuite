@@ -67,7 +67,7 @@ ForeverSuite_RegisterPack("dungeon_steps", 2, { title = "던전 단계별 진행
 {dungeon="가시덩굴 우리",faction="Alliance",giver="베이릭 썬더헤임",minLevel=30,npcID=259023,questID=96264,questLevel=33,requiresCsv="94789",source="아라시 고원 / 아이언포지 · 베이릭 썬더헤임",supersededBy=79358,title="정기의 도움"},
 {dungeon="알카즈 감옥",faction="Horde",giver="하사관 울카",mapID=1445,minLevel=48,npcID=260383,questID=96332,questLevel=53,requiresCsv="95285",source="먼지진흙 습지대 · 하사관 울카",supersededBy=0,title="작은 복수",x=0.7030,y=0.1885},
 {dungeon="알카즈 감옥",faction="Horde",giver="하사관 울카",mapID=1445,minLevel=48,npcID=260383,questID=96334,questLevel=53,requiresCsv="95285",source="먼지진흙 습지대 · 하사관 울카",supersededBy=0,title="핏빛 붉은 복면",x=0.7030,y=0.1885},
-{dungeon="알카즈 감옥",faction="Both",giver="메이슨 코너리",minLevel=48,npcID=0,questID=96335,questLevel=53,source="알카즈 감옥 · 마지막 우두머리 왼쪽 감방. 메이슨 코너리에게서 먼저 받고 심문관을 처치하세요.",supersededBy=0,title="쇠사슬에 묶인 남자"},
+{dungeon="알카즈 감옥",faction="Both",giver="메이슨 코너리",minLevel=48,npcID=264770,questID=96335,questLevel=53,source="알카즈 감옥 · 마지막 우두머리 방쪽 왼쪽 감방. 심문관을 살려 둔 채 메이슨 코너리에게 먼저 퀘스트를 받으세요.",supersededBy=0,title="쇠사슬에 묶인 남자"},
 {faction="Both",giver="메이슨 코너리",minLevel=48,npcID=0,questID=96337,questLevel=53,requiresCsv="96335",source="알카즈 감옥 · 족쇄 열쇠를 메이슨 코너리에게 가져다준 뒤 같은 자리에서 받으세요.",supersededBy=0,title="금보다 귀한 것"},
 {faction="Horde",giver="향기 나는 쪽지",minLevel=48,npcID=0,questID=96369,questLevel=53,requiresCsv="95454",source="알카즈 감옥 · 마지막 우두머리 뒤의 숨겨진 방 바닥에 놓인 쪽지를 읽으세요.",supersededBy=0,title="폴카르에게 전할 비보"},
 {dungeon="알카즈 감옥",faction="Alliance",giver="테라모어 마을 밖 묘지 뒤 · Sully McCleary",mapID=1445,minLevel=48,npcID=260271,questID=96381,questLevel=53,requiresCsv="95198",source="먼지진흙 습지대 · 테라모어 마을 밖 묘지 뒤 · Sully McCleary",supersededBy=0,title="약간의 지저분한 일",x=0.6345,y=0.4233},

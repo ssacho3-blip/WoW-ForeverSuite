@@ -7,7 +7,8 @@ _G.ForeverSuiteData.manifest = {
     schema = 6,
     builtForInterface = 16001,
     builtForBuild = "71037",
-    generatedEpoch = 1795796800,
+    upstreamSource = "GodJohnson-5.344",
+    generatedEpoch = 1795838800,
     ttlDays = 365,
     packs = {
         bis = { shards = 1, ttlDays = 365 },

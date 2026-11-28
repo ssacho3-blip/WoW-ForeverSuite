@@ -16,40 +16,40 @@
       "category": "dungeon",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "1108cadd690882b42caa38baff711e28cb0b6b3a6536a3e870a8ba21783f0d1a",
+      "source_sha256": "dd1d3aa9214541084b08f860cde77f0df6d88446c127393fc446e98f615cc11a",
       "entry_count": 12,
       "output_file": "Pack_dungeons.lua",
-      "output_sha256": "6ef7027c52c54817d38ec922c47c0cedbd92996e7b8cd41c2e3e5492b88f6a6c"
+      "output_sha256": "3808e0724ab84d9e4cd3c7094216a11fc15cee2c514a394e36325b8f6da0fa8c"
     },
     {
       "id": "fishing",
       "category": "profession",
       "license": "MIT-Personal",
-      "source": "ForeverSuite v2 Curated",
-      "source_sha256": "a09ab398ebc2b5f9daf2dd65006ed94690002e23862fa8ba8bfa9d3093d93109",
-      "entry_count": 8,
+      "source": "ForeverSuite v6.1 Curated Azeroth Fishing DB",
+      "source_sha256": "12e92cec0d5e897cf130ab6a512886170535e38bbe6a00addaa61accdda6419a",
+      "entry_count": 42,
       "output_file": "Pack_fishing.lua",
-      "output_sha256": "61bab53fd0f125b0a5475ab05d98d126f1c1d651b477e7942043f93e2ff3b16a"
+      "output_sha256": "80edc32655c59682bd41a0c0c352e21864a7b38146430cafaa6773ee12549405"
     },
     {
       "id": "professions",
       "category": "profession",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "884064dbc967b48eda0d23e5bb09eb79367c80d92cda50d508bb20fd7886d1cc",
+      "source_sha256": "60ecf70956efd217b646950015eb27c10b7f1846b4d56c52e0114ffb575be2d6",
       "entry_count": 8,
       "output_file": "Pack_professions.lua",
-      "output_sha256": "df5b5ad50cee5b312528710dd052931ade075f08686a35725948f719e474c5b6"
+      "output_sha256": "a446aba70b76154e7036c0853f5ee536acfe44b292578f1a8d1fcc41471a7c27"
     },
     {
       "id": "rewards",
       "category": "rewards",
       "license": "MIT-Personal",
       "source": "ForeverSuite v2 Curated",
-      "source_sha256": "8af4201c8b88bdea503b985fad9c621fab5d07ff7fff5f9324f8c4fca3515a90",
+      "source_sha256": "67369dd8ed7112361c8d42ec6ec06ee96fb029ca71cde9d221d700cc9abbb0a5",
       "entry_count": 7,
       "output_file": "Pack_rewards.lua",
-      "output_sha256": "44a22a58c7aa717efbde93b51162f08daad6f96331c74a7087297da1659d7e85"
+      "output_sha256": "3b685bdfe9df2f853c1154367cf4dd9f06dc9217152e3ca9c4e93e4d83a6be9b"
     }
   ]
 }

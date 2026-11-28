@@ -530,9 +530,9 @@ local DEFAULT_SCHEMAS = {
         section = "profession",
         key = "fishingDoubleClick",
         type = "boolean",
-        default = false,
-        label = "낚싯대 장착 시 비전투 우클릭 자동 낚시 시전",
-        desc = "SecureActionButtonTemplate 사용 (전투 진입 시 즉시 해제)",
+        default = true,
+        label = "낚싯대 장착 시 비전투 더블 우클릭 자동 낚시 시전",
+        desc = "물 위 빈 곳 더블 우클릭 자동 시전 (SecureActionButton · 전투 시 자동 해제)",
         combatSafe = false,
     },
     {
@@ -1036,6 +1036,16 @@ function Bootstrap:Init()
         ns.Blizzard.WorldMapAdapter:Init()
         ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
     end)
+    local function RefreshHomeIfVisible()
+        if ns.UI and ns.UI.CommandHub and ns.UI.CommandHub.activePageId == "home"
+            and ns.UI.CommandHub.window and type(ns.UI.CommandHub.window.IsShown) == "function"
+            and ns.UI.CommandHub.window:IsShown()
+            and ns.Features.HomePage and type(ns.Features.HomePage.OnShow) == "function"
+        then
+            ns.Features.HomePage:OnShow()
+        end
+    end
+
     ns.Api.EventBus:OnEvent("v2:enterWorld", "PLAYER_ENTERING_WORLD", function()
         ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
@@ -1048,6 +1058,7 @@ function Bootstrap:Init()
         ns.Features.NavigationHud:SyncSuperTrackedQuest(false)
         directorInDialogue = false
         SyncDirectorState(nil, true)
+        RefreshHomeIfVisible()
     end)
     ns.Api.EventBus:OnEvent("v2:questWatchChanged", "QUEST_WATCH_LIST_CHANGED", function()
         ApplyTrackerModeSafely(ns.Api.ProfileStore:Get("quest", "defaultTrackerMode") or "hide")
@@ -1057,6 +1068,7 @@ function Bootstrap:Init()
         if ns.Features.WorldMapOverlay and type(ns.Features.WorldMapOverlay.InvalidatePinCache) == "function" then
             ns.Features.WorldMapOverlay:InvalidatePinCache()
         end
+        RefreshHomeIfVisible()
     end)
     ns.Api.EventBus:OnEvent("v2:groupRoster", "GROUP_ROSTER_UPDATE", function()
         ns.Features.AutoGreetingModule:OnGroupRosterUpdate()
@@ -1091,6 +1103,16 @@ function Bootstrap:Init()
         if ns.Api.SafeAPI.IsSecret(msg) then return end
         if ns.Features.FishingCardHud and ns.Features.FishingCardHud.visible then
             ns.Features.FishingCardHud:OnLootMessage(msg)
+        end
+    end)
+    ns.Api.EventBus:OnEvent("v6:logoutCleanup", "PLAYER_LOGOUT", function()
+        if ns.Features.FishingCardHud then
+            if ns.Features.FishingCardHud.soundBoost then
+                ns.Features.FishingCardHud:ToggleSoundBoost(false)
+            end
+            if ns.Features.FishingCardHud.oneKeyInteract then
+                ns.Features.FishingCardHud:ToggleOneKeyInteract(false)
+            end
         end
     end)
     ns.Api.EventBus:OnEvent("v4:bankOpen", "BANKFRAME_OPENED", function()
@@ -1296,6 +1318,7 @@ function Bootstrap:Init()
         ns.Features.EncounterTimerHud:OnZoneOrInstanceChanged()
         ns.Features.QuestExtraModule:CheckProximityAlerts()
         ns.Features.QuestExtraModule:SyncProximityTicker()
+        RefreshHomeIfVisible()
     end)
     ns.Api.EventBus:OnEvent("v2:combatStart", "PLAYER_REGEN_DISABLED", function()
         if ns.UI and ns.UI.Motion and type(ns.UI.Motion.SnapAllForCombat) == "function" then

@@ -48,6 +48,7 @@ fn lua_escape(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            '\u{2013}' | '\u{2014}' => out.push('-'),
             c if (c as u32) < 0x20 => {}
             c => out.push(c),
         }

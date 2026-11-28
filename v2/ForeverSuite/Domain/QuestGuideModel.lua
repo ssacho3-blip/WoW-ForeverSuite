@@ -1,5 +1,5 @@
 -- Module: Domain/QuestGuideModel.lua
--- Responsibility: Pure KPI-6 Leveling Zone Planner & Class Quest Walkthrough/Chain filter (zero fabricated level/class).
+-- Responsibility: Pure KPI-6 Leveling Zone Planner & Class Quest Walkthrough/Chain filter with Horde/Alliance separation (zero fabricated level/class).
 -- Layer: Domain (100% pure Lua 5.1; zero WoW API, zero _G).
 local _, ns = ...
 ns.Domain = ns.Domain or {}
@@ -26,14 +26,16 @@ local CLASS_MASK = {
 }
 
 local LEVELING_ZONES = {
-    { minL = 1, maxL = 12, faction = "Alliance", zone = "엘윈 숲 / 던 모로 / 텔드랏실", mapID = 1429, x = 0.48, y = 0.42, tip = "초반 직업 퀘스트·전문기술 입문" },
-    { minL = 1, maxL = 12, faction = "Horde", zone = "듀로타 / 멀고어 / 티리스팔 숲", mapID = 1411, x = 0.52, y = 0.43, tip = "초반 직업 퀘스트·전문기술 입문" },
-    { minL = 10, maxL = 20, faction = "Alliance", zone = "서부 몰락지대 / 모단 호수 / 어둠의 해안", mapID = 1436, x = 0.56, y = 0.47, tip = "죽음의 폐광(16~22) 선행 퀘스트 수집" },
-    { minL = 10, maxL = 22, faction = "Horde", zone = "불모의 땅 / 은빛소나무 숲", mapID = 1413, x = 0.52, y = 0.30, tip = "성난불길 협곡(13~18) · 통곡의 동굴(17~24)" },
-    { minL = 20, maxL = 30, faction = "Both", zone = "그늘숲 / 돌발톱 산맥 / 붉은마루 / 힐스브래드", mapID = 1431, x = 0.74, y = 0.46, tip = "그림자송곳니 성채 · 검은심연 나락 · 가시덩굴 우리" },
-    { minL = 30, maxL = 40, faction = "Both", zone = "가시덤불 골짜기 / 잊혀진 땅 / 아라시 고원", mapID = 1434, x = 0.35, y = 0.11, tip = "붉은십자군 수도원 · 달라란 시 · 가라앉은 도시(35~40)" },
-    { minL = 40, maxL = 50, faction = "Both", zone = "타나리스 / 페랄라스 / 동부 내륙지 / 강물터", mapID = 1446, x = 0.52, y = 0.28, tip = "줄파락(44~54) · 크롤도크 보루(40~45) · 마라우돈" },
-    { minL = 50, maxL = 60, faction = "Both", zone = "운고로 분화구 / 서부·동부 역병지대 / 여명의 설원", mapID = 1449, x = 0.45, y = 0.08, tip = "검은바위 나락 · 스칼로맨스 · 스트라솔름 · 구체자의 정원(58~60)" },
+    { minL = 1,  maxL = 12, faction = "Alliance", zone = "엘윈 숲 / 던 모로 / 텔드랏실", mapID = 1429, x = 0.48, y = 0.42, tip = "얼라이언스 초반 직업 퀘스트·전문기술 입문" },
+    { minL = 1,  maxL = 12, faction = "Horde",    zone = "듀로타 / 멀고어 / 티리스팔 숲", mapID = 1411, x = 0.52, y = 0.43, tip = "호드 초반 직업 퀘스트·전문기술 입문" },
+    { minL = 10, maxL = 20, faction = "Alliance", zone = "서부 몰락지대 / 모단 호수 / 어둠의 해안", mapID = 1436, x = 0.56, y = 0.47, tip = "죽음의 폐광(16~22) · 스톰윈드 지하감옥 선행 퀘스트" },
+    { minL = 10, maxL = 22, faction = "Horde",    zone = "불모의 땅 / 은빛소나무 숲", mapID = 1413, x = 0.52, y = 0.30, tip = "성난불길 협곡(13~18) · 통곡의 동굴(17~24)" },
+    { minL = 20, maxL = 30, faction = "Alliance", zone = "그늘숲 / 붉은마루 산맥 / 저습지 / 잿빛 골짜기", mapID = 1431, x = 0.74, y = 0.46, tip = "검은심연 나락 · 스톰윈드 지하감옥 · 놈리건 준비" },
+    { minL = 20, maxL = 30, faction = "Horde",    zone = "돌발톱 산맥 / 힐스브래드 구릉지 / 버섯구름 봉우리", mapID = 1424, x = 0.62, y = 0.20, tip = "그림자송곳니 성채 · 검은심연 나락 · 가시덩굴 우리" },
+    { minL = 30, maxL = 40, faction = "Alliance", zone = "가시덤불 골짜기 / 아라시 고원 / 잊혀진 땅 / 달라란 시", mapID = 1434, x = 0.35, y = 0.11, tip = "놈리건 · 붉은십자군 수도원 · 달라란 시 · 가라앉은 도시(35~40)" },
+    { minL = 30, maxL = 40, faction = "Horde",    zone = "가시덤불 골짜기 / 아라시 고원 / 잊혀진 땅 / 먼지진흙", mapID = 1434, x = 0.32, y = 0.28, tip = "붉은십자군 수도원 · 가시덩굴 구릉 · 달라란 시 · 가라앉은 도시" },
+    { minL = 40, maxL = 50, faction = "Both",     zone = "타나리스 / 페랄라스 / 동부 내륙지 / 강물터", mapID = 1446, x = 0.52, y = 0.28, tip = "줄파락(44~54) · 크롤도크 보루(40~45) · 마라우돈 · 가라앉은 사원" },
+    { minL = 50, maxL = 60, faction = "Both",     zone = "운고로 분화구 / 서부·동부 역병지대 / 여명의 설원", mapID = 1449, x = 0.45, y = 0.08, tip = "검은바위 나락 · 스칼로맨스 · 스트라솔름 · 구체자의 정원(58~60)" },
 }
 
 local QuestGuideModel = {
@@ -49,15 +51,40 @@ local function BitHas(mask, bitVal)
     return (math_floor(mask / bitVal) % 2) == 1
 end
 
+-- side encoding in GodJohnson/QuestieDB class_quests: 1 = Alliance, 2 = Horde, 3 = Both/Neutral
+function QuestGuideModel.MatchesFactionSide(side, factionFilter)
+    if not factionFilter or factionFilter == "All" or factionFilter == "Both" or factionFilter == "" then
+        return true
+    end
+    if side == nil or side == 3 or side == 0 then
+        return true
+    end
+    if factionFilter == "Alliance" then
+        return side == 1
+    elseif factionFilter == "Horde" then
+        return side == 2
+    end
+    return true
+end
+
+function QuestGuideModel.FormatSideBadge(side)
+    if side == 1 or side == "Alliance" then return "[얼라]" end
+    if side == 2 or side == "Horde" then return "[호드]" end
+    return "[공용]"
+end
+
 function QuestGuideModel.RecommendLevelingZones(playerLevel, faction)
     local lvl = (type(playerLevel) == "number" and playerLevel == playerLevel and playerLevel >= 1) and math_floor(playerLevel) or nil
+    local facFilter = (faction == "Alliance" or faction == "Horde") and faction or nil
     local out = {}
     for _, z in ipairs(LEVELING_ZONES) do
-        local fOk = (not faction) or z.faction == "Both" or z.faction == faction
+        local fOk = (not facFilter) or z.faction == "Both" or z.faction == facFilter
         if fOk then
             local inRange = (lvl ~= nil) and (lvl >= z.minL - 2 and lvl <= z.maxL + 2) or false
             table_insert(out, {
                 zone = z.zone,
+                faction = z.faction,
+                factionBadge = QuestGuideModel.FormatSideBadge(z.faction),
                 range = "Lv." .. tostring(z.minL) .. "-" .. tostring(z.maxL),
                 tip = z.tip,
                 mapID = z.mapID,
@@ -72,7 +99,10 @@ function QuestGuideModel.RecommendLevelingZones(playerLevel, faction)
         if a.recommended ~= b.recommended then
             return a.recommended
         end
-        return a.minL < b.minL
+        if a.minL ~= b.minL then
+            return a.minL < b.minL
+        end
+        return tostring(a.faction or "") < tostring(b.faction or "")
     end)
     return out
 end
@@ -82,16 +112,20 @@ function QuestGuideModel.FilterClassQuests(entries, opts)
     local engClass = opts.playerClass
     local myClassOnly = opts.myClassOnly == true
     local withWalkthroughOnly = opts.withWalkthroughOnly == true
+    local factionFilter = opts.faction -- "Alliance" | "Horde" | "All" | nil
     local q = string_lower(tostring(opts.query or ""))
     local bit = engClass and CLASS_MASK[engClass] or nil
 
     local out = {}
     if type(entries) ~= "table" then return out end
     for _, item in ipairs(entries) do
-        if type(item) == "table" and type(item.title) == "string" then
+        if type(item) == "table" and type(item.title) == "string"
+            and item.title ~= "<UNUSED>" and item.altName ~= "<UNUSED>"
+        then
             local clsOk = (not myClassOnly) or (bit ~= nil and BitHas(item.classMask, bit))
+            local facOk = QuestGuideModel.MatchesFactionSide(item.side, factionFilter)
             local walkOk = (not withWalkthroughOnly) or (type(item.walkthrough) == "string" and item.walkthrough ~= "")
-            if clsOk and walkOk then
+            if clsOk and facOk and walkOk then
                 if q == "" then
                     table_insert(out, item)
                 else

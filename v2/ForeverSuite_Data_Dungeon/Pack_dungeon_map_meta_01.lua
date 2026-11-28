@@ -53,7 +53,7 @@ ForeverSuite_RegisterPack("dungeon_map_meta", 2, { title = "던전 내부 지도
 {extension="blp",instance=3039,note="초상화를 누르면 보스와 전리품을 봅니다. 이 페이지의 순서는 위치를 뜻하지 않습니다.",pageIndex=2,pageName="우두머리 도감",texture="KroldokEncounters196",title="우두머리 도감"},
 {extension="tga",instance=3065,note="입구·우두머리 서식 구역 참고도 · 순찰 중인 보스는 위치가 달라질 수 있습니다.",pageIndex=1,pageName="보스 참고도",texture="HallOfThanes_Guide_GJ",title="보스 참고도"},
 {extension="blp",instance=3065,note="게임 지형을 바탕으로 그린 지도입니다. 보스 위치는 보스 참고도에서 확인하세요.",pageIndex=2,pageName="지형도",texture="ThanesTerrain196",title="지형도"},
-{extension="blp",instance=0,pageIndex=1,texture="DalaranSurface221",title="달라란 · 지상 전역"},
+{extension="tga",instance=0,pageIndex=1,texture="DalaranSurface221",title="달라란 · 지상 전역"},
 {extension="tga",instance=349,note="[안쉬의 광휘]의 수정은 산사태 네임드 뒤편에 있습니다.",npcID=12203,outside=false,pageIndex=99,texture="CL_Maraudon_GJ4131",title="던전 안 · 산사태가 있는 막다른 구역"},
 {extension="tga",instance=349,note="이름 없는 예언자를 처치해 영혼의 아뮬렛을 얻으세요. 칸에게 아뮬렛을 사용한 뒤 처치합니다.",npcID=13718,outside=true,pageIndex=99,texture="CL_Maraudon_GJ4131",title="던전 밖 · 마라우돈 입구 동굴의 중앙 갈림길 주변"},
 {extension="tga",instance=349,note="주황색 포털 안쪽을 순찰합니다. 영혼의 아뮬렛을 사용한 뒤 다섯 번째 칸의 보석을 얻습니다. 순찰 중에는 지도 표시와 위치가 달라질 수 있습니다.",npcID=13738,outside=false,pageIndex=99,texture="CL_Maraudon_GJ4131",title="던전 안 · 제5대 칸 벵 · 주황색 입구 안쪽, 칼날채찍으로 가는 길"},

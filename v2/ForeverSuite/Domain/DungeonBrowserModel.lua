@@ -117,9 +117,19 @@ function DungeonBrowserModel.GetDropsForBoss(boss, lootByID)
     return out
 end
 
--- Evaluates live quest preparation checklist for a dungeon.
+-- Evaluates live quest preparation checklist for a dungeon (supports Horde/Alliance/All faction filter).
 -- statusMap: { completed = { [qid]=true|false|nil }, inLog = { [qid]=true } }
-function DungeonBrowserModel.BuildQuestReadiness(allQuests, dungeon, statusMap)
+function DungeonBrowserModel.MatchesQuestFaction(qFaction, factionFilter)
+    if not factionFilter or factionFilter == "All" or factionFilter == "Both" or factionFilter == "" then
+        return true
+    end
+    if not qFaction or qFaction == "Both" or qFaction == "" then
+        return true
+    end
+    return qFaction == factionFilter
+end
+
+function DungeonBrowserModel.BuildQuestReadiness(allQuests, dungeon, statusMap, factionFilter)
     local rows = {}
     local counts = { total = 0, completed = 0, inLog = 0, available = 0, prereq = 0 }
     if type(dungeon) ~= "table" then
@@ -132,7 +142,9 @@ function DungeonBrowserModel.BuildQuestReadiness(allQuests, dungeon, statusMap)
     local inLog = type(st.inLog) == "table" and st.inLog or {}
 
     for _, q in ipairs(allQuests or {}) do
-        if type(q) == "table" and (q.dungeonKey == dKey or q.dungeonName == dName) then
+        if type(q) == "table" and (q.dungeonKey == dKey or q.dungeonName == dName)
+            and DungeonBrowserModel.MatchesQuestFaction(q.faction, factionFilter)
+        then
             local qid = q.questID
             local state = "AVAILABLE"
             if comp[qid] == true then

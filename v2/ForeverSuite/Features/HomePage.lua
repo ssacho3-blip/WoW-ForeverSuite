@@ -115,7 +115,7 @@ function HomePage:Build(parent)
     leftHdr:SetPoint("TOPLEFT", leftCard, "TOPLEFT", 12, -10)
     leftHdr:SetPoint("TOPRIGHT", leftCard, "TOPRIGHT", -12, -10)
 
-    local dunCaption = W.Label(leftCard, "추천 던전 구간", "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
+    local dunCaption = W.Label(leftCard, "내 캐릭터 맞춤 추천 육성 · 인던", "small", T.TEXT.MUTED, { justifyH = "LEFT", wordWrap = false })
     dunCaption:SetPoint("TOPLEFT", leftCard, "TOPLEFT", 12, -46)
 
     local briefDungeon = W.Label(leftCard, "", "heading", T.TEXT.GOLD, { justifyH = "LEFT", wordWrap = true })
@@ -236,11 +236,14 @@ function HomePage:OnShow()
     end
     local avgIlvl = (ilvlCnt > 0) and math.floor((ilvlSum / ilvlCnt) + 0.5) or nil
 
+    local raceLoc = type(ga.GetPlayerRaceLocalized) == "function" and ga.GetPlayerRaceLocalized() or nil
     local ov = ns.Domain.HomeDashboardModel.BuildOverview({
         name = ga.GetPlayerName(),
         level = ga.GetPlayerLevel(),
         classLoc = locCls,
         classEng = engCls,
+        faction = ga.GetPlayerFaction(),
+        raceLoc = raceLoc,
         zone = ga.GetPlayerZoneText(),
         realm = ns.Api.SafeAPI.GetCanonicalRealm(),
         freeSlots = ns.Api.SafeAPI.GetBagFreeSlots(),

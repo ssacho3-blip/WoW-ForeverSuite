@@ -296,7 +296,7 @@ local totalEntries = 0
 for _, pack in pairs(_G.ForeverSuiteData.packs) do
     totalEntries = totalEntries + #pack.entries
 end
-assert(totalEntries == 46, "expected exact 46 enriched LoD Codex entries across 5 packs, got " .. tostring(totalEntries))
+assert(totalEntries == 80, "expected exact 80 enriched LoD Codex entries across 5 packs, got " .. tostring(totalEntries))
 
 ns.UI.CommandHub:SelectPage("settings")
 ns.Features.SettingsPage.activeSection = "qol"

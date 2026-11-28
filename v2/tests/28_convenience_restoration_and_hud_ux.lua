@@ -78,9 +78,25 @@ assert(SCB.dockCastBtn and SCB.dockCastBtn:IsShown(), "1-click secure Cast butto
 assert(SCB.dockLureBtn and SCB.dockLureBtn:IsShown(), "1-click secure Lure button must be shown OOC")
 assertEq(SCB.dockCastBtn:GetParent(), _G.UIParent, "Secure Cast button parent MUST be _G.UIParent (Zero-Taint)")
 assertEq(SCB.dockLureBtn:GetParent(), _G.UIParent, "Secure Lure button parent MUST be _G.UIParent (Zero-Taint)")
+assertEq(SCB.dockCastBtn._attrs.useOnKeyDown, false, "Secure Cast button MUST set useOnKeyDown=false for WoW 1.60.1 ActionButtonUseKeyDown=1")
+assertEq(SCB.dockLureBtn._attrs.useOnKeyDown, false, "Secure Lure button MUST set useOnKeyDown=false for WoW 1.60.1 ActionButtonUseKeyDown=1")
+assertEq(SCB.dockCastBtn._attrs.type1, "spell", "Secure Cast left-click must cast Fishing spell")
+assertEq(SCB.dockCastBtn._attrs.type2, "macro", "Secure Cast right-click must apply best lure macro")
+assertEq(SCB.dockCastBtn._attrs.macrotext2, "/use item:6533\n/use 16", "Secure Cast right-click macro must apply best lure")
 assertEq(SCB.dockLureBtn._attrs.type, "macro", "Secure Lure button must use macro type")
 assertEq(SCB.dockLureBtn._attrs.macrotext, "/use item:6533\n/use 16", "Secure Lure macro must target best lure onto slot 16")
+assertEq(ns.Api.ProfileStore:Get("profession", "fishingDoubleClick"), true, "Double-right-click EasyCast must default to ON")
 assertEq(ns.UI.Director.state, "FISHING", "Pinned fishing card must keep Director in FISHING state OOC")
+
+-- Ensure double-right-click secure button also sets useOnKeyDown=false
+SCB:EnsureButton()
+assertEq(SCB.button._attrs.useOnKeyDown, false, "Double-right-click EasyCast button MUST set useOnKeyDown=false")
+
+-- Crash-safe 1-Key Bobber Reel-In (SoftTargetInteract CVar journal round-trip)
+local okOne1, rOne1 = FH:ToggleOneKeyInteract(true)
+assert(okOne1 and rOne1 == "INTERACT_ON" and FH.oneKeyInteract == true, "1-key SoftTargetInteract ON must succeed OOC")
+local okOne2, rOne2 = FH:ToggleOneKeyInteract(false)
+assert(okOne2 and rOne2 == "INTERACT_OFF" and FH.oneKeyInteract == false, "1-key SoftTargetInteract OFF must restore CVars")
 
 -- 1-click Pole <-> Combat Weapon swap round-trip
 local okSwap1, rSwap1 = FH:SwapFishingPole()

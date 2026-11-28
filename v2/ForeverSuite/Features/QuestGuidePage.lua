@@ -13,7 +13,7 @@ local type = type
 local math_max = math.max
 local math_min = math.min
 
-local LEFT_ROWS = 13
+local LEFT_ROWS = 12
 
 local QuestGuidePage = {
     id = "questguide",
@@ -21,6 +21,7 @@ local QuestGuidePage = {
     group = "now",
     host = nil,
     activeTab = "class", -- class | leveling | books | routes | special
+    factionMode = "auto", -- auto | Horde | Alliance | All
     myClassOnly = true,
     scrollOffset = 0,
     selectedQuest = nil,
@@ -29,10 +30,23 @@ local QuestGuidePage = {
     lastQuery = "",
     leftRows = {},
     leftScrollBar = nil,
+    factionBar = nil,
+    factionInfoLbl = nil,
     detailPanel = nil,
     navBtn = nil,
 }
 ns.Features.QuestGuidePage = QuestGuidePage
+
+function QuestGuidePage:GetEffectiveFaction()
+    if self.factionMode == "Horde" or self.factionMode == "Alliance" or self.factionMode == "All" then
+        return self.factionMode
+    end
+    local detected = ns.Api.GameAdapters.GetPlayerFaction()
+    if detected == "Horde" or detected == "Alliance" then
+        return detected
+    end
+    return "All"
+end
 
 function QuestGuidePage:RenderDetail()
     if not self.detailPanel then return end
@@ -42,10 +56,10 @@ function QuestGuidePage:RenderDetail()
 
     if self.activeTab == "leveling" then
         local lvl = ns.Api.GameAdapters.GetPlayerLevel()
-        local fac = ns.Api.GameAdapters.GetPlayerFaction()
+        local fac = self:GetEffectiveFaction()
         local lvlTxt = (type(lvl) == "number" and lvl >= 1) and ("Lv." .. tostring(lvl)) or "Lv.-"
-        local facTxt = (type(fac) == "string" and fac ~= "") and fac or "확인 불가"
-        self.detailPanel:SetHeader("내 레벨·진영 맞춤 육성 가이드", "현재 캐릭터: " .. lvlTxt .. " (" .. facTxt .. ")", clsIcon, clsCol)
+        local facTxt = (fac == "Horde") and "호드" or ((fac == "Alliance") and "얼라이언스" or "전체 진영")
+        self.detailPanel:SetHeader("내 레벨·진영 맞춤 육성 가이드", "적용 기준: " .. lvlTxt .. " · " .. facTxt, clsIcon, clsCol)
         self.detailPanel:SetBodyText(
             "좌측 목록에서 금색(★)으로 강조된 지역이 현재 레벨에 가장 적합한 육성 구간입니다.\n\n"
             .. "■ 사용 방법\n"
@@ -111,10 +125,11 @@ function QuestGuidePage:RenderDetail()
 
     local comp = ns.Api.GameAdapters.IsQuestCompleted(q.questID)
     local compTag = (comp == true) and "[완료]" or ((comp == false) and "[미완료]" or "[확인 불가]")
+    local sideTag = ns.Domain.QuestGuideModel.FormatSideBadge(q.side)
     local qLvlTxt = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.-"
     local minLvlTxt = (type(q.minLevel) == "number" and q.minLevel > 0) and tostring(q.minLevel) or "-"
     self.detailPanel:SetHeader(
-        compTag .. " " .. tostring(q.title),
+        compTag .. " " .. sideTag .. " " .. tostring(q.title),
         "퀘스트 #" .. tostring(q.questID) .. " · " .. qLvlTxt .. " (최소 Lv." .. minLvlTxt .. ")",
         clsIcon,
         (comp == true) and T.SEMANTIC.SUCCESS or clsCol
@@ -144,15 +159,30 @@ function QuestGuidePage:Render(query)
     if not self.host then return end
     self.lastQuery = query or ""
 
+    local effFac = self:GetEffectiveFaction()
+    if self.factionInfoLbl then
+        local detFac = ns.Api.GameAdapters.GetPlayerFaction()
+        local detTxt = (detFac == "Horde") and "호드" or ((detFac == "Alliance") and "얼라이언스" or "미감지")
+        local effTxt = (effFac == "Horde") and "호드 전용+공용" or ((effFac == "Alliance") and "얼라 전용+공용" or "전체 진영")
+        self.factionInfoLbl:SetText("내 캐릭터: " .. detTxt .. " · 필터: " .. effTxt)
+        if effFac == "Horde" then
+            self.factionInfoLbl:SetTextColor(0.95, 0.42, 0.42, 1)
+        elseif effFac == "Alliance" then
+            self.factionInfoLbl:SetTextColor(0.45, 0.72, 1.00, 1)
+        else
+            self.factionInfoLbl:SetTextColor(T.TEXT.GOLD[1], T.TEXT.GOLD[2], T.TEXT.GOLD[3], 1)
+        end
+    end
+
     local items = {}
     if self.activeTab == "leveling" then
         local zones = ns.Domain.QuestGuideModel.RecommendLevelingZones(
             ns.Api.GameAdapters.GetPlayerLevel(),
-            ns.Api.GameAdapters.GetPlayerFaction()
+            effFac
         )
         for _, z in ipairs(zones) do
             items[#items + 1] = {
-                title = (z.recommended and "★ " or "") .. z.zone,
+                title = (z.recommended and "★ " or "") .. tostring(z.factionBadge or "") .. " " .. z.zone,
                 subtitle = z.tip,
                 right = z.range,
                 color = z.recommended and T.TEXT.GOLD or T.TEXT.PRIMARY,
@@ -248,6 +278,7 @@ function QuestGuidePage:Render(query)
             {
                 playerClass = playerCls,
                 myClassOnly = self.myClassOnly,
+                faction = effFac,
                 query = self.lastQuery,
             }
         )
@@ -258,9 +289,10 @@ function QuestGuidePage:Render(query)
             local sel = (self.selectedQuest and self.selectedQuest.questID == q.questID)
             local comp = ns.Api.GameAdapters.IsQuestCompleted(q.questID)
             local qIcon = (q.class and T.ICON.CLASS_TEX[q.class]) or (playerCls and T.ICON.CLASS_TEX[playerCls]) or "Interface\\Icons\\INV_Misc_Book_09"
+            local sideBadge = ns.Domain.QuestGuideModel.FormatSideBadge(q.side)
             items[#items + 1] = {
                 title = ((comp == true) and "V " or "") .. tostring(q.title),
-                subtitle = (q.walkthrough and q.walkthrough ~= "") and "한글 상세 공략 수록" or "좌표 안내",
+                subtitle = sideBadge .. " · " .. ((q.walkthrough and q.walkthrough ~= "") and "한글 상세 공략" or "좌표 안내"),
                 right = (type(q.level) == "number" and q.level > 0) and ("Lv." .. tostring(q.level)) or "Lv.-",
                 color = (comp == true) and T.SEMANTIC.SUCCESS or (sel and T.TEXT.GOLD or T.TEXT.PRIMARY),
                 icon = qIcon,
@@ -336,8 +368,28 @@ function QuestGuidePage:Build(parent)
     clsTgl:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, -28)
     clsTgl:SetWidth(140)
 
-    local leftPane = W.Card(parent, 276, 470)
-    leftPane:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -60)
+    local facBar = W.PillBar(parent, {
+        { value = "auto",     label = "내 진영(자동)", width = 96 },
+        { value = "Horde",    label = "호드",          width = 62 },
+        { value = "Alliance", label = "얼라이언스",    width = 80 },
+        { value = "All",      label = "전체",          width = 56 },
+    }, self.factionMode, function(v)
+        QuestGuidePage.factionMode = v
+        QuestGuidePage.selectedQuest = nil
+        QuestGuidePage.scrollOffset = 0
+        QuestGuidePage:Render(QuestGuidePage.lastQuery)
+    end)
+    facBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -58)
+    facBar:SetWidth(320)
+    self.factionBar = facBar
+
+    local facInfo = W.Label(parent, "", "small", T.TEXT.GOLD, { justifyH = "RIGHT", wordWrap = false })
+    facInfo:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, -63)
+    facInfo:SetWidth(300)
+    self.factionInfoLbl = facInfo
+
+    local leftPane = W.Card(parent, 276, 442)
+    leftPane:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -88)
     leftPane:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 14)
     if type(leftPane.EnableMouseWheel) == "function" then
         leftPane:EnableMouseWheel(true)
